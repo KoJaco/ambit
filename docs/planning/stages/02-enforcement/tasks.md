@@ -4,7 +4,7 @@ Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 
 ## 02.1 `CheckScope`
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 

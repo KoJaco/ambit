@@ -57,7 +57,7 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/02-enforcement/README.md).
 
-- [ ] **02.1** `CheckScope` in `ambit-core`, one function for the CLI and later MCP.
+- [x] **02.1** `CheckScope` in `ambit-core`, one function for the CLI and later MCP.
 - [ ] **02.2** Map `git diff --name-only` onto nodes through `implementation` globs.
 - [ ] **02.3** Read the active assignment from `local.json`.
 - [ ] **02.4** Reports name the node and the rule hit. Exit code 0.
