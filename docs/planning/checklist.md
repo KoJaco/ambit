@@ -22,7 +22,7 @@ Gates are also listed on their own below so they can be read without scanning th
 These five stop a stage being declared done early. Detail is in
 [`v1-build-plan.md`](v1-build-plan.md).
 
-- [ ] **01.9** `.gitignore` integration test — real `ambit init`, real `git init`, real
+- [x] **01.9** `.gitignore` integration test — real `ambit init`, real `git init`, real
   `git add -A`, and `local.json`, `.arch/.cache/`, `.arch/.proposals/` absent from
   `git status --porcelain`.
 - [ ] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
@@ -43,15 +43,15 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/01-canonical-model/README.md).
 
-- [ ] **01.1** Read and write a node pair, preserving unknown fields.
-- [ ] **01.2** Read and write `index.json`, `config.json`, and gitignored `local.json`.
-- [ ] **01.3** Build the in-memory index: hierarchy by `parent_id`, relationships apart.
-- [ ] **01.4** Mutations: create, update, delete, set relationship, set scope and protected.
-- [ ] **01.5** Derive immutable slugs, with a numeric suffix on collision.
-- [ ] **01.6** Report orphans, dangling references, and hand-edited cycles on load.
-- [ ] **01.7** Rebuild the index when watched model files change.
-- [ ] **01.8** `ambit init` scaffolds `.arch/` and appends ignore entries idempotently.
-- [ ] **01.9** Release gate: the `.gitignore` integration test passes.
+- [x] **01.1** Read and write a node pair, preserving unknown fields.
+- [x] **01.2** Read and write `index.json`, `config.json`, and gitignored `local.json`.
+- [x] **01.3** Build the in-memory index: hierarchy by `parent_id`, relationships apart.
+- [x] **01.4** Mutations: create, update, delete, set relationship, set scope and protected.
+- [x] **01.5** Derive immutable slugs, with a numeric suffix on collision.
+- [x] **01.6** Report orphans, dangling references, and hand-edited cycles on load.
+- [x] **01.7** Rebuild the index when watched model files change.
+- [x] **01.8** `ambit init` scaffolds `.arch/` and appends ignore entries idempotently.
+- [x] **01.9** Release gate: the `.gitignore` integration test passes.
 
 ## Stage 02 — Enforcement
 

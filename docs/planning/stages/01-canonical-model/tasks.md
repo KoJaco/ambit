@@ -6,7 +6,7 @@ Do these in order. The index and the mutations assume the file format holds.
 
 ## 01.1 Read and write a node pair
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -16,7 +16,7 @@ untouched. `id` in the file matches the filename. Renaming changes `name` only.
 
 ## 01.2 Project files
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -27,7 +27,7 @@ and is never required for a model to open.
 
 ## 01.3 In-memory index
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -38,7 +38,7 @@ A relationship is not stored as a hierarchy edge. Hierarchy is not stored in
 
 ## 01.4 Mutations
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -51,7 +51,7 @@ and the membership entry. Empty `scope` is stored empty; callers apply the defau
 
 ## 01.5 Slug derivation
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -61,7 +61,7 @@ with an existing id gets a numeric suffix (`orders-service-2`). The caller canno
 
 ## 01.6 Load-time integrity
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -73,7 +73,7 @@ Malformed JSON names the file and refuses a partial load.
 
 ## 01.7 File watch
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -82,7 +82,7 @@ restart. A rebuild uses the same loader as startup, including integrity warnings
 
 ## 01.8 `ambit init`
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`, `internal/core`.
 
@@ -95,7 +95,7 @@ absent, so a second `init` does not duplicate them. `init` prints the suggestion
 
 ## 01.9 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` tests, or a test package that can exec the built CLI.
 

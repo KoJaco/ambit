@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started. Next stage.
+Done. 2026-09-27. See [`workflow.md`](../../workflow.md) for the merge back to `main`.
 
 ## What this stage proves
 
