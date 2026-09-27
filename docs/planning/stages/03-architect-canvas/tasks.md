@@ -135,7 +135,7 @@ a generic shape and does not warn. The control bar's tool union still works.
 
 ## 03.13 Inspector
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/node-inspector.tsx`.
 

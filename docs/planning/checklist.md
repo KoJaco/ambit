@@ -82,7 +82,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **03.10** Delete the pipeline domain and the abandoned canvas skeleton.
 - [x] **03.11** Routes `/` and `/node/:nodeId`, on `@xyflow/react` v12.
 - [x] **03.12** Canvas renders one fetched level, with labelled relationships.
-- [ ] **03.13** Inspector for ambit fields, including empty-scope and protected copy.
+- [x] **03.13** Inspector for ambit fields, including empty-scope and protected copy.
 - [ ] **03.14** Sidebar becomes hierarchy navigation and node creation.
 - [ ] **03.15** Typed API client and SSE client.
 - [ ] **03.16** elkjs per level, recompute only on structural change, drag writes the cache.

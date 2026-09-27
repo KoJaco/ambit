@@ -10,6 +10,7 @@ import {
 import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
 import { NodeCard, type ArchNode, type CrossingMark } from "./NodeCard";
+import NodeInspector from "./node-inspector";
 
 type Summary = {
     id: string;
@@ -50,6 +51,8 @@ export default function FlowCanvas({
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const [level, setLevel] = useState<LevelResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
         onRequestZoomRef?.({
@@ -86,7 +89,7 @@ export default function FlowCanvas({
                 setError(err instanceof Error ? err.message : "level request failed");
             });
         return () => ac.abort();
-    }, [nodeId]);
+    }, [nodeId, reloadKey]);
 
     const nodes = useMemo<ArchNode[]>(() => {
         const children = level?.children ?? [];
@@ -127,6 +130,9 @@ export default function FlowCanvas({
     const onNodeDoubleClick: NodeMouseHandler<ArchNode> = (_event, node) => {
         navigate(`/node/${node.id}`);
     };
+    const onNodeClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        setSelectedId(node.id);
+    };
 
     return (
         <div className="h-screen w-full">
@@ -140,6 +146,7 @@ export default function FlowCanvas({
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                onNodeClick={onNodeClick}
                 onNodeDoubleClick={onNodeDoubleClick}
                 fitView
                 panOnDrag={tool === "grab"}
@@ -149,6 +156,13 @@ export default function FlowCanvas({
             >
                 <Background />
             </ReactFlow>
+            {selectedId ? (
+                <NodeInspector
+                    nodeId={selectedId}
+                    onClose={() => setSelectedId(null)}
+                    onSaved={() => setReloadKey((value) => value + 1)}
+                />
+            ) : null}
         </div>
     );
 }
