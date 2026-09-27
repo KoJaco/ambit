@@ -7,7 +7,7 @@ deletes (03.10) land before the rebuild, and the tree is allowed not to build in
 
 ## 03.1 Localhost server
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`, `internal/httpapi`.
 

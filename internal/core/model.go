@@ -29,14 +29,24 @@ const (
 const schemaVersion = 1
 
 var (
-	errCycle           = errors.New("hierarchy cycle")
-	errNotFound        = errors.New("node not found")
-	errHasChildren     = errors.New("node has children")
-	errNoSlug          = errors.New("name has no slug")
-	errBadStatus       = errors.New("invalid status")
-	errBadKind         = errors.New("invalid relationship kind")
-	errMissingEndpoint = errors.New("relationship endpoint does not exist")
-	errMissingParent   = errors.New("parent does not exist")
+	// Validation sentinels. HTTP maps these; it does not reimplement the rules.
+	ErrCycle           = errors.New("hierarchy cycle")
+	ErrNotFound        = errors.New("node not found")
+	ErrHasChildren     = errors.New("node has children")
+	ErrNoSlug          = errors.New("name has no slug")
+	ErrBadStatus       = errors.New("invalid status")
+	ErrBadKind         = errors.New("invalid relationship kind")
+	ErrMissingEndpoint = errors.New("relationship endpoint does not exist")
+	ErrMissingParent   = errors.New("parent does not exist")
+
+	errCycle           = ErrCycle
+	errNotFound        = ErrNotFound
+	errHasChildren     = ErrHasChildren
+	errNoSlug          = ErrNoSlug
+	errBadStatus       = ErrBadStatus
+	errBadKind         = ErrBadKind
+	errMissingEndpoint = ErrMissingEndpoint
+	errMissingParent   = ErrMissingParent
 )
 
 // Node is one architecture node. Spec is the sibling markdown, not a JSON field.

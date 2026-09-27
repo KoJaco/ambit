@@ -39,9 +39,11 @@ format (see [`arch-model-format.md`](arch-model-format.md)), and the proposal fo
 
 ### Posture
 
-Binds to **localhost only**. No authentication, because there is no remote caller and no
-account system — adding auth to a single-user local process would be ceremony without a
-threat it addresses.
+Binds to **localhost only**. `ambit start` listens on `127.0.0.1:8080` unless `--addr` is
+set. `--addr` accepts only a loopback IP (`127.0.0.1` or `::1`) and a port. `0.0.0.0`,
+other interfaces, and hostnames are rejected before the process listens. No authentication,
+because there is no remote caller and no account system — adding auth to a single-user
+local process would be ceremony without a threat it addresses.
 
 There is **no LLM proxy endpoint** and no model-provider configuration. ambit makes no
 outbound calls to a model provider. This is the largest single deletion from the original
