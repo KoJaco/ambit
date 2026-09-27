@@ -1,4 +1,6 @@
 // Package core is ambit-core: schema read and write, the in-memory graph index,
-// mutations, proposal apply, and the scope and protected check. Both front doors
-// call this package. Nothing here is implemented yet.
+// and validated mutations. Both front doors call this package.
+//
+// Layout cache, proposal apply, and the scope check are later stages. They are
+// not implemented here.
 package core

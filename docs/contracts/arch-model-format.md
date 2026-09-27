@@ -148,11 +148,19 @@ format. ambit does not call a model provider. See
 **Gitignored.** Machine-local state that is meaningless on another machine and must never
 be committed.
 
-- `assignment` — the currently assigned node, if any: the node ID and when it was assigned.
-  `ambit check` reads this to know whose `scope` applies to the current diff. Absent means
-  no assignment is active, which changes how unmapped files are treated — see
+- `assignment` — the currently assigned node, if any. Absent means no assignment is
+  active, which changes how unmapped files are treated — see
   [`docs/architecture/enforcement-model.md`](../architecture/enforcement-model.md).
-- UI preferences and similar machine-local state.
+  When present it is an object:
+
+  - `node_id` — the assigned node's id.
+  - `assigned_at` — RFC 3339 timestamp of when the assignment was recorded.
+
+  ```json
+  { "assignment": { "node_id": "payments-service", "assigned_at": "2026-09-27T10:00:00Z" } }
+  ```
+
+- UI preferences and similar machine-local state. Unknown keys are preserved.
 
 ## Invariants (Must Always Hold)
 

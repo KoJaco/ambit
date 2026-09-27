@@ -52,8 +52,8 @@ Supporting:
 | Stage | Proves | Build steps | Status |
 | --- | --- | --- | --- |
 | [00 Foundation](stages/00-foundation/README.md) | The repo can hold the tool | 0 | Done |
-| [01 Canonical model](stages/01-canonical-model/README.md) | A valid `.arch` can be created and mutated | 1–2 | Next |
-| [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Not started |
+| [01 Canonical model](stages/01-canonical-model/README.md) | A valid `.arch` can be created and mutated | 1–2 | Done |
+| [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Next |
 | [03 Architect canvas](stages/03-architect-canvas/README.md) | The architect can see and edit one level at a time | 4–6 | Not started |
 | [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Not started |
 | [05 Agent interface](stages/05-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 8 | Not started |
@@ -61,18 +61,15 @@ Supporting:
 
 ## Current status
 
-**Stage 00 done. Next is stage 01, canonical model.**
+**Stage 01 done. Next is stage 02, enforcement.**
 
-The project root is the git repository, on `main`, tracking `origin` (`github.com/KoJaco/ambit`).
-`frontend/` is a normal
-subdirectory. The Go module is `github.com/KoJaco/ambit`, with stub packages in `cmd/ambit`,
-`internal/core`, `internal/httpapi`, and `internal/mcp`. `make test` and `make build`
-succeed. No product behaviour is implemented.
+`ambit init` scaffolds a `.arch` model, and `internal/core` can load and mutate it.
+The gitignore release gate passes. Cut `stage/02-enforcement` from `main` once this
+branch has merged. See [`workflow.md`](workflow.md).
 
 `Dockerfile` and `.dockerignore` are still in `frontend/` until stage 03 confirms they are
 unused. See [decision note 0001](../decisions/0001-repo-topology.md).
 
 ## Latest slice log
 
-[Stage 00](stages/00-foundation/slice-log.md). The next slice log is stage 01, written when
-the `.gitignore` release-gate integration test passes.
+[Stage 01](stages/01-canonical-model/slice-log.md). The gitignore release gate passed.

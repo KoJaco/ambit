@@ -2,8 +2,7 @@
 
 ## Status
 
-Not started. Next stage. Branch from `main` as `stage/01-canonical-model`. See
-[`workflow.md`](../../workflow.md).
+Done. 2026-09-27. See [`workflow.md`](../../workflow.md) for the merge back to `main`.
 
 ## What this stage proves
 
