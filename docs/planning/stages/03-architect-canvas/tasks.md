@@ -29,7 +29,7 @@ endpoint may include, and it does not invent the missing node.
 
 ## 03.3 Single node
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 

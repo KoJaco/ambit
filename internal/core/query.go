@@ -46,6 +46,28 @@ type Crossing struct {
 	OtherID   NodeID
 }
 
+// Warnings copies the integrity diagnostics. They are warnings, not load failures.
+func (idx *Index) Warnings() []Diagnostic {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	out := append([]Diagnostic{}, idx.Diagnostics...)
+	if out == nil {
+		out = []Diagnostic{}
+	}
+	return out
+}
+
+// Node returns one node, including its markdown. An unknown id is ErrNotFound.
+func (idx *Index) Node(id NodeID) (NodeView, error) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	n, ok := idx.Nodes[id]
+	if !ok || n == nil {
+		return NodeView{}, fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	return snapshot(n), nil
+}
+
 // Level returns the drill-down for parent. An empty parent is the root: nodes
 // with no parent_id. An unknown parent is ErrNotFound.
 func (idx *Index) Level(parent NodeID) (Level, error) {

@@ -92,6 +92,42 @@ func TestLevelResponseOmitsTheRestOfTheGraph(t *testing.T) {
 	}
 }
 
+func TestGetNodeIncludesMarkdown(t *testing.T) {
+	idx, _ := newModel(t)
+	id, err := idx.Create(core.CreateInput{
+		Name:           "Payments Service",
+		Type:           "service",
+		Status:         core.StatusAssigned,
+		Implementation: []string{"src/payments/**"},
+		Scope:          []string{"src/payments/**"},
+		Protected:      true,
+		Spec:           "# Payments\n\nOwns capture.\n",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := getJSON(t, idx, "/nodes/"+string(id))
+	var n nodeJSON
+	if err := json.Unmarshal([]byte(body), &n); err != nil {
+		t.Fatal(err)
+	}
+	if n.ID != string(id) || n.Name != "Payments Service" || n.Type != "service" || n.Status != "assigned" || !n.Protected {
+		t.Fatalf("node %#v", n)
+	}
+	if n.Markdown != "# Payments\n\nOwns capture.\n" {
+		t.Fatalf("markdown %q", n.Markdown)
+	}
+	if len(n.Implementation) != 1 || n.Implementation[0] != "src/payments/**" || len(n.Scope) != 1 {
+		t.Fatalf("globs %#v %#v", n.Implementation, n.Scope)
+	}
+
+	rec := httptest.NewRecorder()
+	Handler(idx).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/nodes/missing-node", nil))
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "missing-node") {
+		t.Fatalf("status %d body %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUnknownLevelIs404(t *testing.T) {
 	idx, _ := newModel(t)
 	rec := httptest.NewRecorder()

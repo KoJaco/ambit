@@ -8,6 +8,14 @@ import (
 	"github.com/KoJaco/ambit/internal/core"
 )
 
+func getIntegrity(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"warnings": warningBodies(idx.Warnings()),
+		})
+	}
+}
+
 func getRootLevel(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeLevel(w, idx, "")
@@ -17,6 +25,36 @@ func getRootLevel(idx *core.Index) http.HandlerFunc {
 func getChildLevel(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeLevel(w, idx, core.NodeID(r.PathValue("nodeId")))
+	}
+}
+
+func getNode(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := core.NodeID(r.PathValue("id"))
+		n, err := idx.Node(id)
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		impl := n.Implementation
+		if impl == nil {
+			impl = []string{}
+		}
+		scope := n.Scope
+		if scope == nil {
+			scope = []string{}
+		}
+		writeJSON(w, http.StatusOK, nodeJSON{
+			ID:             string(n.ID),
+			Name:           n.Name,
+			Type:           n.Type,
+			Status:         string(n.Status),
+			ParentID:       string(n.ParentID),
+			Implementation: impl,
+			Scope:          scope,
+			Protected:      n.Protected,
+			Markdown:       n.Spec,
+		})
 	}
 }
 
@@ -76,6 +114,18 @@ type levelJSON struct {
 	Relationships []relJSON     `json:"relationships"`
 	Crossings     []crossJSON   `json:"crossings"`
 	Warnings      []warnJSON    `json:"warnings"`
+}
+
+type nodeJSON struct {
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Type           string   `json:"type"`
+	Status         string   `json:"status"`
+	ParentID       string   `json:"parent_id,omitempty"`
+	Implementation []string `json:"implementation"`
+	Scope          []string `json:"scope"`
+	Protected      bool     `json:"protected"`
+	Markdown       string   `json:"markdown"`
 }
 
 type summaryJSON struct {

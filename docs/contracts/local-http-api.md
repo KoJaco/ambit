@@ -74,7 +74,8 @@ hard refresh.
   filtering a full graph in the browser is the thing being avoided. See
   [`docs/architecture/frontend.md`](../architecture/frontend.md).
 
-- **Get a single node** — full detail including prose, for the inspector panel.
+- **Get a single node** — `GET /nodes/{id}` returns the structured fields and the
+  markdown. Unknown id is 404 and the message names the id.
 
 - **Get model integrity warnings** — orphans and dangling references, for a status surface.
   Warnings never block a read.
