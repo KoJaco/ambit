@@ -79,7 +79,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **03.7** Layout cache storage in core, and get/put endpoints that never touch canonical files.
 - [x] **03.8** SSE for model-changed and integrity-changed.
 - [x] **03.9** `ambit start` runs the ignore check before serving.
-- [ ] **03.10** Delete the pipeline domain and the abandoned canvas skeleton.
+- [x] **03.10** Delete the pipeline domain and the abandoned canvas skeleton.
 - [ ] **03.11** Routes `/` and `/node/:nodeId`, on `@xyflow/react` v12.
 - [ ] **03.12** Canvas renders one fetched level, with labelled relationships.
 - [ ] **03.13** Inspector for ambit fields, including empty-scope and protected copy.

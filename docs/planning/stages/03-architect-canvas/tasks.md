@@ -102,7 +102,7 @@ serves, and a failure is a loud warning that does not by itself refuse to serve.
 
 ## 03.10 Delete the pipeline domain
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/`, per [`frontend-refactor.md`](frontend-refactor.md) "Delete".
 

@@ -1,7 +1,5 @@
 import type { Node, Edge } from "reactflow";
 import { useReactFlow } from "reactflow";
-import { NodeRegistry } from "./node-registry";
-import type { NodeKind, PortType } from "./types";
 
 const NodeInspector = ({
     selectedNodeId,

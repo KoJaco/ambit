@@ -22,3 +22,14 @@ Completed implementation passes land here. One section per pass. Status stays in
   still builds.
 - **Verified:** `go test ./...` passes, including the level-isolation, cycle, layout,
   assignment, loopback, and SSE cases. The existing frontend build passes.
+
+## 2026-09-28 — Pipeline domain deleted
+
+- **Landed:** The pipeline modules and `frontend/app/components/canvas/` are gone.
+  `screen-size-alert.tsx` was copied over the top-level stub first. `types.ts` keeps
+  `ControlBarTool`, `SidebarSection`, and `SidebarItem`. Nothing left imports the deleted
+  modules.
+- **Deferred:** The canvas rebuild. The frontend does not build: `npm run typecheck` fails
+  because the remaining canvas, sidebar, and inspector still name the deleted pipeline
+  symbols. `npm run build` still emits a bundle, because Vite does not typecheck.
+- **Verified:** `npm run typecheck` exits 2. `go test ./...` still passes.

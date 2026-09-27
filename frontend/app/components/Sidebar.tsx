@@ -2,7 +2,6 @@ import clsx from "clsx";
 import styles from "./Sidebar.module.css";
 import React from "react";
 import { useMemo, useState } from "react";
-import { NodeRegistry } from "./node-registry";
 import { useUIContext } from "./ui-context";
 import {
     ActivityIcon,

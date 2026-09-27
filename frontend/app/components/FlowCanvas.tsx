@@ -23,9 +23,6 @@ import { NodeResizer } from "@reactflow/node-resizer";
 import "@reactflow/node-resizer/dist/style.css";
 import "reactflow/dist/style.css";
 import { NodeCard } from "./NodeCard";
-import type { NodeKind, PortType } from "./types";
-import { NodeRegistry } from "./node-registry";
-import { isPortCompatible, PortMatrix } from "./ports";
 import {
     AudioLinesIcon,
     SparklesIcon,
