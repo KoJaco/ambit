@@ -57,7 +57,7 @@ shells keep their layout and styling but have their contents rebuilt around `sco
 coupled to the pipeline palette throughout.
 
 The concrete file-by-file inventory is in
-[`docs/planning/frontend-refactor.md`](../planning/frontend-refactor.md).
+[`docs/planning/stages/03-architect-canvas/frontend-refactor.md`](../planning/stages/03-architect-canvas/frontend-refactor.md).
 
 ### Standardise on `@xyflow/react` v12
 
@@ -144,7 +144,7 @@ tests and no end-to-end tests in v1.
 
 - **Follow-ups / TODOs**
   - The concrete delete/keep inventory is in
-    [`docs/planning/frontend-refactor.md`](../planning/frontend-refactor.md).
+    [`docs/planning/stages/03-architect-canvas/frontend-refactor.md`](../planning/stages/03-architect-canvas/frontend-refactor.md).
   - Revisit Playwright coverage once the proposal review flow has stabilised.
   - `Dockerfile` and `.dockerignore` become dead under `go:embed` distribution; confirm and
     remove during the refactor.
@@ -153,6 +153,6 @@ tests and no end-to-end tests in v1.
 
 - Canonical spec: [`docs/planning/spec-v1.md`](../planning/spec-v1.md) Sections 5 and 7
 - Architecture: [`docs/architecture/frontend.md`](../architecture/frontend.md)
-- Plan: [`docs/planning/frontend-refactor.md`](../planning/frontend-refactor.md)
+- Plan: [`docs/planning/stages/03-architect-canvas/frontend-refactor.md`](../planning/stages/03-architect-canvas/frontend-refactor.md)
 - Related: [decision note 0001](../decisions/0001-repo-topology.md),
   [decision note 0004](../decisions/0004-testing-strategy.md)

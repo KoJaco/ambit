@@ -2,7 +2,8 @@
 
 ## Status
 
-Canonical plan for the v1 MVP.
+Canonical ordering for the v1 MVP. Task lists live in the [stage directories](stages/);
+status lives in [`checklist.md`](checklist.md).
 
 ## Date
 
@@ -11,185 +12,119 @@ Canonical plan for the v1 MVP.
 ## Purpose
 
 The ordered path from an empty repository to a working v1, with the rationale for the
-ordering and the gates that stop a step being declared done prematurely.
+ordering and the gates that stop a stage being declared done prematurely.
 
 The target vocabulary, contracts, and decisions this plan builds against are in
 [`spec-v1.md`](spec-v1.md), the [ADRs](../adr/), and the [contracts](../contracts/).
 
 ## Ordering principle
 
-Steps 1 through 3 are the part worth getting right slowly. Everything after them assumes the
-schema and the core package hold up, and a mistake in either propagates into the HTTP API,
-the MCP surface, and the frontend simultaneously.
+The canonical model and the enforcement check are the part worth getting right slowly.
+Everything after them assumes the schema and the core package hold up, and a mistake in
+either propagates into the HTTP API, the MCP surface, and the frontend simultaneously.
 
-Step 3 is deliberately early and out of dependency order — `ambit check` could technically
-wait until there is a UI to configure nodes from. It comes third because it is small, and
-because it is the product's actual differentiator. Building it early means the thing ambit
-is *for* is provable before any of the presentation layer exists, and if the glob-to-node
-mapping turns out to be unworkable, that is far better learned in week one than week three.
+Enforcement is deliberately early and out of dependency order — `ambit check` could
+technically wait until there is a UI to configure nodes from. It comes before the canvas
+because it is small, and because it is the product's actual differentiator. Building it
+early means the thing ambit is *for* is provable before any of the presentation layer
+exists, and if the glob-to-node mapping turns out to be unworkable, that is far better
+learned before the frontend exists than after.
 
-## Step 0 — Repository topology
+The review gate comes before MCP. The reverse order would mean a window in which MCP
+authoring tools have nowhere to stage to, and the tempting fix at that moment is to let
+them write directly — which is the decision
+[ADR-0002](../adr/0002-agent-interface-and-review-gate.md) explicitly rejects.
 
-Not in the original spec's ordering, but it precedes everything.
+`ambit-core` grows across stages. Later stages add to it. They do not re-plan earlier work.
 
-- Reconcile the uncommitted template-stripping changes in `frontend/`.
-- Remove `frontend/.git` and its `node-canvas-template` remote.
-- `git init` at the project root; write a root `.gitignore` covering Node, Go, and ambit
-  paths.
-- Scaffold the Go module: `/cmd` for CLI entry points, `/internal` for `ambit-core` and the
-  front doors.
+## Stages
 
-Details and the full follow-up list: [decision note 0001](../decisions/0001-repo-topology.md).
+### Stage 00 — Foundation — done
 
-## Step 1 — `.arch` schema and `ambit init` — RELEASE GATE
+Build step 0. Repository topology. Recorded in
+[stage 00](stages/00-foundation/README.md).
 
-Implement the format in
-[`arch-model-format.md`](../contracts/arch-model-format.md): node `.json` and sibling `.md`,
-`index.json` with `schema_version`, `config.json`, `local.json`.
+### Stage 01 — Canonical model — steps 1 and 2 — RELEASE GATE
 
-`ambit init` scaffolds `.arch/`, creates `.gitignore` if missing, and appends the ignore
-entries **idempotently** — checking for an existing entry before appending, so re-running
-`init` is safe.
+[Stage README](stages/01-canonical-model/README.md).
 
-### The gate
+`.arch` read and write, `ambit init`, the in-memory index, and validated mutations.
+Format: [`arch-model-format.md`](../contracts/arch-model-format.md).
 
-**This step is not complete until the integration test passes.** Not a unit test, and not a
-content assertion on `.gitignore` — asserting a string was written proves nothing about
-whether a file stays out of a commit.
+**Gate:** the integration test runs the full `ambit init` flow in a temp directory, actually
+runs `git init`, actually runs `git add -A`, and asserts that `local.json`,
+`.arch/.cache/`, and `.arch/.proposals/` do not appear in `git status --porcelain`.
 
-The gating test:
+The runtime `git check-ignore` warning is implemented in
+[stage 02](stages/02-enforcement/README.md) and called again from `ambit start` in
+[stage 03](stages/03-architect-canvas/README.md). Stage 01 writes the ignore entries and
+proves git honours them. The later stages prove the running commands notice when someone
+has undone that.
 
-1. Runs the full `ambit init` flow in a temp directory.
-2. Actually runs `git init`.
-3. Actually runs `git add -A`.
-4. Asserts `local.json`, `.arch/.cache/`, and `.arch/.proposals/` do **not** appear in
-   `git status --porcelain`.
+### Stage 02 — Enforcement — step 3 — RELEASE GATE
 
-There is no API key in ambit any more, so the original spec's "leaked key" framing is gone.
-The gate survives on different grounds: `.proposals/` holds unreviewed agent-authored
-content, and committing it would mean exactly the failure the review gate exists to prevent —
-unapproved agent output entering git disguised as the model. `local.json` holds
-machine-local assignment state, and `.cache/` holds derived layout.
+[Stage README](stages/02-enforcement/README.md).
 
-A content assertion would pass in every case that actually breaks: `init` running before
-`git init`, a pre-existing `.gitignore` merging oddly, or an entry being edited out later.
-
-### Also in this step
-
-Runtime verification via `git check-ignore`, called by both `ambit start` and `ambit check`,
-warning loudly when the entries are not in effect.
-
-## Step 2 — `ambit-core`
-
-The package everything else calls. See
-[`system-overview.md`](../architecture/system-overview.md).
-
-- File read and write for the model.
-- The in-memory index: `map[NodeID]*Node`, `parent_id` for hierarchy, and a **separate**
-  adjacency index for cross-cutting relationships. Separate because relationships jump
-  across the tree and would corrupt a structure assuming one.
-- Mutations with validation: create, update, delete, set relationship, set scope and
-  protected. Cycle prevention, reference integrity, slug derivation with collision
-  suffixing.
-- File watching and index rebuild.
-
-**Gate:** unit coverage on hierarchy validation, cycle prevention, and ID derivation.
-
-## Step 3 — `ambit check`
-
-Semantics in [`enforcement-model.md`](../architecture/enforcement-model.md).
-
-- `git diff --name-only`, map files to nodes via `implementation` globs.
-- Read the active assignment from `local.json`.
-- Apply the rules: `protected` is absolute, empty `scope` defaults to `implementation`,
-  unmapped files are violations when an assignment is active and informational drift when
-  not.
-- Report naming both the node and the rule hit. Exit 0 — warns, does not block.
-- `ambit hook install`, opt-in, refusing to clobber an existing `pre-commit` hook.
+Semantics: [`enforcement-model.md`](../architecture/enforcement-model.md).
 
 **Gate:** unit coverage on glob matching, `protected`, and the unmapped-file rules. This is
 where a bug either lets an agent out of its boundary or blocks legitimate work, and both
 erode trust in the mechanism the product rests on.
 
-## Step 4 — Local HTTP API
+### Stage 03 — Architect canvas — steps 4, 5, and 6
 
-Contract: [`local-http-api.md`](../contracts/local-http-api.md).
+[Stage README](stages/03-architect-canvas/README.md).
 
-- Graph CRUD over `ambit-core`, writing directly — the architect is in the seat.
-- The drill-down level endpoint, returning one level. **Never the whole graph.**
-- Layout cache read and write.
-- `fsnotify` to SSE on `/events`.
-- `git check-ignore` verification before serving.
+Local HTTP API for one drill-down level, direct graph edits, layout cache, and SSE for
+model and integrity changes. Then the frontend hard reset and elkjs. Inventory:
+[`frontend-refactor.md`](stages/03-architect-canvas/frontend-refactor.md).
 
-## Step 5 — Frontend hard reset
+Proposal endpoints and the review UI wait for stage 04. This is the one stage that is not
+incrementally shippable — there is a period where the frontend does not build.
 
-Inventory: [`frontend-refactor.md`](frontend-refactor.md).
+### Stage 04 — Review gate — step 7 — RELEASE GATE
 
-Delete the pipeline domain model, rebuild the canvas around the ambit node model, wire to
-the HTTP API, and route drill-down at `/node/:nodeId`. Consolidate onto `@xyflow/react` v12.
-
-This is the one step that is not incrementally shippable — there is a period where the
-frontend does not build. Sequenced after the API so there is something real to wire to,
-rather than rebuilding against a mock and integrating twice.
-
-## Step 6 — elkjs layout and caching
-
-Per drill-down level, never the whole graph flattened. Positions persisted to
-`.arch/.cache/layout/`, recomputed only on structural change, with manual drag writing into
-the same cache. See [`frontend.md`](../architecture/frontend.md).
-
-## Step 7 — Proposals
+[Stage README](stages/04-review-gate/README.md).
 
 Contract: [`proposals.md`](../contracts/proposals.md).
 
 **This replaces the original spec's step 7 (LLM proxy and single-turn UI), which is cut
 entirely.**
 
-- The `.arch/.proposals/<id>/` format: manifest, operations, base hashes, materialised
-  would-be files.
-- Staging, staleness computation, and atomic apply in `ambit-core`.
-- The review UI: per-node accept and reject, stale operations visually distinct and
-  requiring explicit confirmation, accept-all skipping stale operations rather than sweeping
-  them.
-
-Sequenced before MCP so the review gate exists before anything can author through it. The
-reverse order would mean a window in which MCP authoring tools have nowhere to stage to, and
-the tempting fix at that moment is to let them write directly — which is the decision
-[ADR-0002](../adr/0002-agent-interface-and-review-gate.md) explicitly rejects.
+A test helper stages proposals so apply and the review UI are provable before MCP exists.
 
 **Gate:** apply atomicity and staleness hash comparison under test.
 
-## Step 8 — MCP server
+### Stage 05 — Agent interface — step 8 — RELEASE GATE
+
+[Stage README](stages/05-agent-interface/README.md).
 
 Contract: [`mcp-tools.md`](../contracts/mcp-tools.md).
 
-All eight tools over stdio, as a process independent of `ambit start`. Five authoring tools
-staging to proposals; `get_context`, `check_scope`, and `update_node_status` direct.
-
 **Budget real iteration time on `get_context`'s framing.** It is not a template to write
 once. Test against Codex, Cursor, and Claude Code directly, and record what was learned when
-the wording changes. The brief must enumerate allowed globs, explicitly *name* protected
-paths and siblings as off-limits rather than omitting them, state the stop-and-report escape
-hatch, and instruct the agent to call `check_scope` periodically.
+the wording changes.
 
 **Gate:** a test asserting `check_scope` and `ambit check` return the same verdict for the
 same inputs. The contract claims they cannot disagree; that should be enforced by a test
 rather than by intent.
 
-## Step 9 — Distribution
+### Stage 06 — Distribution — step 9 — RELEASE GATE
 
-- `react-router build` to a static bundle, `go:embed`-ed into the binary.
-- The `npx ambit` shim: platform detection, download, caching, and **checksum verification**.
-  Do not ship without the last one.
+[Stage README](stages/06-distribution/README.md).
+
+`go:embed` of the static SPA, and the `npx ambit` shim.
+
+**Gate:** checksum verification on download. Do not ship the shim without it.
 
 ## Release gates, collected
 
-1. **The `.gitignore` integration test** (step 1) — real `init`, real `git init`, real
+1. **The `.gitignore` integration test** (stage 01) — real `init`, real `git init`, real
    `git add -A`, asserting absence from `git status --porcelain`.
-2. **Enforcement unit coverage** (step 3) — glob matching, `protected`, unmapped-file rules.
-3. **`check_scope` / `ambit check` equivalence** (step 8).
-4. **Proposal apply atomicity and staleness** (step 7).
-5. **npx shim checksum verification** (step 9).
+2. **Enforcement unit coverage** (stage 02) — glob matching, `protected`, unmapped-file rules.
+3. **Proposal apply atomicity and staleness** (stage 04).
+4. **`check_scope` / `ambit check` equivalence** (stage 05).
+5. **npx shim checksum verification** (stage 06).
 
 Testing strategy: [decision note 0004](../decisions/0004-testing-strategy.md).
 
@@ -211,7 +146,10 @@ most likely to creep back in during the build:
 ## References
 
 - Canonical spec: [`spec-v1.md`](spec-v1.md)
+- Checklist: [`checklist.md`](checklist.md)
+- Stages: [`stages/`](stages/)
 - Superseded ordering:
   [`docs/archive/spec-v0-original.md`](../archive/spec-v0-original.md) Section 13
-- Frontend inventory: [`frontend-refactor.md`](frontend-refactor.md)
+- Frontend inventory:
+  [`stages/03-architect-canvas/frontend-refactor.md`](stages/03-architect-canvas/frontend-refactor.md)
 - Unresolved: [`open-questions.md`](open-questions.md)

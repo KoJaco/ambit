@@ -22,7 +22,7 @@ This directory is the durable record for ambit's decisions, contracts, and build
 - `docs/architecture/` for system shape and responsibility boundaries
 - `docs/contracts/` for stable public or cross-layer contracts
 - `docs/decisions/` for tactical implementation choices
-- `docs/planning/` for active planning and build history
+- `docs/planning/` for active planning, the stage breakdown, and build history
 - `docs/archive/` for superseded or intentionally retained historical material
 
 ## Start here
@@ -43,8 +43,10 @@ New to the project, read in this order:
 - [`planning/spec-v1.md`](planning/spec-v1.md) — the canonical v1 spec. Supersedes the
   original spec in full; its deltas are enumerated at the top.
 - [`planning/v1-build-plan.md`](planning/v1-build-plan.md) — build order and release gates.
-- [`planning/frontend-refactor.md`](planning/frontend-refactor.md) — the file-by-file
-  frontend reset inventory.
+- [`planning/checklist.md`](planning/checklist.md) — task status across the build.
+- [`planning/stages/`](planning/stages/) — capability stages. The file-by-file frontend
+  reset inventory is
+  [`planning/stages/03-architect-canvas/frontend-refactor.md`](planning/stages/03-architect-canvas/frontend-refactor.md).
 - [`planning/open-questions.md`](planning/open-questions.md) — deliberately unresolved
   questions and known thin spots.
 

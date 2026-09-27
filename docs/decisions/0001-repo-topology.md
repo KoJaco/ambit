@@ -76,4 +76,4 @@ the reader's mind — `/docs` is the durable record, `.arch/` would be a working
 ## References
 
 - Related ADR: [`docs/adr/0004-frontend-platform.md`](../adr/0004-frontend-platform.md)
-- Refactor plan: [`docs/planning/frontend-refactor.md`](../planning/frontend-refactor.md)
+- Refactor plan: [`docs/planning/stages/03-architect-canvas/frontend-refactor.md`](../planning/stages/03-architect-canvas/frontend-refactor.md)

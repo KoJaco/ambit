@@ -13,7 +13,7 @@ live updates, the inspector and review surfaces, and the constraints the static-
 posture imposes.
 
 **Not covered:** the HTTP contract ([`local-http-api.md`](../contracts/local-http-api.md)),
-the refactor inventory ([`frontend-refactor.md`](../planning/frontend-refactor.md)), and the
+the refactor inventory ([`frontend-refactor.md`](../planning/stages/03-architect-canvas/frontend-refactor.md)), and the
 platform choice rationale ([ADR-0004](../adr/0004-frontend-platform.md)).
 
 ## Components
@@ -183,4 +183,4 @@ proposed state.
 - ADR: [`docs/adr/0004-frontend-platform.md`](../adr/0004-frontend-platform.md)
 - Canonical spec: [`docs/planning/spec-v1.md`](../planning/spec-v1.md) Sections 4 and 5
 - Contract: [`docs/contracts/local-http-api.md`](../contracts/local-http-api.md)
-- Refactor plan: [`docs/planning/frontend-refactor.md`](../planning/frontend-refactor.md)
+- Refactor plan: [`docs/planning/stages/03-architect-canvas/frontend-refactor.md`](../planning/stages/03-architect-canvas/frontend-refactor.md)

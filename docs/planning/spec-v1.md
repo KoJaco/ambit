@@ -423,21 +423,22 @@ not abandoned.
 
 ## 13. Build order
 
-The full ordering, with rationale and release gates, is in
-[`docs/planning/v1-build-plan.md`](v1-build-plan.md). In brief:
+The ordering rationale and release gates are in
+[`v1-build-plan.md`](v1-build-plan.md). Execution is split into capability stages under
+[`stages/`](stages/), and status is tracked in [`checklist.md`](checklist.md).
 
-1. `.arch/` schema and `ambit init` — **release gate**, see Section 2.
-2. `ambit-core`: read/write, in-memory index, mutations.
-3. `ambit check`: diff-to-node mapping and violation report.
-4. Local HTTP API: CRUD plus SSE.
-5. Frontend hard reset, wired to the API, drill-down at `/node/:nodeId`.
-6. elkjs layout and position caching.
-7. Proposals: staging format, apply/reject in core, review UI.
-8. MCP server, stdio, all eight tools.
-9. `go:embed` and the npx shim.
+0. [Foundation](stages/00-foundation/README.md) — repository topology. Done.
+1. [Canonical model](stages/01-canonical-model/README.md) — `.arch` schema, `ambit init`,
+   and `ambit-core` read/write, index, and mutations. **Release gate**, see Section 2.
+2. [Enforcement](stages/02-enforcement/README.md) — `ambit check`.
+3. [Architect canvas](stages/03-architect-canvas/README.md) — local HTTP API, the frontend
+   hard reset, drill-down at `/node/:nodeId`, elkjs.
+4. [Review gate](stages/04-review-gate/README.md) — proposals, apply/reject, review UI.
+5. [Agent interface](stages/05-agent-interface/README.md) — MCP server, stdio, all eight tools.
+6. [Distribution](stages/06-distribution/README.md) — `go:embed` and the npx shim.
 
-Steps 1 through 3 are the part worth getting right slowly — everything else builds on the
-schema and core package holding up.
+The canonical model and the enforcement check are the part worth getting right slowly —
+everything else builds on the schema and core package holding up.
 
 ## References
 

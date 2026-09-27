@@ -113,8 +113,9 @@ The layered enforcement argument holds regardless — the backstop stays mandato
 but the framing's effectiveness determines how often the backstop fires and therefore how
 much the architect has to do by hand.
 
-**Trigger for revisit:** continuously during build step 8, and after real client work. Record
-what was learned when the wording changes, in [`docs/decisions/`](../decisions/).
+**Trigger for revisit:** continuously during [stage 05](stages/05-agent-interface/README.md),
+and after real client work. Record what was learned when the wording changes, in
+[`docs/decisions/`](../decisions/).
 
 ### Is per-node review granularity right at `seed_model` scale?
 
@@ -180,5 +181,7 @@ reader than a question that silently vanished.
 
 - Canonical spec: [`spec-v1.md`](spec-v1.md)
 - Build plan: [`v1-build-plan.md`](v1-build-plan.md)
+- Checklist: [`checklist.md`](checklist.md)
+- Stages: [`stages/`](stages/)
 - ADRs: [`docs/adr/`](../adr/)
 - Decision notes: [`docs/decisions/`](../decisions/)

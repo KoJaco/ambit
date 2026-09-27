@@ -2,7 +2,8 @@
 
 ## Status
 
-Plan for build step 5. Not yet executed.
+Frontend half of [stage 03](README.md). Not yet executed. Proposal review UI listed under
+"New" is built in [stage 04](../04-review-gate/README.md).
 
 ## Date
 
@@ -10,10 +11,10 @@ Plan for build step 5. Not yet executed.
 
 ## Purpose
 
-The file-by-file inventory for resetting [`frontend/`](../../frontend) from a pipeline
+The file-by-file inventory for resetting [`frontend/`](../../../../frontend) from a pipeline
 builder to the ambit canvas. The rationale for a hard reset over an incremental migration is
-in [ADR-0004](../adr/0004-frontend-platform.md); the target behaviour is in
-[`docs/architecture/frontend.md`](../architecture/frontend.md).
+in [ADR-0004](../../../adr/0004-frontend-platform.md); the target behaviour is in
+[`docs/architecture/frontend.md`](../../../architecture/frontend.md).
 
 ## Starting point
 
@@ -154,10 +155,11 @@ the v12 import.
 - **SSE client** — `/events` subscription driving model, proposal, and integrity refreshes.
 - **Layout integration** — elkjs per level, with cache read and write through the API.
 - **Proposal review surface** — the largest new component. Per-node accept and reject, stale
-  operations visually distinct, accept-all skipping stale operations.
-- **Vitest setup** — pure logic only: proposal diffing, scope glob matching, layout cache
-  keying. No component or E2E tests in v1; see
-  [decision note 0004](../decisions/0004-testing-strategy.md).
+  operations visually distinct, accept-all skipping stale operations. Built in stage 04;
+  the stage 03 reset should leave a place for it and should not implement it.
+- **Vitest setup** — pure logic only. Stage 03 covers layout cache keying and the
+  inspector's scope preview. Proposal diffing is stage 04. No component or E2E tests in v1;
+  see [decision note 0004](../../../decisions/0004-testing-strategy.md).
 
 ## Dependencies
 
@@ -184,7 +186,7 @@ This is **not incrementally shippable**. There is a period where the frontend do
 build, which is the accepted cost of the hard reset — there is no intermediate state in
 which a port compatibility matrix is partially meaningful for a hierarchy model.
 
-Sequenced after the HTTP API (build step 4) so the rebuild targets a real API rather than a
+Sequenced after this stage's HTTP tasks so the rebuild targets a real API rather than a
 mock that would have to be integrated against twice.
 
 ## Follow-ups
@@ -196,8 +198,9 @@ mock that would have to be integrated against twice.
 
 ## References
 
-- ADR: [`docs/adr/0004-frontend-platform.md`](../adr/0004-frontend-platform.md)
-- Target behaviour: [`docs/architecture/frontend.md`](../architecture/frontend.md)
-- Contract: [`docs/contracts/local-http-api.md`](../contracts/local-http-api.md)
-- Build order: [`v1-build-plan.md`](v1-build-plan.md) step 5
-- Repo topology: [decision note 0001](../decisions/0001-repo-topology.md)
+- ADR: [`docs/adr/0004-frontend-platform.md`](../../../adr/0004-frontend-platform.md)
+- Target behaviour: [`docs/architecture/frontend.md`](../../../architecture/frontend.md)
+- Contract: [`docs/contracts/local-http-api.md`](../../../contracts/local-http-api.md)
+- Stage: [`README.md`](README.md)
+- Build order: [`v1-build-plan.md`](../../v1-build-plan.md)
+- Repo topology: [decision note 0001](../../../decisions/0001-repo-topology.md)
