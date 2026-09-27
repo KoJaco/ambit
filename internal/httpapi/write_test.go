@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/KoJaco/ambit/internal/core"
@@ -111,6 +113,64 @@ func TestMutationsWriteThroughCore(t *testing.T) {
 	}
 	if _, ok := reopened.Nodes[core.NodeID(orders.ID)]; ok {
 		t.Fatal("deleted node still present")
+	}
+}
+
+func TestAssignmentWritesLocalJSONOnly(t *testing.T) {
+	idx, dir := newModel(t)
+	id, err := idx.Create(core.CreateInput{Name: "Payments Service", Type: "service", Status: core.StatusDraft})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodePath := filepath.Join(dir, ".arch", "nodes", string(id)+".json")
+	before, err := os.ReadFile(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doJSON(t, idx, http.MethodPut, "/assignment", map[string]string{"node_id": string(id)})
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("put %d %s", rec.Code, rec.Body.String())
+	}
+	after, err := os.ReadFile(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("node JSON changed:\n%s", after)
+	}
+	local, err := os.ReadFile(filepath.Join(dir, ".arch", "local.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(local, []byte(string(id))) || !bytes.Contains(local, []byte("assignment")) {
+		t.Fatalf("local.json %s", local)
+	}
+	reopened, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Nodes[id].Status != core.StatusDraft {
+		t.Fatalf("status changed to %s", reopened.Nodes[id].Status)
+	}
+
+	del := httptest.NewRecorder()
+	Handler(idx).ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/assignment", nil))
+	if del.Code != http.StatusNoContent {
+		t.Fatalf("delete %d %s", del.Code, del.Body.String())
+	}
+	cleared, err := os.ReadFile(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, cleared) {
+		t.Fatalf("clear touched node JSON:\n%s", cleared)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".arch", "local.json")); !os.IsNotExist(err) {
+		data, _ := os.ReadFile(filepath.Join(dir, ".arch", "local.json"))
+		if bytes.Contains(data, []byte("assignment")) {
+			t.Fatalf("assignment remained: %s", data)
+		}
 	}
 }
 

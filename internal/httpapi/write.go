@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/KoJaco/ambit/internal/core"
 )
@@ -98,6 +99,47 @@ func putRelationship(idx *core.Index) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, body)
+	}
+}
+
+func putAssignment(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeID     string `json:"node_id"`
+			AssignedAt string `json:"assigned_at"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		if body.NodeID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "node_id is required"})
+			return
+		}
+		var at time.Time
+		if body.AssignedAt != "" {
+			parsed, err := time.Parse(time.RFC3339, body.AssignedAt)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "assigned_at must be RFC3339"})
+				return
+			}
+			at = parsed
+		}
+		if err := idx.SetAssignment(core.NodeID(body.NodeID), at); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func deleteAssignment(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := idx.ClearAssignment(); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

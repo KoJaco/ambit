@@ -23,6 +23,8 @@ func routes(idx *core.Index) http.Handler {
 	mux.HandleFunc("PATCH /nodes/{id}", patchNode(idx))
 	mux.HandleFunc("DELETE /nodes/{id}", deleteNode(idx))
 	mux.HandleFunc("PUT /relationships", putRelationship(idx))
+	mux.HandleFunc("PUT /assignment", putAssignment(idx))
+	mux.HandleFunc("DELETE /assignment", deleteAssignment(idx))
 	mux.HandleFunc("GET /integrity", getIntegrity(idx))
 	return mux
 }

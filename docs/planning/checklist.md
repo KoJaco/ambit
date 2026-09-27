@@ -75,7 +75,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **03.3** Single-node read, including prose, for the inspector.
 - [x] **03.4** Integrity warnings ride along with reads and have their own fetch.
 - [x] **03.5** Direct graph mutations over HTTP, through `ambit-core`.
-- [ ] **03.6** Assignment write into `local.json`, and the contract line that names it.
+- [x] **03.6** Assignment write into `local.json`, and the contract line that names it.
 - [ ] **03.7** Layout cache storage in core, and get/put endpoints that never touch canonical files.
 - [ ] **03.8** SSE for model-changed and integrity-changed.
 - [ ] **03.9** `ambit start` runs the ignore check before serving.

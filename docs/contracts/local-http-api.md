@@ -96,6 +96,10 @@ with MCP, where the same operations are staged.
 A validation failure is 409 and the message is the core error, which names the node and
 the rule. There is no HTTP-specific validator.
 
+- `PUT /assignment` — body `{ "node_id", "assigned_at"? }`. Calls `SetAssignment`. Stored
+  only in `local.json`. Does not change the node's `status`.
+- `DELETE /assignment` — calls `ClearAssignment`. Leaves every node file alone.
+
 ### Layout
 
 - **Get cached layout for a level** — returns stored positions, or nothing if the level has

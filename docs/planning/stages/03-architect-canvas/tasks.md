@@ -58,7 +58,7 @@ failures use 409 and name the node and the rule. There is no HTTP-specific valid
 
 ## 03.6 Assignment
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`,
 [`local-http-api.md`](../../../contracts/local-http-api.md).
