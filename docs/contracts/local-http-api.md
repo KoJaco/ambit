@@ -133,14 +133,14 @@ file so the client recomputes. A field edit does not.
 
 A single one-way stream at `/events`, driven by `fsnotify` in the Go process.
 
-Event kinds:
+Event kinds, sent as SSE `event:` names. The client cannot send on this stream.
+Proposal events are not emitted yet.
 
-- **Model changed** — a node file or `index.json` changed on disk, whether from a UI write,
-  an MCP status write, or the architect's editor. Carries the affected node IDs so the
-  client can refetch narrowly rather than reloading everything.
-- **Proposals changed** — a proposal was staged, resolved, or deleted. This is what makes an
-  agent's work appear in the review panel without a refresh.
-- **Integrity changed** — the warning set changed.
+- `model-changed` — a node file or `index.json` changed on disk, whether from a UI write,
+  an MCP status write, or the architect's editor. `data` is `{ "node_ids": ["…"] }`.
+- `proposals-changed` — a proposal was staged, resolved, or deleted. Not emitted until the
+  review gate. A client built now must ignore event names it does not handle.
+- `integrity-changed` — the warning set changed.
 
 SSE rather than WebSocket because the traffic is strictly one-directional, the browser has
 the HTTP API for anything it needs to send, and SSE reconnects automatically where a

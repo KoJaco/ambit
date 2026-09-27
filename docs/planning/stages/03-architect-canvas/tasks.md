@@ -83,7 +83,7 @@ that level's cache stale so the client recomputes. A field edit does not.
 
 ## 03.8 SSE for model and integrity
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`. Uses the stage 01 file watcher.
 
