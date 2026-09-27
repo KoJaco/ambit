@@ -79,7 +79,7 @@ suggestion (stage 01); this task does not move install into `init`.
 
 ## 02.8 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` tests.
 

@@ -154,17 +154,22 @@ func judgePath(assignment NodeID, assigned *Node, path string, idx *Index) (File
 	res.Kind = KindViolation
 	res.Hits = append(res.Hits, protected...)
 	if !inScope {
-		res.Hits = append(res.Hits, outsideScopeHits(assignment, owners)...)
+		unmapped := len(protected) == 0 && len(owners) == 0
+		res.Hits = append(res.Hits, outsideScopeHits(assignment, owners, unmapped)...)
 	}
 	return res, nil
 }
 
-func outsideScopeHits(assignment NodeID, owners []NodeID) []Hit {
+func outsideScopeHits(assignment NodeID, owners []NodeID, unmapped bool) []Hit {
 	if len(owners) == 0 {
+		detail := fmt.Sprintf("not in the scope declared for %s", assignment)
+		if unmapped {
+			detail = "matches no node; " + detail
+		}
 		return []Hit{{
 			Rule:   RuleOutsideScope,
 			Node:   assignment,
-			Detail: fmt.Sprintf("matches no node; not in the scope declared for %s", assignment),
+			Detail: detail,
 		}}
 	}
 	hits := make([]Hit, 0, len(owners))

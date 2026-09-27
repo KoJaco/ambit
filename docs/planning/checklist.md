@@ -25,7 +25,7 @@ These five stop a stage being declared done early. Detail is in
 - [x] **01.9** `.gitignore` integration test — real `ambit init`, real `git init`, real
   `git add -A`, and `local.json`, `.arch/.cache/`, `.arch/.proposals/` absent from
   `git status --porcelain`.
-- [ ] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
+- [x] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
 - [ ] **04.8** Proposal apply atomicity and staleness hash comparison.
 - [ ] **05.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
 - [ ] **06.5** npx shim checksum verification. The shim does not ship without it.
@@ -64,7 +64,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **02.5** `git check-ignore` warning, shared for `ambit check` and later `ambit start`.
 - [x] **02.6** `ambit check` subcommand.
 - [x] **02.7** `ambit hook install` refuses to clobber an existing `pre-commit` hook.
-- [ ] **02.8** Release gate: unit coverage for globs, `protected`, and unmapped files.
+- [x] **02.8** Release gate: unit coverage for globs, `protected`, and unmapped files.
 
 ## Stage 03 — Architect canvas
 

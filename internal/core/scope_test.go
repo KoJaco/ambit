@@ -114,6 +114,9 @@ func TestCheckScopeProtectedWithOtherAssignment(t *testing.T) {
 	if got.Hits[1].Rule != RuleOutsideScope || got.Hits[1].Node != "payments-service" {
 		t.Fatalf("outside hit %+v", got.Hits[1])
 	}
+	if got.Hits[1].Detail != "not in the scope declared for payments-service" {
+		t.Fatalf("detail %q", got.Hits[1].Detail)
+	}
 }
 
 func TestCheckScopeTwoFailingMatches(t *testing.T) {
