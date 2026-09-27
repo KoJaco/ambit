@@ -9,30 +9,9 @@ import {
 } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
+import { getLevel, type Level } from "../api";
 import { NodeCard, type ArchNode, type CrossingMark } from "./NodeCard";
 import NodeInspector from "./node-inspector";
-
-type Summary = {
-    id: string;
-    name: string;
-    type: string;
-    status: string;
-    protected: boolean;
-};
-
-type LevelResponse = {
-    node: Summary | null;
-    children: Summary[];
-    relationships: { from: string; to: string; label: string; kind: string }[];
-    crossings: {
-        node_id: string;
-        direction: string;
-        label: string;
-        kind: string;
-        other_id: string;
-    }[];
-    warnings: { severity: string; path: string; message: string }[];
-};
 
 const nodeTypes = { arch: NodeCard };
 
@@ -51,7 +30,7 @@ export default function FlowCanvas({
 }) {
     const navigate = useNavigate();
     const { zoomIn, zoomOut, fitView } = useReactFlow();
-    const [level, setLevel] = useState<LevelResponse | null>(null);
+    const [level, setLevel] = useState<Level | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [reloadKey, setReloadKey] = useState(0);
@@ -71,17 +50,9 @@ export default function FlowCanvas({
     }, [fitView, onRequestRecenterRef, onRequestZoomRef, zoomIn, zoomOut]);
 
     useEffect(() => {
-        const path = nodeId ? `/levels/${encodeURIComponent(nodeId)}` : "/levels";
         const ac = new AbortController();
         setError(null);
-        fetch(path, { signal: ac.signal })
-            .then(async (res) => {
-                if (!res.ok) {
-                    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-                    throw new Error(body?.error ?? `level request failed (${res.status})`);
-                }
-                return res.json() as Promise<LevelResponse>;
-            })
+        getLevel(nodeId, ac.signal)
             .then((body) => {
                 setLevel(body);
             })

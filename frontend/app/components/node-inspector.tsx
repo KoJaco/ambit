@@ -1,19 +1,8 @@
 import { useEffect, useState } from "react";
+import { getNode, updateNode, type NodeDetail } from "../api";
 import { previewScope } from "../scope-preview";
 
 const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
-
-type NodeDetail = {
-    id: string;
-    name: string;
-    type: string;
-    status: string;
-    parent_id?: string;
-    implementation: string[];
-    scope: string[];
-    protected: boolean;
-    markdown: string;
-};
 
 export default function NodeInspector({
     nodeId,
@@ -32,14 +21,7 @@ export default function NodeInspector({
         const ac = new AbortController();
         setNode(null);
         setError(null);
-        fetch(`/nodes/${encodeURIComponent(nodeId)}`, { signal: ac.signal })
-            .then(async (res) => {
-                if (!res.ok) {
-                    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-                    throw new Error(body?.error ?? `node request failed (${res.status})`);
-                }
-                return res.json() as Promise<NodeDetail>;
-            })
+        getNode(nodeId, ac.signal)
             .then(setNode)
             .catch((err: unknown) => {
                 if (err instanceof DOMException && err.name === "AbortError") return;
@@ -53,24 +35,15 @@ export default function NodeInspector({
         setSaving(true);
         setError(null);
         try {
-            const res = await fetch(`/nodes/${encodeURIComponent(node.id)}`, {
-                method: "PATCH",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: node.name,
-                    type: node.type,
-                    status: node.status,
-                    implementation: lines(node.implementation),
-                    scope: lines(node.scope),
-                    protected: node.protected,
-                    markdown: node.markdown,
-                }),
+            const saved = await updateNode(node.id, {
+                name: node.name,
+                type: node.type,
+                status: node.status,
+                implementation: lines(node.implementation),
+                scope: lines(node.scope),
+                protected: node.protected,
+                markdown: node.markdown,
             });
-            if (!res.ok) {
-                const body = (await res.json().catch(() => null)) as { error?: string } | null;
-                throw new Error(body?.error ?? `save failed (${res.status})`);
-            }
-            const saved = (await res.json()) as NodeDetail;
             setNode(saved);
             onSaved();
         } catch (err) {

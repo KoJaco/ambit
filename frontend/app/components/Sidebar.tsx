@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
+import { createNode as postNode, getLevel, type Summary } from "../api";
 import styles from "./Sidebar.module.css";
-
-type Summary = { id: string; name: string; type: string };
-
-type Level = { node: Summary | null; children: Summary[] };
 
 export function Sidebar({
     nodeId,
@@ -26,8 +23,7 @@ export function Sidebar({
 
     useEffect(() => {
         const ac = new AbortController();
-        fetch("/levels", { signal: ac.signal })
-            .then((res) => res.json() as Promise<Level>)
+        getLevel(undefined, ac.signal)
             .then((level) => setRoots(level.children ?? []))
             .catch(() => {});
         return () => ac.abort();
@@ -40,8 +36,7 @@ export function Sidebar({
             return;
         }
         const ac = new AbortController();
-        fetch(`/levels/${encodeURIComponent(nodeId)}`, { signal: ac.signal })
-            .then((res) => res.json() as Promise<Level>)
+        getLevel(nodeId, ac.signal)
             .then((level) => {
                 setCurrent(level.node);
                 setChildren(level.children ?? []);
@@ -52,18 +47,10 @@ export function Sidebar({
 
     async function createNode() {
         setError(null);
-        const res = await fetch("/nodes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                name,
-                type,
-                parent_id: nodeId ?? "",
-            }),
-        });
-        if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as { error?: string } | null;
-            setError(body?.error ?? `create failed (${res.status})`);
+        try {
+            await postNode({ name, type, parent_id: nodeId ?? "" });
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "create failed");
             return;
         }
         setName("");

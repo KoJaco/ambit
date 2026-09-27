@@ -3,11 +3,12 @@ import { Sidebar } from "../components/Sidebar";
 import FlowCanvas from "../components/FlowCanvas";
 import { ControlBar } from "../components/ControlBar";
 import type { ControlBarTool } from "../components/types";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
 import { ReactFlowProvider } from "@xyflow/react";
 import { UIProvider } from "../components/ui-context";
 import { useParams } from "react-router";
+import { subscribeEvents } from "../api";
 
 export function meta({}: Route.MetaArgs) {
     return [
@@ -20,6 +21,14 @@ export default function Home() {
     const { nodeId } = useParams();
     const [tool, setTool] = useState<ControlBarTool>("grab");
     const [refreshKey, setRefreshKey] = useState(0);
+    useEffect(
+        () =>
+            subscribeEvents({
+                onModelChanged: () => setRefreshKey((value) => value + 1),
+                onIntegrityChanged: () => setRefreshKey((value) => value + 1),
+            }),
+        [],
+    );
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
         null

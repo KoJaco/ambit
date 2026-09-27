@@ -155,7 +155,7 @@ a fixed set of kinds. Collapse behaviour and the module CSS remain.
 
 ## 03.15 API client and SSE client
 
-- [ ]
+- [x]
 
 **Touches:** new modules under `frontend/app/`.
 
