@@ -83,7 +83,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **03.11** Routes `/` and `/node/:nodeId`, on `@xyflow/react` v12.
 - [x] **03.12** Canvas renders one fetched level, with labelled relationships.
 - [x] **03.13** Inspector for ambit fields, including empty-scope and protected copy.
-- [ ] **03.14** Sidebar becomes hierarchy navigation and node creation.
+- [x] **03.14** Sidebar becomes hierarchy navigation and node creation.
 - [ ] **03.15** Typed API client and SSE client.
 - [ ] **03.16** elkjs per level, recompute only on structural change, drag writes the cache.
 - [ ] **03.17** Vitest on layout-cache keying and the inspector's scope preview.

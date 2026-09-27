@@ -19,6 +19,7 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
     const { nodeId } = useParams();
     const [tool, setTool] = useState<ControlBarTool>("grab");
+    const [refreshKey, setRefreshKey] = useState(0);
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
         null
@@ -31,10 +32,15 @@ export default function Home() {
                     <ModeToggle />
                 </div>
                 <UIProvider>
-                    <Sidebar />
+                    <Sidebar
+                        nodeId={nodeId}
+                        refreshKey={refreshKey}
+                        onMutated={() => setRefreshKey((value) => value + 1)}
+                    />
                     <ReactFlowProvider>
                         <FlowCanvas
                             nodeId={nodeId}
+                            refreshKey={refreshKey}
                             tool={tool === "grab" ? "grab" : "pointer"}
                             onRequestRecenterRef={(fn) => {
                                 recenterRef.current = fn;

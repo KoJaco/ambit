@@ -146,7 +146,7 @@ of assignment. There is no type dropdown and no port form.
 
 ## 03.14 Sidebar
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/Sidebar.tsx`, `Sidebar.module.css`.
 

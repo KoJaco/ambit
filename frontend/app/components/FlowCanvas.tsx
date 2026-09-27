@@ -39,11 +39,13 @@ const nodeTypes = { arch: NodeCard };
 export default function FlowCanvas({
     nodeId,
     tool,
+    refreshKey = 0,
     onRequestRecenterRef,
     onRequestZoomRef,
 }: {
     nodeId?: string;
     tool: "grab" | "pointer";
+    refreshKey?: number;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
 }) {
@@ -89,7 +91,7 @@ export default function FlowCanvas({
                 setError(err instanceof Error ? err.message : "level request failed");
             });
         return () => ac.abort();
-    }, [nodeId, reloadKey]);
+    }, [nodeId, reloadKey, refreshKey]);
 
     const nodes = useMemo<ArchNode[]>(() => {
         const children = level?.children ?? [];
