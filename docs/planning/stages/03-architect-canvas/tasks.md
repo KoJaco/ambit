@@ -17,7 +17,7 @@ outbound call. The process loads `.arch` through `ambit-core`.
 
 ## 03.2 One drill-down level
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`.
 

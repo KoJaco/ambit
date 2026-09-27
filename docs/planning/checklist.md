@@ -71,7 +71,7 @@ Done. [Stage](stages/00-foundation/README.md).
 [Stage](stages/03-architect-canvas/README.md).
 
 - [x] **03.1** `ambit start` binds to localhost and refuses other interfaces.
-- [ ] **03.2** Drill-down query and endpoint return one level.
+- [x] **03.2** Drill-down query and endpoint return one level.
 - [ ] **03.3** Single-node read, including prose, for the inspector.
 - [ ] **03.4** Integrity warnings ride along with reads and have their own fetch.
 - [ ] **03.5** Direct graph mutations over HTTP, through `ambit-core`.

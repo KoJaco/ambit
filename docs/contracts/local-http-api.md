@@ -60,9 +60,14 @@ hard refresh.
 
 ### Graph reads
 
-- **Get a drill-down level** — returns the direct children of a node plus the relationships
-  among those children, plus the node itself for breadcrumb context. Root level is the set
-  of nodes with no `parent_id`.
+- **Get a drill-down level** — `GET /levels/{nodeId}` returns the direct children of that
+  node plus the relationships among those children, plus the node itself for breadcrumb
+  context. `GET /levels` is the root: nodes with no `parent_id`, and `node` is null.
+
+  A relationship with one endpoint outside that child set is absent from `relationships`.
+  It is listed in `crossings` as `node_id`, `direction` (`out` or `in`), `label`, `kind`,
+  and `other_id`. `other_id` is an id string. The response does not include that node, and
+  the client must not invent one.
 
   **This endpoint must never return the whole graph.** It is the one genuinely
   performance-relevant decision in the architecture: React Flow is fed a level, and
@@ -179,14 +184,25 @@ A drill-down level response for `platform`:
             "kind": "sync"
         }
     ],
+    "crossings": [
+        {
+            "node_id": "orders-service",
+            "direction": "out",
+            "label": "settles",
+            "kind": "async",
+            "other_id": "billing"
+        }
+    ],
     "warnings": []
 }
 ```
 
 Only the children of `platform` and only the relationships among those children. A
-relationship from `orders-service` to a node outside this level is not included; it is
-rendered as a boundary-crossing indicator by the client, not as an edge to a node that is
-not on screen.
+relationship from `orders-service` to a node outside this level is a `crossings` entry.
+`other_id` names the far endpoint. It is not a node in this response, and the client
+renders a boundary marker instead of inventing that node. `GET /levels` uses the same
+shape with `"node": null`. Each node object includes `status` and `protected`. Markdown,
+`implementation`, and `scope` are not on this response.
 
 ### Invalid example, with expected handling
 

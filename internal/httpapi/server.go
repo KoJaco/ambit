@@ -16,7 +16,8 @@ func Handler(idx *core.Index) http.Handler {
 
 func routes(idx *core.Index) http.Handler {
 	mux := http.NewServeMux()
-	_ = idx
+	mux.HandleFunc("GET /levels", getRootLevel(idx))
+	mux.HandleFunc("GET /levels/{nodeId}", getChildLevel(idx))
 	return mux
 }
 
