@@ -113,7 +113,7 @@ this task.
 
 ## 03.11 Routes and React Flow v12
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/routes.ts`, `frontend/app/routes/home.tsx`, `frontend/package.json`.
 

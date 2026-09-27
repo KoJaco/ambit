@@ -5,7 +5,7 @@ import { ControlBar } from "../components/ControlBar";
 import type { ControlBarTool } from "../components/types";
 import { useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
-import { ReactFlowProvider } from "reactflow";
+import { ReactFlowProvider } from "@xyflow/react";
 import { UIProvider } from "../components/ui-context";
 
 export function meta({}: Route.MetaArgs) {
