@@ -1,0 +1,18 @@
+# OS / secrets
+.DS_Store
+.env
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/.react-router/
+
+# Go
+bin/
+*.test
+coverage.out
+
+# ambit working artifacts (dogfooding). Canonical model files stay tracked.
+.arch/local.json
+.arch/.cache/
+.arch/.proposals/
