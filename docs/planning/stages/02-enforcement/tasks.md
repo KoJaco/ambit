@@ -48,7 +48,7 @@ is active. The process exits 0 in every v1 outcome, including when violations ex
 
 ## 02.5 Ignore check
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -59,7 +59,7 @@ ignored. `ambit check` calls it before reporting violations. The function is cal
 
 ## 02.6 `ambit check` subcommand
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`.
 

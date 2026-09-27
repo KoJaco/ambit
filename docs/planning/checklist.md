@@ -61,8 +61,8 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **02.2** Map `git diff --name-only` onto nodes through `implementation` globs.
 - [x] **02.3** Read the active assignment from `local.json`.
 - [x] **02.4** Reports name the node and the rule hit. Exit code 0.
-- [ ] **02.5** `git check-ignore` warning, shared for `ambit check` and later `ambit start`.
-- [ ] **02.6** `ambit check` subcommand.
+- [x] **02.5** `git check-ignore` warning, shared for `ambit check` and later `ambit start`.
+- [x] **02.6** `ambit check` subcommand.
 - [ ] **02.7** `ambit hook install` refuses to clobber an existing `pre-commit` hook.
 - [ ] **02.8** Release gate: unit coverage for globs, `protected`, and unmapped files.
 

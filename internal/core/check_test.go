@@ -40,6 +40,31 @@ func TestCheckReportsViolationAndLeavesLocalJSON(t *testing.T) {
 	}
 }
 
+func TestCheckIgnoreWarningDoesNotFail(t *testing.T) {
+	dir := commitTwoNodeRepo(t)
+	path := filepath.Join(dir, ".gitignore")
+	text, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := strings.Replace(string(text), ".arch/local.json\n", "", 1)
+	if err := os.WriteFile(path, []byte(next), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitCmd(t, dir, "add", ".gitignore")
+	gitCmd(t, dir, "commit", "-m", "drop local ignore")
+	report, warnings, err := Check(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report != "" {
+		t.Fatalf("report %q", report)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], ".arch/local.json") {
+		t.Fatalf("warnings %v", warnings)
+	}
+}
+
 func TestCheckInformationalWhenUnassigned(t *testing.T) {
 	dir := commitTwoNodeRepo(t)
 	writeFile(t, filepath.Join(dir, "docs", "notes.md"), "changed\n")
