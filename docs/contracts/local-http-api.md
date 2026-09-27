@@ -102,12 +102,17 @@ the rule. There is no HTTP-specific validator.
 
 ### Layout
 
-- **Get cached layout for a level** — returns stored positions, or nothing if the level has
-  not been laid out yet, in which case the client runs elkjs and persists the result.
-- **Persist layout for a level** — stores computed or manually-dragged positions.
+- `GET /layout/{key}` — cached positions for one level, or `{"positions":[]}` when that
+  file is missing. A missing cache is not an error.
+- `PUT /layout/{key}` — stores `{ "positions": [{ "id", "x", "y" }] }` under
+  `.arch/.cache/layout/<key>.json`.
+
+`{key}` for `/node/:nodeId` is that node id. `/` has no node id; its key is `_root`.
+`_root` cannot collide with a node id, because ids match `^[a-z0-9]+(-[a-z0-9]+)*$`.
 
 Layout writes touch only `.arch/.cache/layout/`. They never write to the canonical model,
-which has no coordinates by design.
+which has no coordinates by design. Create, delete, and reparent delete that level's cache
+file so the client recomputes. A field edit does not.
 
 ### Proposals
 

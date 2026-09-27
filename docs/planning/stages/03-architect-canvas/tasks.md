@@ -71,7 +71,7 @@ assignment leaves the model otherwise untouched.
 
 ## 03.7 Layout cache
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`.
 

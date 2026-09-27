@@ -25,6 +25,8 @@ func routes(idx *core.Index) http.Handler {
 	mux.HandleFunc("PUT /relationships", putRelationship(idx))
 	mux.HandleFunc("PUT /assignment", putAssignment(idx))
 	mux.HandleFunc("DELETE /assignment", deleteAssignment(idx))
+	mux.HandleFunc("GET /layout/{key}", getLayout(idx))
+	mux.HandleFunc("PUT /layout/{key}", putLayout(idx))
 	mux.HandleFunc("GET /integrity", getIntegrity(idx))
 	return mux
 }

@@ -162,6 +162,8 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrEmptyName),
 		errors.Is(err, core.ErrEmptyType):
 		code = http.StatusConflict
+	case errors.Is(err, core.ErrInvalidLayoutKey):
+		code = http.StatusBadRequest
 	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 }
