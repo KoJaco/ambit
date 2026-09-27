@@ -77,8 +77,9 @@ hard refresh.
 - **Get a single node** — `GET /nodes/{id}` returns the structured fields and the
   markdown. Unknown id is 404 and the message names the id.
 
-- **Get model integrity warnings** — orphans and dangling references, for a status surface.
-  Warnings never block a read.
+- **Get model integrity warnings** — `GET /integrity` returns orphans and dangling
+  references. The same list rides on `GET /levels` and `GET /levels/{nodeId}` as
+  `warnings`. Warnings never block a read. Each warning names the node or the file.
 
 ### Graph mutations
 

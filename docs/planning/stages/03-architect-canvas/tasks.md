@@ -38,7 +38,7 @@ is 404 and names the id.
 
 ## 03.4 Integrity
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`.
 

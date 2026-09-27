@@ -5,6 +5,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -89,6 +91,39 @@ func TestLevelResponseOmitsTheRestOfTheGraph(t *testing.T) {
 	}
 	if len(root.Relationships) != 0 {
 		t.Fatalf("root edges %#v", root.Relationships)
+	}
+}
+
+func TestIntegrityWarningsDoNotBlockARead(t *testing.T) {
+	idx, dir := newModel(t)
+	if _, err := idx.Create(core.CreateInput{Name: "Platform", Type: "boundary", Spec: "p"}); err != nil {
+		t.Fatal(err)
+	}
+	orphan := filepath.Join(dir, ".arch", "nodes", "rogue.json")
+	if err := os.WriteFile(orphan, []byte("{\n    \"id\": \"rogue\",\n    \"name\": \"Rogue\",\n    \"type\": \"service\",\n    \"status\": \"draft\"\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".arch", "nodes", "lonely.md"), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	level := getJSON(t, reopened, "/levels")
+	integrity := getJSON(t, reopened, "/integrity")
+	for _, body := range []string{level, integrity} {
+		if !strings.Contains(body, "rogue.json") || !strings.Contains(body, "lonely.md") {
+			t.Fatalf("warning did not name the file:\n%s", body)
+		}
+	}
+	var lvl levelJSON
+	if err := json.Unmarshal([]byte(level), &lvl); err != nil {
+		t.Fatal(err)
+	}
+	if len(lvl.Warnings) < 2 {
+		t.Fatalf("warnings %#v", lvl.Warnings)
 	}
 }
 
