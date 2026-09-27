@@ -28,6 +28,20 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Println("Run `ambit hook install` to install a pre-commit hook. ambit init does not install one.")
+	case "check":
+		if len(os.Args) != 2 {
+			usage(os.Stderr)
+			os.Exit(1)
+		}
+		report, warnings, err := core.Check(".")
+		for _, w := range warnings {
+			fmt.Fprintln(os.Stderr, w)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambit check: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Print(report)
 	default:
 		fmt.Fprintf(os.Stderr, "ambit: unknown command %q\n", os.Args[1])
 		usage(os.Stderr)
@@ -36,5 +50,5 @@ func main() {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir]\n\nScaffold a .arch model in dir (default: the current directory).\n")
+	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit hook install\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\n")
 }

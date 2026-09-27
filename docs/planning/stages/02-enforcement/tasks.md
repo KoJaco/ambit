@@ -17,7 +17,7 @@ it.
 
 ## 02.2 Diff mapping
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `cmd/ambit`.
 
@@ -27,7 +27,7 @@ check in 02.5.
 
 ## 02.3 Assignment
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -37,7 +37,7 @@ check never writes `local.json` and never reads assignment from a committed node
 
 ## 02.4 Report
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `cmd/ambit`.
 
