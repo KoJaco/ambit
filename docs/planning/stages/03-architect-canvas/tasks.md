@@ -124,7 +124,7 @@ work.
 
 ## 03.12 Canvas
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/FlowCanvas.tsx`, `NodeCard.tsx`, `ControlBar.tsx`.
 

@@ -7,17 +7,18 @@ import { useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
 import { ReactFlowProvider } from "@xyflow/react";
 import { UIProvider } from "../components/ui-context";
+import { useParams } from "react-router";
 
 export function meta({}: Route.MetaArgs) {
     return [
-        { title: "New React Router App" },
-        { name: "description", content: "Welcome to React Router!" },
+        { title: "ambit" },
+        { name: "description", content: "Architecture canvas" },
     ];
 }
 
 export default function Home() {
+    const { nodeId } = useParams();
     const [tool, setTool] = useState<ControlBarTool>("grab");
-    const [showRecenter, _] = useState(false);
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
         null
@@ -25,26 +26,29 @@ export default function Home() {
 
     return (
         <div className="flex min-h-screen">
-            <div className="relative flex-1 bg-background overflow-x-hidden">
-                <div className="absolute z-50 top-4 right-4">
+            <div className="relative flex-1 overflow-x-hidden bg-background">
+                <div className="absolute top-4 right-4 z-50">
                     <ModeToggle />
                 </div>
                 <UIProvider>
                     <Sidebar />
                     <ReactFlowProvider>
                         <FlowCanvas
+                            nodeId={nodeId}
                             tool={tool === "grab" ? "grab" : "pointer"}
-                            onRequestRecenterRef={(fn) =>
-                                (recenterRef.current = fn)
-                            }
-                            onRequestZoomRef={(api) => (zoomRef.current = api)}
+                            onRequestRecenterRef={(fn) => {
+                                recenterRef.current = fn;
+                            }}
+                            onRequestZoomRef={(api) => {
+                                zoomRef.current = api;
+                            }}
                         />
                     </ReactFlowProvider>
                 </UIProvider>
                 <ControlBar
                     selectedTool={tool}
                     onSelectTool={setTool}
-                    showRecenter={showRecenter}
+                    showRecenter
                     onRecenter={() => recenterRef.current?.()}
                     onZoomIn={() => zoomRef.current?.zoomIn()}
                     onZoomOut={() => zoomRef.current?.zoomOut()}

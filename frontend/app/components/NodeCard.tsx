@@ -1,64 +1,61 @@
-import React from "react";
+import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
 
-type NodeCardData = {
-    id: string;
-    displayData: {
-        kind: string;
-        title: string;
-        bgColor?: string;
-        textColor?: string;
-        icon?: React.ReactNode;
-    };
-    x: number;
-    y: number;
-    width: number;
-    height: number;
+export type CrossingMark = {
+    direction: string;
+    label: string;
+    otherId: string;
 };
 
-export function NodeCard({
-    node,
-    onPointerDown,
-    isSelected = false,
-}: {
-    node: NodeCardData;
-    onPointerDown: (e: React.PointerEvent) => void;
-    isSelected?: boolean;
-}) {
+export type ArchNodeData = {
+    name: string;
+    type: string;
+    status: string;
+    protected: boolean;
+    crossings: CrossingMark[];
+};
+
+export type ArchNode = Node<ArchNodeData, "arch">;
+
+export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
     return (
         <div
-            data-node="true"
             className={clsx(
-                "absolute z-100 rounded-xl border bg-card shadow-sm select-none",
-                isSelected
+                "min-w-48 rounded-xl border bg-card shadow-sm select-none",
+                selected
                     ? "border-none shadow-xl ring-2 ring-offset-2"
                     : "border-foreground/25"
             )}
-            style={{
-                left: node.x,
-                top: node.y,
-                width: node.width,
-                height: node.height,
-            }}
-            onPointerDown={onPointerDown}
         >
-            <div className="flex h-full flex-col">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-foreground/50">
-                    {node.displayData.icon ?? (
-                        <div
-                            className={clsx(
-                                "h-2 w-2 rounded-full",
-                                node.displayData.bgColor
-                            )}
-                        />
-                    )}
+            <Handle type="target" position={Position.Left} />
+            <div className="flex flex-col">
+                <div className="flex items-center gap-2 border-b border-foreground/50 px-3 py-2">
+                    <div className="h-2 w-2 rounded-full bg-foreground/60" />
                     <div className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                        {node.displayData.title}
+                        {data.name}
                     </div>
+                    {data.protected ? (
+                        <span className="ml-auto text-[10px] uppercase tracking-wide text-foreground/70">
+                            protected
+                        </span>
+                    ) : null}
                 </div>
-
-                {/* Node Content / Func area */}
+                <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-foreground/80">
+                    <span>{data.type}</span>
+                    <span>{data.status}</span>
+                </div>
+                {data.crossings.length > 0 ? (
+                    <ul className="border-t border-foreground/20 px-3 py-1.5 text-[10px] text-foreground/70">
+                        {data.crossings.map((crossing) => (
+                            <li key={`${crossing.direction}-${crossing.otherId}-${crossing.label}`}>
+                                {crossing.direction === "in" ? "←" : "→"} {crossing.label || "relationship"}{" "}
+                                {crossing.otherId}
+                            </li>
+                        ))}
+                    </ul>
+                ) : null}
             </div>
+            <Handle type="source" position={Position.Right} />
         </div>
     );
 }
