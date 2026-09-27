@@ -36,6 +36,8 @@ them write directly — which is the decision
 [ADR-0002](../adr/0002-agent-interface-and-review-gate.md) explicitly rejects.
 
 `ambit-core` grows across stages. Later stages add to it. They do not re-plan earlier work.
+How that sequence moves through git is in [`workflow.md`](workflow.md): one branch per
+stage, merged to `main` when the stage is done.
 
 ## Stages
 
@@ -146,6 +148,7 @@ most likely to creep back in during the build:
 ## References
 
 - Canonical spec: [`spec-v1.md`](spec-v1.md)
+- Workflow: [`workflow.md`](workflow.md)
 - Checklist: [`checklist.md`](checklist.md)
 - Stages: [`stages/`](stages/)
 - Superseded ordering:

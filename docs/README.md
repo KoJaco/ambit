@@ -44,6 +44,8 @@ New to the project, read in this order:
   original spec in full; its deltas are enumerated at the top.
 - [`planning/v1-build-plan.md`](planning/v1-build-plan.md) — build order and release gates.
 - [`planning/checklist.md`](planning/checklist.md) — task status across the build.
+- [`planning/workflow.md`](planning/workflow.md) — one branch per stage, merged to `main`
+  when the stage is done.
 - [`planning/stages/`](planning/stages/) — capability stages. The file-by-file frontend
   reset inventory is
   [`planning/stages/03-architect-canvas/frontend-refactor.md`](planning/stages/03-architect-canvas/frontend-refactor.md).

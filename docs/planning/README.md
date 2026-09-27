@@ -18,6 +18,8 @@ This directory contains active implementation planning that is intended to guide
 - [`open-questions.md`](open-questions.md) stays the list of things deliberately unresolved.
   Stage READMEs name the questions that can bite during that stage. Resolving one means
   moving it to the Resolved section there, not deleting it.
+- [`workflow.md`](workflow.md) is how stages move through git: one branch per stage, merged
+  to `main` when the stage is done.
 
 Each stage directory holds:
 
@@ -35,6 +37,7 @@ Each stage directory holds:
 - [`v1-build-plan.md`](v1-build-plan.md) — why the work is ordered the way it is, and the
   release gates.
 - [`checklist.md`](checklist.md) — every task and its status.
+- [`workflow.md`](workflow.md) — branch, merge, and the stage 03 worktree window.
 - [`stages/`](stages/) — the seven capability stages.
 
 Supporting:

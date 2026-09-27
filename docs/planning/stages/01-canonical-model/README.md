@@ -2,7 +2,8 @@
 
 ## Status
 
-Not started. Next stage.
+Not started. Next stage. Branch from `main` as `stage/01-canonical-model`. See
+[`workflow.md`](../../workflow.md).
 
 ## What this stage proves
 
