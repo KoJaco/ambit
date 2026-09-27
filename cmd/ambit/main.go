@@ -42,6 +42,15 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Print(report)
+	case "hook":
+		if len(os.Args) != 3 || os.Args[2] != "install" {
+			usage(os.Stderr)
+			os.Exit(1)
+		}
+		if err := core.InstallHook("."); err != nil {
+			fmt.Fprintf(os.Stderr, "ambit hook install: %v\n", err)
+			os.Exit(1)
+		}
 	default:
 		fmt.Fprintf(os.Stderr, "ambit: unknown command %q\n", os.Args[1])
 		usage(os.Stderr)

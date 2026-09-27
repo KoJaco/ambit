@@ -63,7 +63,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **02.4** Reports name the node and the rule hit. Exit code 0.
 - [x] **02.5** `git check-ignore` warning, shared for `ambit check` and later `ambit start`.
 - [x] **02.6** `ambit check` subcommand.
-- [ ] **02.7** `ambit hook install` refuses to clobber an existing `pre-commit` hook.
+- [x] **02.7** `ambit hook install` refuses to clobber an existing `pre-commit` hook.
 - [ ] **02.8** Release gate: unit coverage for globs, `protected`, and unmapped files.
 
 ## Stage 03 — Architect canvas

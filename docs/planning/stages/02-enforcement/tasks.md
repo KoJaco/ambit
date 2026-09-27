@@ -68,7 +68,7 @@ ignored. `ambit check` calls it before reporting violations. The function is cal
 
 ## 02.7 Hook install
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`.
 
