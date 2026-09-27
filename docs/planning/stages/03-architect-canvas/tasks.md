@@ -164,7 +164,7 @@ refetches on model-changed and integrity-changed. Unknown event names are ignore
 
 ## 03.16 elkjs
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/`, `elkjs` dependency.
 
