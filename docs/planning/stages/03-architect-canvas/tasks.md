@@ -175,7 +175,7 @@ level reruns elk. Field edits do not.
 
 ## 03.17 Vitest
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` test setup.
 

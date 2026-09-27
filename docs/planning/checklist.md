@@ -86,7 +86,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **03.14** Sidebar becomes hierarchy navigation and node creation.
 - [x] **03.15** Typed API client and SSE client.
 - [x] **03.16** elkjs per level, recompute only on structural change, drag writes the cache.
-- [ ] **03.17** Vitest on layout-cache keying and the inspector's scope preview.
+- [x] **03.17** Vitest on layout-cache keying and the inspector's scope preview.
 - [ ] **03.18** Remove confirmed-dead template leftovers and replace the frontend README.
 
 ## Stage 04 — Review gate
