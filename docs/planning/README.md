@@ -53,22 +53,22 @@ Supporting:
 | --- | --- | --- | --- |
 | [00 Foundation](stages/00-foundation/README.md) | The repo can hold the tool | 0 | Done |
 | [01 Canonical model](stages/01-canonical-model/README.md) | A valid `.arch` can be created and mutated | 1–2 | Done |
-| [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Next |
-| [03 Architect canvas](stages/03-architect-canvas/README.md) | The architect can see and edit one level at a time | 4–6 | Not started |
+| [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Done |
+| [03 Architect canvas](stages/03-architect-canvas/README.md) | The architect can see and edit one level at a time | 4–6 | Done |
 | [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Not started |
 | [05 Agent interface](stages/05-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 8 | Not started |
 | [06 Distribution](stages/06-distribution/README.md) | One binary, installed without a toolchain | 9 | Not started |
 
 ## Current status
 
-**Stage 01 done. Next is stage 02, enforcement.**
+**Stage 03 done. Merge `stage/03-architect-canvas` to `main` before cutting stage 04.**
 
-`ambit init` scaffolds a `.arch` model, and `internal/core` can load and mutate it.
-The gitignore release gate passes. Cut `stage/02-enforcement` from `main` once this
-branch has merged. See [`workflow.md`](workflow.md).
+The architect can open one drill-down level, edit a node, and keep positions across a
+reload. The manual pass in the stage 03 test plan has been run once. See
+[`workflow.md`](workflow.md).
 
-`Dockerfile` and `.dockerignore` are still in `frontend/` until stage 03 confirms they are
-unused. See [decision note 0001](../decisions/0001-repo-topology.md).
+Stage 03 confirmed nothing invokes `frontend/Dockerfile` or `frontend/.dockerignore` and
+removed them. See [decision note 0001](../decisions/0001-repo-topology.md).
 
 ## Latest slice log
 

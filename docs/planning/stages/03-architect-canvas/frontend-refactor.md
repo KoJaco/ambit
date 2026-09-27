@@ -191,10 +191,10 @@ mock that would have to be integrated against twice.
 
 ## Follow-ups
 
-- [ ] Salvage `canvas/_components/screen-size-alert.tsx` before deleting `canvas/`.
-- [ ] Confirm `Dockerfile` and `.dockerignore` are unused, then delete.
-- [ ] Replace the template `README.md`.
-- [ ] Verify nothing else imports the deleted modules after the reset.
+- [x] Salvage `canvas/_components/screen-size-alert.tsx` before deleting `canvas/`.
+- [x] Confirm `Dockerfile` and `.dockerignore` are unused, then delete.
+- [x] Replace the template `README.md`.
+- [x] Verify nothing else imports the deleted modules after the reset.
 
 ## References
 

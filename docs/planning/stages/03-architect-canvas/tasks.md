@@ -185,7 +185,7 @@ plan. They are not imported from the Go suite.
 
 ## 03.18 Template leftovers
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/README.md`, `frontend/Dockerfile`, `frontend/.dockerignore`,
 `frontend/app/welcome/`.

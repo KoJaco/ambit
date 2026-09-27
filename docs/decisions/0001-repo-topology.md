@@ -71,7 +71,7 @@ the reader's mind — `/docs` is the durable record, `.arch/` would be a working
 - [x] Remove `frontend/.git` and the template remote.
 - [x] Write a root `.gitignore` covering Node, Go, and ambit paths.
 - [x] `git init` at the root and make the first commit.
-- [ ] Confirm `Dockerfile` and `.dockerignore` are genuinely unused before deleting.
+- [x] Confirm `Dockerfile` and `.dockerignore` are genuinely unused before deleting.
 
 ## References
 
