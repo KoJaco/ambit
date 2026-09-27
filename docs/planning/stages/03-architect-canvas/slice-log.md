@@ -33,3 +33,13 @@ Completed implementation passes land here. One section per pass. Status stays in
   because the remaining canvas, sidebar, and inspector still name the deleted pipeline
   symbols. `npm run build` still emits a bundle, because Vite does not typecheck.
 - **Verified:** `npm run typecheck` exits 2. `go test ./...` still passes.
+
+## 2026-09-28 — Canvas builds again
+
+- **Landed:** `/` and `/node/:nodeId` render one level from `GET /levels`. Relationships
+  are directed and labelled. A crossing is a marker on the on-screen node, not a node for
+  `other_id`. An unknown `type` uses the same card and does not warn. Vite proxies the API
+  to `127.0.0.1:8080`.
+- **Deferred:** the inspector fields, hierarchy sidebar, elkjs, and the typed SSE client.
+- **Verified:** the frontend builds again at `262b45d` (`npm run typecheck` and
+  `npm run build`).
