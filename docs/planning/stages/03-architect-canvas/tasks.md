@@ -93,7 +93,7 @@ stream. Proposal events are not emitted yet.
 
 ## 03.9 Ignore check on start
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`.
 

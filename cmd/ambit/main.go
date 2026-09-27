@@ -68,6 +68,9 @@ func main() {
 			fmt.Fprintf(os.Stderr, "ambit start: %v\n", err)
 			os.Exit(1)
 		}
+		if warning := core.IgnoreWarning("."); warning != "" {
+			fmt.Fprintln(os.Stderr, warning)
+		}
 		if err := httpapi.ListenAndServe(addr, idx); err != nil {
 			fmt.Fprintf(os.Stderr, "ambit start: %v\n", err)
 			os.Exit(1)
