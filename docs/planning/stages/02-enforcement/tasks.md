@@ -4,7 +4,7 @@ Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 
 ## 02.1 `CheckScope`
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -17,7 +17,7 @@ it.
 
 ## 02.2 Diff mapping
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `cmd/ambit`.
 
@@ -27,7 +27,7 @@ check in 02.5.
 
 ## 02.3 Assignment
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -37,7 +37,7 @@ check never writes `local.json` and never reads assignment from a committed node
 
 ## 02.4 Report
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `cmd/ambit`.
 
@@ -48,7 +48,7 @@ is active. The process exits 0 in every v1 outcome, including when violations ex
 
 ## 02.5 Ignore check
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -59,7 +59,7 @@ ignored. `ambit check` calls it before reporting violations. The function is cal
 
 ## 02.6 `ambit check` subcommand
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`.
 
@@ -68,7 +68,7 @@ ignored. `ambit check` calls it before reporting violations. The function is cal
 
 ## 02.7 Hook install
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`.
 
@@ -79,7 +79,7 @@ suggestion (stage 01); this task does not move install into `init`.
 
 ## 02.8 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` tests.
 
