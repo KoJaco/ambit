@@ -36,25 +36,7 @@ func getNode(idx *core.Index) http.HandlerFunc {
 			writeAPIError(w, err)
 			return
 		}
-		impl := n.Implementation
-		if impl == nil {
-			impl = []string{}
-		}
-		scope := n.Scope
-		if scope == nil {
-			scope = []string{}
-		}
-		writeJSON(w, http.StatusOK, nodeJSON{
-			ID:             string(n.ID),
-			Name:           n.Name,
-			Type:           n.Type,
-			Status:         string(n.Status),
-			ParentID:       string(n.ParentID),
-			Implementation: impl,
-			Scope:          scope,
-			Protected:      n.Protected,
-			Markdown:       n.Spec,
-		})
+		writeJSON(w, http.StatusOK, nodeBody(n))
 	}
 }
 
@@ -176,7 +158,9 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrBadStatus),
 		errors.Is(err, core.ErrBadKind),
 		errors.Is(err, core.ErrMissingEndpoint),
-		errors.Is(err, core.ErrMissingParent):
+		errors.Is(err, core.ErrMissingParent),
+		errors.Is(err, core.ErrEmptyName),
+		errors.Is(err, core.ErrEmptyType):
 		code = http.StatusConflict
 	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})

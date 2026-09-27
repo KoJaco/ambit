@@ -14,10 +14,10 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	defer idx.mu.Unlock()
 
 	if strings.TrimSpace(in.Name) == "" {
-		return "", fmt.Errorf("name must be non-empty")
+		return "", errEmptyName
 	}
 	if strings.TrimSpace(in.Type) == "" {
-		return "", fmt.Errorf("type must be non-empty")
+		return "", errEmptyType
 	}
 	status := in.Status
 	if status == "" {
@@ -81,13 +81,13 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 
 	if in.Name != nil {
 		if strings.TrimSpace(*in.Name) == "" {
-			return fmt.Errorf("name must be non-empty")
+			return errEmptyName
 		}
 		next.Name = *in.Name
 	}
 	if in.Type != nil {
 		if strings.TrimSpace(*in.Type) == "" {
-			return fmt.Errorf("type must be non-empty")
+			return errEmptyType
 		}
 		next.Type = *in.Type
 	}

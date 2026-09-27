@@ -38,6 +38,8 @@ var (
 	ErrBadKind         = errors.New("invalid relationship kind")
 	ErrMissingEndpoint = errors.New("relationship endpoint does not exist")
 	ErrMissingParent   = errors.New("parent does not exist")
+	ErrEmptyName       = errors.New("name must be non-empty")
+	ErrEmptyType       = errors.New("type must be non-empty")
 
 	errCycle           = ErrCycle
 	errNotFound        = ErrNotFound
@@ -47,6 +49,8 @@ var (
 	errBadKind         = ErrBadKind
 	errMissingEndpoint = ErrMissingEndpoint
 	errMissingParent   = ErrMissingParent
+	errEmptyName       = ErrEmptyName
+	errEmptyType       = ErrEmptyType
 )
 
 // Node is one architecture node. Spec is the sibling markdown, not a JSON field.

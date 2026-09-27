@@ -19,6 +19,10 @@ func routes(idx *core.Index) http.Handler {
 	mux.HandleFunc("GET /levels", getRootLevel(idx))
 	mux.HandleFunc("GET /levels/{nodeId}", getChildLevel(idx))
 	mux.HandleFunc("GET /nodes/{id}", getNode(idx))
+	mux.HandleFunc("POST /nodes", postNode(idx))
+	mux.HandleFunc("PATCH /nodes/{id}", patchNode(idx))
+	mux.HandleFunc("DELETE /nodes/{id}", deleteNode(idx))
+	mux.HandleFunc("PUT /relationships", putRelationship(idx))
 	mux.HandleFunc("GET /integrity", getIntegrity(idx))
 	return mux
 }

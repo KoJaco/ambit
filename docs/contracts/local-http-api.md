@@ -83,11 +83,18 @@ hard refresh.
 
 ### Graph mutations
 
-Create, update, and delete a node; set a relationship. These **write directly** to the
-canonical model. Architect edits made in the UI need no review gate — the human is already
-in the seat. This is the asymmetry with MCP, where the same operations are staged.
+These **write directly** to the canonical model through `ambit-core`. Architect edits made
+in the UI need no review gate — the human is already in the seat. This is the asymmetry
+with MCP, where the same operations are staged.
 
-`status` is a normal updatable field here.
+- `POST /nodes` — create. The id is derived from the name.
+- `PATCH /nodes/{id}` — update. `status` is a normal field. Omitted fields are left
+  unchanged.
+- `DELETE /nodes/{id}` — delete.
+- `PUT /relationships` — set the directed edge `from` → `to`, with `label` and `kind`.
+
+A validation failure is 409 and the message is the core error, which names the node and
+the rule. There is no HTTP-specific validator.
 
 ### Layout
 

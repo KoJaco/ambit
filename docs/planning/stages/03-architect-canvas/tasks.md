@@ -48,7 +48,7 @@ node or the file.
 
 ## 03.5 Direct mutations
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
