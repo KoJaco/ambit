@@ -37,16 +37,16 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(orders, payments, "requests authorisation", KindSync); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: orders, To: payments, Label: "requests authorisation", Kind: KindSync}); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(orders, billing, "settles", KindAsync); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: orders, To: billing, Label: "settles", Kind: KindAsync}); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(payments, capture, "enqueues", KindAsync); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: payments, To: capture, Label: "enqueues", Kind: KindAsync}); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(billing, orders, "notifies", KindData); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: billing, To: orders, Label: "notifies", Kind: KindData}); err != nil {
 		t.Fatal(err)
 	}
 

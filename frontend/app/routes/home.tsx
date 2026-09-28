@@ -8,12 +8,15 @@ import { useEffect, useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
 import { ReactFlowProvider } from "@xyflow/react";
 import { UIProvider } from "../components/ui-context";
-import { useParams } from "react-router";
+import { useParams, useLocation, useNavigate } from "react-router";
 import { subscribeEvents } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import ScreenSizeAlert from "../components/ScreenSizeAlert";
 import { ProposalReview } from "../components/proposal-review";
 import { RightRailStack, type RightRailFront } from "../components/right-rail-stack";
+import { EdgeActions } from "../components/edge-actions";
+import type { Relationship } from "../api";
+import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
 export function meta({}: Route.MetaArgs) {
@@ -25,10 +28,13 @@ export function meta({}: Route.MetaArgs) {
 
 export default function Home() {
     const desktopViewport = useDesktopViewport();
-    const { nodeId } = useParams();
+    const { nodeId, relationshipId } = useParams();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [tool, setTool] = useState<ControlBarTool>("grab");
     const [refreshKey, setRefreshKey] = useState(0);
     const [proposalRefreshKey, setProposalRefreshKey] = useState(0);
+    const [selectedEdge, setSelectedEdge] = useState<Relationship | null>(null);
     useEffect(
         () =>
             subscribeEvents({
@@ -47,7 +53,8 @@ export default function Home() {
 
     useEffect(() => {
         setSelectedId(null);
-    }, [nodeId]);
+        setSelectedEdge(null);
+    }, [nodeId, relationshipId]);
 
     if (!desktopViewport) {
         return <ScreenSizeAlert />;
@@ -59,11 +66,18 @@ export default function Home() {
                 <ReactFlowProvider>
                     <FlowCanvas
                         nodeId={nodeId}
+                        relationshipId={relationshipId}
                         refreshKey={refreshKey}
                         tool={tool === "grab" ? "grab" : "pointer"}
                         onSelectNode={(id) => {
                             setSelectedId(id);
+                            setSelectedEdge(null);
                             setFrontPanel("inspector");
+                        }}
+                        onSelectEdge={(edge) => {
+                            setSelectedEdge(edge);
+                            setSelectedId(null);
+                            if (edge) setFrontPanel("inspector");
                         }}
                         onRequestRecenterRef={(fn) => {
                             recenterRef.current = fn;
@@ -76,7 +90,11 @@ export default function Home() {
                 <div className="pointer-events-none absolute top-0 left-0 z-40 flex h-full w-full flex-col gap-4 p-4">
                     <header className="flex h-8 shrink-0 items-center justify-between">
                         <div className="pointer-events-auto">
-                            <Breadcrumbs nodeId={nodeId} refreshKey={refreshKey} />
+                            <Breadcrumbs
+                                nodeId={nodeId}
+                                relationshipId={relationshipId}
+                                refreshKey={refreshKey}
+                            />
                         </div>
                         <div className="pointer-events-auto">
                             <ModeToggle />
@@ -85,6 +103,7 @@ export default function Home() {
                     <div className="relative min-h-0 flex-1">
                         <Sidebar
                             nodeId={nodeId}
+                            relationshipId={relationshipId}
                             refreshKey={refreshKey}
                             onMutated={() => setRefreshKey((value) => value + 1)}
                         />
@@ -93,7 +112,25 @@ export default function Home() {
                             onFocusInspector={() => setFrontPanel("inspector")}
                             onFocusReview={() => setFrontPanel("review")}
                             inspector={
-                                selectedId ? (
+                                selectedEdge ? (
+                                    <EdgeActions
+                                        edge={selectedEdge}
+                                        onClose={() => setSelectedEdge(null)}
+                                        onMutated={() => setRefreshKey((value) => value + 1)}
+                                        onDeleted={() => {
+                                            const deleted = selectedEdge;
+                                            setSelectedEdge(null);
+                                            if (relationshipId && deleted?.id === relationshipId) {
+                                                const fromNodeId = (location.state as { fromNodeId?: string } | null)
+                                                    ?.fromNodeId;
+                                                const target = returnNodeIdAfterDelete(deleted, fromNodeId);
+                                                if (target) navigate(`/node/${target}`);
+                                                else navigate("/");
+                                            }
+                                        }}
+                                        onFocus={() => setFrontPanel("inspector")}
+                                    />
+                                ) : selectedId ? (
                                     <NodeInspector
                                         nodeId={selectedId}
                                         onClose={() => setSelectedId(null)}

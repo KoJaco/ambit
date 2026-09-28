@@ -5,6 +5,8 @@ export type CrossingMark = {
     direction: string;
     label: string;
     otherId: string;
+    relationshipId?: string;
+    drillable?: boolean;
 };
 
 export type ArchNodeData = {
@@ -48,8 +50,24 @@ export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
                     <ul className="border-t border-foreground/20 px-3 py-1.5 text-[10px] text-foreground/70">
                         {data.crossings.map((crossing) => (
                             <li key={`${crossing.direction}-${crossing.otherId}-${crossing.label}`}>
-                                {crossing.direction === "in" ? "←" : "→"} {crossing.label || "relationship"}{" "}
-                                {crossing.otherId}
+                                {crossing.drillable && crossing.relationshipId ? (
+                                    <a
+                                        href={`/relationship/${crossing.relationshipId}`}
+                                        className="underline"
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            window.location.assign(`/relationship/${crossing.relationshipId}`);
+                                        }}
+                                    >
+                                        {crossing.direction === "in" ? "←" : "→"} {crossing.label || "relationship"}
+                                    </a>
+                                ) : (
+                                    <>
+                                        {crossing.direction === "in" ? "←" : "→"} {crossing.label || "relationship"}{" "}
+                                        {crossing.otherId}
+                                    </>
+                                )}
                             </li>
                         ))}
                     </ul>

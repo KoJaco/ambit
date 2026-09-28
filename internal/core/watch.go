@@ -18,11 +18,12 @@ const watchDebounce = 150 * time.Millisecond
 // is true only when the warning set changed. ProposalsChanged means a proposal
 // directory was staged, updated, or removed. Proposal paths do not reload the model.
 type WatchNotice struct {
-	Err              error
-	ModelChanged     bool
-	NodeIDs          []NodeID
-	IntegrityChanged bool
-	ProposalsChanged bool
+	Err               error
+	ModelChanged      bool
+	NodeIDs           []NodeID
+	RelationshipIDs   []RelID
+	IntegrityChanged  bool
+	ProposalsChanged  bool
 }
 
 // Watch rebuilds the index through Open when a node file or index.json changes.
@@ -159,9 +160,21 @@ func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
 			ids[id] = struct{}{}
 		}
 	}
+	relIDs := map[RelID]struct{}{}
+	if indexChanged {
+		for _, id := range affectedRelationshipIDs(beforeRels, idx.Relationships) {
+			relIDs[id] = struct{}{}
+		}
+	}
+	for id := range ids {
+		if n := idx.Nodes[id]; n != nil && n.RelationshipID != "" {
+			relIDs[n.RelationshipID] = struct{}{}
+		}
+	}
 	return WatchNotice{
 		ModelChanged:     true,
 		NodeIDs:          sortedIDs(ids),
+		RelationshipIDs:  sortedRelIDs(relIDs),
 		IntegrityChanged: warningKey(idx.Diagnostics) != beforeWarn,
 		ProposalsChanged: proposals,
 	}
@@ -246,7 +259,43 @@ func affectedByIndex(beforeOrder, afterOrder []NodeID, beforeRels, afterRels []R
 }
 
 func relKey(rel Relationship) string {
-	return string(rel.From) + "\t" + string(rel.To) + "\t" + rel.Label + "\t" + rel.Kind
+	return string(rel.ID) + "\t" + string(rel.From) + "\t" + string(rel.To) + "\t" + rel.Label + "\t" + rel.Kind
+}
+
+func affectedRelationshipIDs(beforeRels, afterRels []Relationship) []RelID {
+	ids := map[RelID]struct{}{}
+	before := map[RelID]Relationship{}
+	for _, rel := range beforeRels {
+		if rel.ID != "" {
+			before[rel.ID] = rel
+		}
+	}
+	after := map[RelID]Relationship{}
+	for _, rel := range afterRels {
+		if rel.ID != "" {
+			after[rel.ID] = rel
+		}
+	}
+	for id, rel := range after {
+		if prev, ok := before[id]; !ok || prev.Label != rel.Label || prev.Kind != rel.Kind || prev.From != rel.From || prev.To != rel.To {
+			ids[id] = struct{}{}
+		}
+	}
+	for id := range before {
+		if _, ok := after[id]; !ok {
+			ids[id] = struct{}{}
+		}
+	}
+	return sortedRelIDs(ids)
+}
+
+func sortedRelIDs(set map[RelID]struct{}) []RelID {
+	out := make([]RelID, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
 }
 
 func warningKey(ds []Diagnostic) string {

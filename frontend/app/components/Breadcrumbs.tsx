@@ -1,64 +1,80 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
-import { getNode } from "../api";
+import { Link, useLocation } from "react-router";
+import { getRelationshipLevel } from "../api";
+import { nodeAncestorChain, relationshipPrefixCrumbs, type BreadcrumbCrumb } from "../relationship-breadcrumb";
 
-export function Breadcrumbs({ nodeId, refreshKey }: { nodeId?: string; refreshKey: number }) {
-    const [crumbs, setCrumbs] = useState<{ id: string; name: string }[]>([]);
+type DrillState = { fromNodeId?: string };
+
+export function Breadcrumbs({
+    nodeId,
+    relationshipId,
+    refreshKey,
+}: {
+    nodeId?: string;
+    relationshipId?: string;
+    refreshKey: number;
+}) {
+    const location = useLocation();
+    const drillState = (location.state ?? {}) as DrillState;
+    const [crumbs, setCrumbs] = useState<BreadcrumbCrumb[]>([]);
+    const [relLabel, setRelLabel] = useState<string | null>(null);
 
     useEffect(() => {
+        if (relationshipId) {
+            const ac = new AbortController();
+            setCrumbs([]);
+            setRelLabel(null);
+            getRelationshipLevel(relationshipId, ac.signal)
+                .then(async (level) => {
+                    setRelLabel(level.relationship.label || level.relationship.id);
+                    const prefix = await relationshipPrefixCrumbs(
+                        level.relationship,
+                        drillState.fromNodeId,
+                        ac.signal,
+                    );
+                    if (!ac.signal.aborted) setCrumbs(prefix);
+                })
+                .catch(() => {
+                    if (!ac.signal.aborted) setRelLabel(relationshipId);
+                });
+            return () => ac.abort();
+        }
+        setRelLabel(null);
         if (!nodeId) {
             setCrumbs([]);
             return;
         }
         const ac = new AbortController();
-        let cancelled = false;
         setCrumbs([]);
-        (async () => {
-            const chain: { id: string; name: string }[] = [];
-            const seen = new Set<string>();
-            let current: string | undefined = nodeId;
-            while (current && !seen.has(current)) {
-                seen.add(current);
-                const node = await getNode(current, ac.signal);
-                chain.push({ id: node.id, name: node.name });
-                current = node.parent_id || undefined;
-            }
-            chain.reverse();
-            if (!cancelled) setCrumbs(chain);
-        })().catch((err: unknown) => {
-            if (cancelled || (err instanceof DOMException && err.name === "AbortError")) return;
-            setCrumbs([]);
-        });
-        return () => {
-            cancelled = true;
-            ac.abort();
-        };
-    }, [nodeId, refreshKey]);
+        nodeAncestorChain(nodeId, ac.signal, true)
+            .then((chain) => {
+                if (!ac.signal.aborted) setCrumbs(chain);
+            })
+            .catch(() => {
+                if (!ac.signal.aborted) setCrumbs([]);
+            });
+        return () => ac.abort();
+    }, [nodeId, relationshipId, refreshKey, drillState.fromNodeId]);
 
     return (
-        <nav aria-label="Model" className="flex items-center gap-1 text-sm leading-none text-foreground">
-            {nodeId ? (
-                <Link to="/" className="rounded px-1 hover:bg-foreground/10">
-                    Model
-                </Link>
-            ) : (
-                <span className="px-1">Model</span>
-            )}
-            {crumbs.map((crumb, index) => {
-                const current = index === crumbs.length - 1;
-                return (
-                    <span key={crumb.id} className="flex items-center gap-1">
-                        <span className="text-foreground/40">/</span>
-                        {current ? (
-                            <span className="px-1">{crumb.name}</span>
-                        ) : (
-                            <Link to={`/node/${crumb.id}`} className="rounded px-1 hover:bg-foreground/10">
-                                {crumb.name}
-                            </Link>
-                        )}
-                    </span>
-                );
-            })}
+        <nav aria-label="Model" className="flex flex-wrap items-center gap-1 text-sm leading-snug text-foreground">
+            <Link to="/" className="rounded px-1 hover:bg-foreground/10">
+                Model
+            </Link>
+            {crumbs.map((crumb) => (
+                <span key={crumb.id} className="flex items-center gap-1">
+                    <span className="text-foreground/40">/</span>
+                    <Link to={crumb.href} className="rounded px-1 hover:bg-foreground/10">
+                        {crumb.name}
+                    </Link>
+                </span>
+            ))}
+            {relationshipId && relLabel ? (
+                <span className="flex items-center gap-1">
+                    <span className="text-foreground/40">/</span>
+                    <span className="max-w-[14rem] px-1">{relLabel}</span>
+                </span>
+            ) : null}
         </nav>
     );
 }

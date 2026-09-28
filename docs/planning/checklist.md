@@ -27,7 +27,7 @@ These six stop a stage being declared done early. Detail is in
   `git status --porcelain`.
 - [x] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
 - [x] **04.8** Proposal apply atomicity and staleness hash comparison.
-- [ ] **05.6** Relationship interior level — duplicate edges, members scoped to the edge.
+- [x] **05.6** Relationship interior level — duplicate edges, members scoped to the edge.
 - [ ] **06.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
 - [ ] **07.5** npx shim checksum verification. The shim does not ship without it.
 
@@ -109,14 +109,14 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/05-relationship-drill/README.md).
 
-- [ ] **05.1** Stable relationship ids; multiple edges between the same pair.
-- [ ] **05.2** Interior level query; members not on endpoint parent levels.
-- [ ] **05.3** Proposals stage and accept relationship interiors atomically.
-- [ ] **05.4** HTTP relationship level, client route, layout cache key, SSE.
-- [ ] **05.5** Canvas drill on labels with an interior.
-- [ ] **05.6** Release gate: interior level and duplicate-edge test.
-- [ ] **05.7** Connection points and edge-side drag (layout cache only).
-- [ ] **05.8** Review operation detail visual clarity pass.
+- [x] **05.1** Stable relationship ids; multiple edges between the same pair.
+- [x] **05.2** Interior level query; members not on endpoint parent levels.
+- [x] **05.3** Proposals stage and accept relationship interiors atomically.
+- [x] **05.4** HTTP relationship level, client route, layout cache key, SSE.
+- [x] **05.5** Canvas drill on labels with an interior.
+- [x] **05.6** Release gate: interior level and duplicate-edge test.
+- [x] **05.7** Connection points and edge-side drag (layout cache only).
+- [x] **05.8** Review operation detail visual clarity pass.
 
 ## Stage 06 — Agent interface
 

@@ -41,10 +41,10 @@ func TestLevelResponseOmitsTheRestOfTheGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(orders, payments, "requests authorisation", core.KindSync); err != nil {
+	if _, err := idx.SetRelationship(core.SetRelationshipInput{From: orders, To: payments, Label: "requests authorisation", Kind: core.KindSync}); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(orders, billing, "settles", core.KindAsync); err != nil {
+	if _, err := idx.SetRelationship(core.SetRelationshipInput{From: orders, To: billing, Label: "settles", Kind: core.KindAsync}); err != nil {
 		t.Fatal(err)
 	}
 

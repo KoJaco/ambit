@@ -67,6 +67,7 @@ func Open(dir string) (*Index, error) {
 	if err := idx.scanOrphans(); err != nil {
 		return nil, err
 	}
+	idx.ensureRelationshipIDs()
 	idx.linkHierarchy()
 	idx.linkRelationships()
 	idx.warnAssignment()
@@ -251,6 +252,9 @@ func (idx *Index) readMembers() error {
 		if !validStatus(node.Status) {
 			return fmt.Errorf("%s: invalid status %q", path, node.Status)
 		}
+		if node.ParentID != "" && node.RelationshipID != "" {
+			idx.warn(path, fmt.Sprintf("node %s has both parent_id and relationship_id", id))
+		}
 		mdPath := idx.nodeMD(id)
 		md, err := os.ReadFile(mdPath)
 		if os.IsNotExist(err) {
@@ -324,6 +328,9 @@ func (idx *Index) linkHierarchy() {
 	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	for _, id := range ids {
 		n := idx.Nodes[id]
+		if n.RelationshipID != "" {
+			continue
+		}
 		if n.ParentID == "" {
 			continue
 		}
@@ -339,6 +346,9 @@ func (idx *Index) linkHierarchy() {
 	}
 	for _, id := range ids {
 		n := idx.Nodes[id]
+		if n.RelationshipID != "" {
+			continue
+		}
 		if n.ParentID == "" || dropped[id] {
 			idx.Roots = append(idx.Roots, id)
 			continue

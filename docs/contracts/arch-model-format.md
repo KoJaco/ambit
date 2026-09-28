@@ -120,6 +120,7 @@ does not constrain it.
 
 #### Relationship shape
 
+- `id` — stable slug. Required on write; assigned on load when missing from older files.
 - `from` — source node ID. Required.
 - `to` — target node ID. Required.
 - `label` — free-form string describing the relationship (`"places order"`,
@@ -130,8 +131,9 @@ does not constrain it.
 Relationships are **directed**. `from → to` is not the same as `to → from`, and both may
 exist independently.
 
-Hierarchy is *not* stored here as edges — it lives in each node's `parent_id`. `index.json`
-holds the membership list and the cross-cutting graph only.
+Hierarchy is *not* stored here as edges — it lives in each node's `parent_id`. Node files
+may also set `relationship_id` for interior membership (mutually exclusive with
+`parent_id`). `index.json` holds the membership list and the cross-cutting graph only.
 
 ### `config.json`
 

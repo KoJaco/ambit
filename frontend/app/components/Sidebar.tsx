@@ -1,15 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
-import { createNode as postNode, getLevel, type Summary } from "../api";
+import { createNode as postNode, getLevel, getRelationshipLevel, type Summary } from "../api";
 import styles from "./Sidebar.module.css";
 
 export function Sidebar({
     nodeId,
+    relationshipId,
     refreshKey,
     onMutated,
 }: {
     nodeId?: string;
+    relationshipId?: string;
     refreshKey: number;
     onMutated: () => void;
 }) {
@@ -33,6 +35,19 @@ export function Sidebar({
     }, [nodeId, refreshKey]);
 
     useEffect(() => {
+        if (relationshipId) {
+            const ac = new AbortController();
+            getRelationshipLevel(relationshipId, ac.signal)
+                .then((level) => {
+                    setCurrent({ id: relationshipId, name: level.relationship.label || "Relationship", type: "", status: "", protected: false });
+                    setChildren(level.children ?? []);
+                })
+                .catch((err: unknown) => {
+                    if (err instanceof DOMException && err.name === "AbortError") return;
+                    setError(err instanceof Error ? err.message : "level request failed");
+                });
+            return () => ac.abort();
+        }
         if (!nodeId) {
             setChildren([]);
             setCurrent(null);
@@ -49,12 +64,16 @@ export function Sidebar({
                 setError(err instanceof Error ? err.message : "level request failed");
             });
         return () => ac.abort();
-    }, [nodeId, refreshKey]);
+    }, [nodeId, relationshipId, refreshKey]);
 
     async function createNode() {
         setError(null);
         try {
-            await postNode({ name, type, parent_id: nodeId ?? "" });
+            if (relationshipId) {
+                await postNode({ name, type, relationship_id: relationshipId });
+            } else {
+                await postNode({ name, type, parent_id: nodeId ?? "" });
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : "create failed");
             return;
@@ -84,7 +103,7 @@ export function Sidebar({
                         <h2 className="mb-1 text-xs uppercase tracking-wide text-foreground/60">Roots</h2>
                         <NodeLinks items={roots} currentId={nodeId} />
                     </section>
-                    {nodeId ? (
+                    {nodeId || relationshipId ? (
                         <section>
                             <h2 className="mb-1 text-xs uppercase tracking-wide text-foreground/60">
                                 {current?.name ?? nodeId}

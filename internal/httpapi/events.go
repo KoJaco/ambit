@@ -74,7 +74,10 @@ func getEvents(h *hub) http.HandlerFunc {
 				}
 				wrote := false
 				if n.ModelChanged {
-					if err := writeSSE(w, "model-changed", map[string]any{"node_ids": nodeIDStrings(n.NodeIDs)}); err != nil {
+					if err := writeSSE(w, "model-changed", map[string]any{
+						"node_ids":          nodeIDStrings(n.NodeIDs),
+						"relationship_ids":  relIDStrings(n.RelationshipIDs),
+					}); err != nil {
 						return
 					}
 					wrote = true
@@ -100,6 +103,14 @@ func getEvents(h *hub) http.HandlerFunc {
 }
 
 func nodeIDStrings(ids []core.NodeID) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = string(id)
+	}
+	return out
+}
+
+func relIDStrings(ids []core.RelID) []string {
 	out := make([]string, len(ids))
 	for i, id := range ids {
 		out[i] = string(id)

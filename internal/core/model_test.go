@@ -245,31 +245,31 @@ func TestMutations(t *testing.T) {
 		t.Fatal("delete removed the file anyway")
 	}
 
-	if err := idx.SetRelationship(b, c, "calls", KindSync); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: b, To: c, Label: "calls", Kind: KindSync}); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(b, c, "reads", KindData); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: b, To: c, Label: "reads", Kind: KindData}); err != nil {
 		t.Fatal(err)
 	}
-	if err := idx.SetRelationship(c, b, "replies", KindAsync); err != nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: c, To: b, Label: "replies", Kind: KindAsync}); err != nil {
 		t.Fatal(err)
 	}
-	if len(idx.ActiveEdges) != 2 {
+	if len(idx.ActiveEdges) != 3 {
 		t.Fatalf("edges %#v", idx.ActiveEdges)
 	}
-	var forward Relationship
+	var forward []Relationship
 	for _, rel := range idx.ActiveEdges {
 		if rel.From == b && rel.To == c {
-			forward = rel
+			forward = append(forward, rel)
 		}
 	}
-	if forward.Label != "reads" || forward.Kind != KindData {
-		t.Fatalf("updated edge %+v", forward)
+	if len(forward) != 2 {
+		t.Fatalf("expected two b->c edges, got %#v", forward)
 	}
-	if err := idx.SetRelationship(b, "missing", "x", ""); err == nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: b, To: "missing", Label: "x", Kind: ""}); err == nil {
 		t.Fatal("expected missing endpoint")
 	}
-	if err := idx.SetRelationship(b, c, "nope", "pubsub"); err == nil {
+	if _, err := idx.SetRelationship(SetRelationshipInput{From: b, To: c, Label: "nope", Kind: "pubsub"}); err == nil {
 		t.Fatal("expected bad kind")
 	}
 

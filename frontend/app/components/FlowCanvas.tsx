@@ -11,11 +11,22 @@ import {
 } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
-import { getLayout, getLevel, layoutCacheKey, putLayout, type Level } from "../api";
+import {
+    getLayout,
+    getLevel,
+    getRelationshipLevel,
+    layoutCacheKey,
+    putLayout,
+    type Level,
+    type Relationship,
+    type RelationshipLevel,
+} from "../api";
 import { layoutLevel, type Point } from "../layout";
 import { NodeCard, type ArchNode, type ArchNodeData, type CrossingMark } from "./NodeCard";
+import { ArchEdge } from "./ArchEdge";
 
 const nodeTypes = { arch: NodeCard };
+const edgeTypes = { arch: ArchEdge };
 
 function crossingMarks(childId: string, crossings: Level["crossings"]): CrossingMark[] {
     return (crossings ?? [])
@@ -24,10 +35,12 @@ function crossingMarks(childId: string, crossings: Level["crossings"]): Crossing
             direction: crossing.direction,
             label: crossing.label,
             otherId: crossing.other_id,
+            relationshipId: crossing.relationship_id,
+            drillable: crossing.drillable,
         }));
 }
 
-function nodeData(child: Level["children"][number], crossings: Level["crossings"]): ArchNodeData {
+function nodeData(child: SummaryLike, crossings: Level["crossings"]): ArchNodeData {
     return {
         name: child.name,
         type: child.type,
@@ -37,15 +50,23 @@ function nodeData(child: Level["children"][number], crossings: Level["crossings"
     };
 }
 
-function buildArchNodes(level: Level, positions: Record<string, Point>): ArchNode[] {
-    return (level.children ?? []).map((child, index) => ({
+type SummaryLike = { id: string; name: string; type: string; status: string; protected: boolean };
+
+function buildArchNodes(
+    level: Level | RelationshipLevel,
+    positions: Record<string, Point>,
+): ArchNode[] {
+    const children = level.children ?? [];
+    return children.map((child, index) => ({
         id: child.id,
-        type: "arch",
+        type: "arch" as const,
+        selectable: true,
+        draggable: true,
         position: positions[child.id] ?? {
             x: (index % 4) * 280,
             y: Math.floor(index / 4) * 160,
         },
-        data: nodeData(child, level.crossings),
+        data: nodeData(child, level.crossings ?? []),
     }));
 }
 
@@ -69,23 +90,29 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
 
 export default function FlowCanvas({
     nodeId,
+    relationshipId,
     tool,
     refreshKey = 0,
     onSelectNode,
+    onSelectEdge,
     onRequestRecenterRef,
     onRequestZoomRef,
 }: {
     nodeId?: string;
+    relationshipId?: string;
     tool: "grab" | "pointer";
     refreshKey?: number;
     onSelectNode?: (id: string) => void;
+    onSelectEdge?: (edge: Relationship | null) => void;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
 }) {
     const navigate = useNavigate();
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const [level, setLevel] = useState<Level | null>(null);
+    const [relLevel, setRelLevel] = useState<RelationshipLevel | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [notFound, setNotFound] = useState(false);
     const [nodes, setNodes] = useState<ArchNode[]>([]);
     const [fitToken, setFitToken] = useState(0);
     const nodesRef = useRef(nodes);
@@ -93,16 +120,10 @@ export default function FlowCanvas({
 
     useEffect(() => {
         onRequestZoomRef?.({
-            zoomIn: () => {
-                void zoomIn();
-            },
-            zoomOut: () => {
-                void zoomOut();
-            },
+            zoomIn: () => void zoomIn(),
+            zoomOut: () => void zoomOut(),
         });
-        onRequestRecenterRef?.(() => {
-            void fitView();
-        });
+        onRequestRecenterRef?.(() => void fitView());
     }, [fitView, onRequestRecenterRef, onRequestZoomRef, zoomIn, zoomOut]);
 
     useEffect(() => {
@@ -112,37 +133,43 @@ export default function FlowCanvas({
 
     useEffect(() => {
         setNodes([]);
-    }, [nodeId]);
+        setLevel(null);
+        setRelLevel(null);
+    }, [nodeId, relationshipId]);
 
+    const activeLevel = relLevel ?? level;
     const parentId = level?.node?.id ?? "";
-    const childIds = (level?.children ?? []).map((child) => child.id).join("\0");
-    const edgeKey = (level?.relationships ?? []).map((rel) => `${rel.from}\0${rel.to}`).join("\n");
+    const childIds = (activeLevel?.children ?? []).map((child) => child.id).join("\0");
+    const edgeKey = (activeLevel?.relationships ?? []).map((rel) => rel.id).join("\n");
+    const cacheKey = layoutCacheKey({ nodeId, relationshipId });
 
     useEffect(() => {
-        if (!level) return;
-        if ((nodeId ?? "") !== parentId) return;
+        if (!activeLevel) return;
+        if (relationshipId && !relLevel) return;
+        if (!relationshipId && (nodeId ?? "") !== parentId && nodeId !== undefined) return;
         let cancelled = false;
-        const key = layoutCacheKey(nodeId);
-        const ids = (level.children ?? []).map((child) => child.id);
-        const edges = (level.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
-        getLayout(key)
+        const ids = (activeLevel.children ?? []).map((c) => c.id);
+        const edges = (activeLevel.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
+        getLayout(cacheKey)
             .then(async (cached) => {
                 if (cancelled) return;
+                const stored: Record<string, Point> = {};
+                for (const position of cached.positions) {
+                    stored[position.id] = { x: position.x, y: position.y };
+                }
                 if (cached.positions.length > 0) {
-                    const stored: Record<string, Point> = {};
-                    for (const position of cached.positions) {
-                        stored[position.id] = { x: position.x, y: position.y };
-                    }
-                    setNodes(buildArchNodes(level, stored));
-                    setFitToken((value) => value + 1);
+                    setNodes(buildArchNodes(activeLevel, stored));
+                    setFitToken((v) => v + 1);
                     return;
                 }
                 const laid = await layoutLevel(ids, edges);
                 if (cancelled) return;
-                setNodes(buildArchNodes(level, laid));
-                setFitToken((value) => value + 1);
-                await putLayout(key, {
-                    positions: ids.map((id) => ({ id, x: laid[id].x, y: laid[id].y })),
+                setNodes(buildArchNodes(activeLevel, laid));
+                setFitToken((v) => v + 1);
+                await putLayout(cacheKey, {
+                    positions: ids.map((id) => ({ id, x: laid[id]?.x ?? 0, y: laid[id]?.y ?? 0 })),
+                    ports: cached.ports,
+                    attachments: cached.attachments,
                 });
             })
             .catch((err: unknown) => {
@@ -152,31 +179,38 @@ export default function FlowCanvas({
         return () => {
             cancelled = true;
         };
-        // parentId, childIds, and edgeKey are the structural signature. A field
-        // edit changes none of them, so this effect does not rerun elk.
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- level is read through those keys
-    }, [nodeId, parentId, childIds, edgeKey]);
+    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, activeLevel, relLevel]);
 
     useEffect(() => {
         const ac = new AbortController();
         setError(null);
-        getLevel(nodeId, ac.signal)
-            .then((body) => {
-                setLevel(body);
-            })
-            .catch((err: unknown) => {
-                if (err instanceof DOMException && err.name === "AbortError") return;
-                setLevel(null);
-                setError(err instanceof Error ? err.message : "level request failed");
-            });
+        setNotFound(false);
+        if (relationshipId) {
+            getRelationshipLevel(relationshipId, ac.signal)
+                .then((body) => setRelLevel(body))
+                .catch((err: unknown) => {
+                    if (err instanceof DOMException && err.name === "AbortError") return;
+                    setRelLevel(null);
+                    setNotFound(true);
+                    setError(err instanceof Error ? err.message : "level request failed");
+                });
+        } else {
+            getLevel(nodeId, ac.signal)
+                .then((body) => setLevel(body))
+                .catch((err: unknown) => {
+                    if (err instanceof DOMException && err.name === "AbortError") return;
+                    setLevel(null);
+                    setError(err instanceof Error ? err.message : "level request failed");
+                });
+        }
         return () => ac.abort();
-    }, [nodeId, refreshKey]);
+    }, [nodeId, relationshipId, refreshKey]);
 
     useEffect(() => {
-        if (!level) return;
+        if (!activeLevel) return;
         setNodes((current) => {
             if (current.length === 0) return current;
-            const children = new Map((level.children ?? []).map((child) => [child.id, child]));
+            const children = new Map((activeLevel.children ?? []).map((child) => [child.id, child]));
             let changed = false;
             const next = current.flatMap((node) => {
                 const child = children.get(node.id);
@@ -184,41 +218,73 @@ export default function FlowCanvas({
                     changed = true;
                     return [];
                 }
-                const data = nodeData(child, level.crossings);
+                const data = nodeData(child, activeLevel.crossings ?? []);
                 if (sameData(node.data, data)) return [node];
                 changed = true;
                 return [{ ...node, data }];
             });
             return changed ? next : current;
         });
-    }, [level]);
+    }, [activeLevel]);
 
     const edges = useMemo<Edge[]>(() => {
-        return (level?.relationships ?? []).map((rel) => ({
-            id: `${rel.from}->${rel.to}`,
-            source: rel.from,
-            target: rel.to,
-            label: rel.label,
-            markerEnd: { type: MarkerType.ArrowClosed },
-        }));
-    }, [level]);
+        const rels = activeLevel?.relationships ?? [];
+        const pairCount = new Map<string, number>();
+        for (const rel of rels) {
+            const key = `${rel.from}\0${rel.to}`;
+            pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
+        }
+        const pairIndex = new Map<string, number>();
+        return rels.map((rel) => {
+            const key = `${rel.from}\0${rel.to}`;
+            const labelIndex = pairIndex.get(key) ?? 0;
+            pairIndex.set(key, labelIndex + 1);
+            const labelCount = pairCount.get(key) ?? 1;
+            return {
+                id: rel.id,
+                type: "arch",
+                source: rel.from,
+                target: rel.to,
+                markerEnd: { type: MarkerType.ArrowClosed },
+                style: { cursor: rel.drillable ? "pointer" : "default" },
+                data: { drillable: rel.drillable, rel, fromNodeId: nodeId, labelIndex, labelCount },
+            };
+        });
+    }, [activeLevel, nodeId]);
 
     const onNodeDoubleClick: NodeMouseHandler<ArchNode> = (_event, node) => {
         navigate(`/node/${node.id}`);
     };
     const onNodeClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        onSelectEdge?.(null);
         onSelectNode?.(node.id);
     };
+
+    const onEdgeClick = useCallback(
+        (_event: unknown, edge: Edge) => {
+            const rel = edge.data?.rel as Relationship | undefined;
+            if (rel) onSelectEdge?.(rel);
+        },
+        [onSelectEdge],
+    );
+
+    const onEdgeDoubleClick = useCallback(
+        (_event: unknown, edge: Edge) => {
+            const rel = edge.data?.rel as Relationship | undefined;
+            if (rel?.drillable) navigate(`/relationship/${rel.id}`, { state: { fromNodeId: nodeId } });
+        },
+        [navigate, nodeId],
+    );
 
     const onNodesChange = useCallback((changes: NodeChange<ArchNode>[]) => {
         setNodes((current) => applyNodeChanges(changes, current));
     }, []);
 
     const onNodeDragStop = (_event: unknown, node: ArchNode) => {
-        const ids = (level?.children ?? []).map((child) => child.id);
+        const ids = (activeLevel?.children ?? []).map((child) => child.id);
         const placed = new Map(nodesRef.current.map((item) => [item.id, item.position]));
         placed.set(node.id, node.position);
-        void putLayout(layoutCacheKey(nodeId), {
+        void putLayout(cacheKey, {
             positions: ids.map((id) => {
                 const point = placed.get(id) ?? { x: 0, y: 0 };
                 return { id, x: point.x, y: point.y };
@@ -227,6 +293,14 @@ export default function FlowCanvas({
             setError(err instanceof Error ? err.message : "layout save failed");
         });
     };
+
+    if (notFound && relationshipId) {
+        return (
+            <div className="flex h-full items-center justify-center text-sm text-foreground/70">
+                This relationship has no interior to open.
+            </div>
+        );
+    }
 
     return (
         <div className="h-full w-full">
@@ -239,9 +313,12 @@ export default function FlowCanvas({
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
                 onNodeClick={onNodeClick}
                 onNodeDoubleClick={onNodeDoubleClick}
+                onEdgeClick={onEdgeClick}
+                onEdgeDoubleClick={onEdgeDoubleClick}
                 onNodeDragStop={onNodeDragStop}
                 panOnDrag={tool === "grab"}
                 selectionOnDrag={tool === "pointer"}

@@ -21,7 +21,21 @@ type Position struct {
 
 // Layout is the cached positions for one drill-down level.
 type Layout struct {
-	Positions []Position `json:"positions"`
+	Positions   []Position                  `json:"positions"`
+	Ports       map[string]NodePorts        `json:"ports,omitempty"`
+	Attachments map[string]EdgeAttachment   `json:"attachments,omitempty"`
+}
+
+// NodePorts counts connection points on each side of a node card.
+type NodePorts struct {
+	Left  int `json:"left"`
+	Right int `json:"right"`
+}
+
+// EdgeAttachment binds a relationship id to port coordinates on its endpoints.
+type EdgeAttachment struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
 }
 
 // Layout returns cached positions for key. A missing file is an empty layout.
@@ -83,6 +97,10 @@ func (idx *Index) invalidateLayoutLocked(parent NodeID) {
 	if parent != "" {
 		key = string(parent)
 	}
+	idx.invalidateLayoutKeyLocked(key)
+}
+
+func (idx *Index) invalidateLayoutKeyLocked(key string) {
 	path, err := idx.layoutPath(key)
 	if err != nil {
 		return
