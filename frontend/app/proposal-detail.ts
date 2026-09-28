@@ -26,6 +26,9 @@ export function proposalDetailBlocks(op: OpDiff): DetailBlock[] {
         case "create_node":
             if (op.proposed) {
                 blocks.push(...nodeSnapshotBlocks("Proposed", op.proposed));
+                if (op.proposed.relationship_id) {
+                    blocks.push({ kind: "line", text: `Interior: ${op.proposed.relationship_id}` });
+                }
             }
             break;
         case "update_node":
@@ -96,7 +99,7 @@ function summarizeOp(op: OpDiff): string {
         return `Update ${op.node_id}${fields}`;
     }
     if (op.op === "set_relationship" && op.relationship) {
-        return `${op.relationship.from} → ${op.relationship.to}`;
+        return `Set relationship · ${op.relationship.from} → ${op.relationship.to}`;
     }
     return `${op.op} ${op.node_id}`;
 }
@@ -140,6 +143,9 @@ function relationshipBlocks(proposed: RelSnapshot, current: RelSnapshot | null):
         { kind: "heading", text: "Relationship" },
         { kind: "line", text: `${proposed.from} → ${proposed.to}` },
     ];
+    if (proposed.id) {
+        blocks.push({ kind: "line", text: `Id: ${proposed.id}` });
+    }
     if (current) {
         blocks.push({
             kind: "pair",

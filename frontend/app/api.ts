@@ -1,7 +1,8 @@
 export const rootLayoutKey = "_root";
 
-export function layoutCacheKey(nodeId: string | undefined): string {
-    return nodeId ? nodeId : rootLayoutKey;
+export function layoutCacheKey(opts: { nodeId?: string; relationshipId?: string }): string {
+    if (opts.relationshipId) return `_rel_${opts.relationshipId}`;
+    return opts.nodeId ? opts.nodeId : rootLayoutKey;
 }
 
 export type Summary = {
@@ -18,13 +19,17 @@ export type Crossing = {
     label: string;
     kind: string;
     other_id: string;
+    relationship_id?: string;
+    drillable?: boolean;
 };
 
 export type Relationship = {
+    id: string;
     from: string;
     to: string;
     label: string;
     kind: string;
+    drillable?: boolean;
 };
 
 export type Warning = {
@@ -41,12 +46,22 @@ export type Level = {
     warnings: Warning[];
 };
 
+export type RelationshipLevel = {
+    relationship: Relationship;
+    children: Summary[];
+    context: Summary[];
+    relationships: Relationship[];
+    crossings: Crossing[];
+    warnings: Warning[];
+};
+
 export type NodeDetail = {
     id: string;
     name: string;
     type: string;
     status: string;
     parent_id?: string;
+    relationship_id?: string;
     implementation: string[];
     scope: string[];
     protected: boolean;
@@ -66,7 +81,14 @@ export type NodePatch = {
 
 export type Position = { id: string; x: number; y: number };
 
-export type Layout = { positions: Position[] };
+export type NodePorts = { left: number; right: number };
+export type EdgeAttachment = { source: string; target: string };
+
+export type Layout = {
+    positions: Position[];
+    ports?: Record<string, NodePorts>;
+    attachments?: Record<string, EdgeAttachment>;
+};
 
 async function send<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(path, init);
@@ -91,10 +113,15 @@ export function getIntegrity(): Promise<{ warnings: Warning[] }> {
     return send(`/integrity`);
 }
 
+export function getRelationshipLevel(relationshipId: string, signal?: AbortSignal): Promise<RelationshipLevel> {
+    return send<RelationshipLevel>(`/levels/relationships/${encodeURIComponent(relationshipId)}`, { signal });
+}
+
 export function createNode(input: {
     name: string;
     type: string;
     parent_id?: string;
+    relationship_id?: string;
     markdown?: string;
 }): Promise<NodeDetail> {
     return send<NodeDetail>("/nodes", {
@@ -116,12 +143,16 @@ export function deleteNode(id: string): Promise<void> {
     return send<void>(`/nodes/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export function setRelationship(input: Relationship): Promise<Relationship> {
+export function setRelationship(input: Partial<Relationship> & { from: string; to: string }): Promise<Relationship> {
     return send<Relationship>("/relationships", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
     });
+}
+
+export function deleteRelationship(id: string): Promise<void> {
+    return send<void>(`/relationships/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export function setAssignment(nodeId: string): Promise<void> {
@@ -174,6 +205,7 @@ export type NodeSnapshot = {
     type: string;
     status: string;
     parent_id?: string;
+    relationship_id?: string;
     implementation: string[];
     scope: string[];
     protected: boolean;
@@ -181,6 +213,7 @@ export type NodeSnapshot = {
 };
 
 export type RelSnapshot = {
+    id?: string;
     from: string;
     to: string;
     label: string;
@@ -264,7 +297,7 @@ export type EventHandlers = {
 // Unknown event names are ignored. proposals-changed refreshes the review surface only.
 export function dispatchEvent(name: string, data: string, handlers: EventHandlers) {
     if (name === "model-changed") {
-        const parsed = JSON.parse(data) as { node_ids?: string[] };
+        const parsed = JSON.parse(data) as { node_ids?: string[]; relationship_ids?: string[] };
         handlers.onModelChanged(parsed.node_ids ?? []);
         return;
     }
