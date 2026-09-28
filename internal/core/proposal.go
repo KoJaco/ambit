@@ -48,6 +48,7 @@ type StageOp struct {
 	Create CreateInput
 	NodeID NodeID
 	Update UpdateInput
+	RelID  RelID
 	From   NodeID
 	To     NodeID
 	Label  string
@@ -116,6 +117,7 @@ type NodeSnapshot struct {
 	Type           string   `json:"type"`
 	Status         string   `json:"status"`
 	ParentID       string   `json:"parent_id,omitempty"`
+	RelationshipID string   `json:"relationship_id,omitempty"`
 	Implementation []string `json:"implementation"`
 	Scope          []string `json:"scope"`
 	Protected      bool     `json:"protected"`
@@ -124,6 +126,7 @@ type NodeSnapshot struct {
 
 // RelSnapshot is one directed edge.
 type RelSnapshot struct {
+	ID    string `json:"id,omitempty"`
 	From  string `json:"from"`
 	To    string `json:"to"`
 	Label string `json:"label"`
@@ -169,6 +172,7 @@ type operation struct {
 	Fields   []string `json:"fields,omitempty"`
 	From     string   `json:"from,omitempty"`
 	To       string   `json:"to,omitempty"`
+	RelID    string   `json:"relationship_id,omitempty"`
 	Label    *string  `json:"label,omitempty"`
 	Kind     *string  `json:"kind,omitempty"`
 	Status   string   `json:"status"`
@@ -211,9 +215,10 @@ func (idx *Index) Stage(in StageInput) (string, error) {
 	material := map[NodeID]materialBody{}
 	ops := make([]operation, 0, len(in.Ops))
 	files := map[NodeID]materialBody{}
+	stagedRels := []Relationship{}
 
 	for _, inOp := range in.Ops {
-		op, body, err := idx.stageOne(inOp, nodes, material)
+		op, body, err := idx.stageOne(inOp, nodes, material, &stagedRels)
 		if err != nil {
 			return "", err
 		}
@@ -261,7 +266,7 @@ func (idx *Index) Stage(in StageInput) (string, error) {
 	return id, nil
 }
 
-func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody) (operation, *materialBody, error) {
+func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody, stagedRels *[]Relationship) (operation, *materialBody, error) {
 	switch in.Op {
 	case OpCreateNode:
 		return idx.stageCreate(in, nodes, material)
@@ -270,7 +275,7 @@ func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[Node
 	case OpDeleteNode:
 		return idx.stageDelete(in, nodes, material)
 	case OpSetRelationship:
-		return idx.stageRelationship(in, nodes, material)
+		return idx.stageRelationship(in, nodes, material, stagedRels)
 	default:
 		return operation{}, nil, fmt.Errorf("%w: unknown operation %q", ErrBadOperation, in.Op)
 	}
@@ -295,12 +300,27 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 		return operation{}, nil, err
 	}
 	id := idx.allocateDuring(base, nodes)
+	if in.Create.ParentID != "" && in.Create.RelationshipID != "" {
+		return operation{}, nil, ErrContainerConflict
+	}
 	if in.Create.ParentID != "" {
 		if _, ok := nodes[in.Create.ParentID]; !ok {
 			return operation{}, nil, fmt.Errorf("%w: %q", ErrMissingParent, in.Create.ParentID)
 		}
 		if parentCyclesIn(nodes, id, in.Create.ParentID) {
 			return operation{}, nil, fmt.Errorf("%w: %s -> %s", ErrCycle, id, in.Create.ParentID)
+		}
+	}
+	if in.Create.RelationshipID != "" {
+		found := false
+		for _, rel := range idx.Relationships {
+			if rel.ID == in.Create.RelationshipID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.Create.RelationshipID)
 		}
 	}
 	if _, ok := material[id]; ok {
@@ -312,6 +332,7 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 		Type:           in.Create.Type,
 		Status:         status,
 		ParentID:       in.Create.ParentID,
+		RelationshipID: in.Create.RelationshipID,
 		Implementation: cloneStrings(in.Create.Implementation),
 		Scope:          cloneStrings(in.Create.Scope),
 		Protected:      in.Create.Protected,
@@ -375,7 +396,7 @@ func (idx *Index) stageDelete(in StageOp, nodes map[NodeID]*Node, material map[N
 	return op, nil, nil
 }
 
-func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody) (operation, *materialBody, error) {
+func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody, stagedRels *[]Relationship) (operation, *materialBody, error) {
 	if in.From == "" || in.To == "" {
 		return operation{}, nil, fmt.Errorf("%w: set_relationship needs from and to", ErrBadOperation)
 	}
@@ -388,17 +409,47 @@ func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material
 	if in.Kind != "" && !validKind(in.Kind) {
 		return operation{}, nil, fmt.Errorf("%w: %s -> %s kind %q", ErrBadKind, in.From, in.To, in.Kind)
 	}
+	if in.RelID != "" {
+		found := false
+		for _, rel := range idx.Relationships {
+			if rel.ID == in.RelID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			for _, rel := range *stagedRels {
+				if rel.ID == in.RelID {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelID)
+		}
+	}
 	hash, err := idx.hashFor(in.From, material)
 	if err != nil {
 		return operation{}, nil, err
 	}
 	label, kind := in.Label, in.Kind
+	relID := in.RelID
+	if relID == "" {
+		id, err := idx.allocateRelationshipIDStaged(label, *stagedRels)
+		if err != nil {
+			return operation{}, nil, err
+		}
+		relID = id
+		*stagedRels = append(*stagedRels, Relationship{ID: relID, From: in.From, To: in.To, Label: label, Kind: kind})
+	}
 	op := operation{
 		Op:       OpSetRelationship,
 		NodeID:   string(in.From),
 		BaseHash: &hash,
 		From:     string(in.From),
 		To:       string(in.To),
+		RelID:    string(relID),
 		Label:    &label,
 		Kind:     &kind,
 		Status:   opStatusPending,
@@ -649,7 +700,14 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 	case OpDeleteNode:
 		return idx.applyDelete(op)
 	case OpSetRelationship:
-		if err := idx.setRelationshipLocked(NodeID(op.From), NodeID(op.To), deref(op.Label), deref(op.Kind)); err != nil {
+		in := SetRelationshipInput{
+			ID:    RelID(op.RelID),
+			From:  NodeID(op.From),
+			To:    NodeID(op.To),
+			Label: deref(op.Label),
+			Kind:  deref(op.Kind),
+		}
+		if _, err := idx.setRelationshipLocked(in); err != nil {
 			return err
 		}
 		return idx.reload()
@@ -725,9 +783,11 @@ func (idx *Index) applyNodeFiles(proposalID string, op operation) error {
 		return err
 	}
 	var oldParent NodeID
+	var oldRel RelID
 	if !creating {
 		if cur := idx.Nodes[node.ID]; cur != nil {
 			oldParent = cur.ParentID
+			oldRel = cur.RelationshipID
 		}
 	}
 	if creating {
@@ -746,10 +806,24 @@ func (idx *Index) applyNodeFiles(proposalID string, op operation) error {
 		return err
 	}
 	if creating {
-		idx.invalidateLayoutLocked(node.ParentID)
-	} else if node.ParentID != oldParent {
-		idx.invalidateLayoutLocked(oldParent)
-		idx.invalidateLayoutLocked(node.ParentID)
+		if node.RelationshipID != "" {
+			idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(node.RelationshipID))
+		} else {
+			idx.invalidateLayoutLocked(node.ParentID)
+		}
+	} else {
+		if node.ParentID != oldParent {
+			idx.invalidateLayoutLocked(oldParent)
+			idx.invalidateLayoutLocked(node.ParentID)
+		}
+		if node.RelationshipID != oldRel {
+			if oldRel != "" {
+				idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(oldRel))
+			}
+			if node.RelationshipID != "" {
+				idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(node.RelationshipID))
+			}
+		}
 	}
 	return nil
 }
@@ -761,21 +835,43 @@ func (idx *Index) applyDelete(op operation) error {
 		return fmt.Errorf("%w: %q", ErrNotFound, id)
 	}
 	parent := node.ParentID
+	relParent := node.RelationshipID
 	names := childNames(idx.Nodes, id)
 	if len(names) > 0 {
 		return fmt.Errorf("%w: delete_node %s has %d children: %s", ErrHasChildren, id, len(names), strings.Join(names, ", "))
+	}
+	removeNodes := map[NodeID]bool{id: true}
+	removeRels := map[RelID]bool{}
+	for _, rel := range idx.Relationships {
+		if rel.From == id || rel.To == id {
+			closure := idx.relationshipClosure(rel.ID)
+			for nid := range closure.nodes {
+				removeNodes[nid] = true
+			}
+			for rid := range closure.rels {
+				removeRels[rid] = true
+			}
+		}
 	}
 	oldIndex, err := os.ReadFile(filepath.Join(idx.arch(), "index.json"))
 	if err != nil {
 		return err
 	}
-	oldJSON, jsonExisted, err := readOptional(idx.nodeJSON(id))
-	if err != nil {
-		return err
-	}
-	oldMD, mdExisted, err := readOptional(idx.nodeMD(id))
-	if err != nil {
-		return err
+	oldFiles := map[NodeID]struct {
+		json []byte
+		md   []byte
+		jOk  bool
+		mOk  bool
+	}{}
+	for nid := range removeNodes {
+		j, jOk, _ := readOptional(idx.nodeJSON(nid))
+		m, mOk, _ := readOptional(idx.nodeMD(nid))
+		oldFiles[nid] = struct {
+			json []byte
+			md   []byte
+			jOk  bool
+			mOk  bool
+		}{j, m, jOk, mOk}
 	}
 	prevOrder := append([]NodeID{}, idx.Order...)
 	prevRels := append([]Relationship{}, idx.Relationships...)
@@ -783,18 +879,20 @@ func (idx *Index) applyDelete(op operation) error {
 		idx.Order = prevOrder
 		idx.Relationships = prevRels
 		_ = writeAtomic(filepath.Join(idx.arch(), "index.json"), oldIndex)
-		_ = restoreFile(idx.nodeJSON(id), oldJSON, jsonExisted)
-		_ = restoreFile(idx.nodeMD(id), oldMD, mdExisted)
+		for nid, snap := range oldFiles {
+			_ = restoreFile(idx.nodeJSON(nid), snap.json, snap.jOk)
+			_ = restoreFile(idx.nodeMD(nid), snap.md, snap.mOk)
+		}
 	}
 	order := make([]NodeID, 0, len(idx.Order))
 	for _, existing := range idx.Order {
-		if existing != id {
+		if !removeNodes[existing] {
 			order = append(order, existing)
 		}
 	}
 	rels := make([]Relationship, 0, len(idx.Relationships))
 	for _, rel := range idx.Relationships {
-		if rel.From == id || rel.To == id {
+		if removeRels[rel.ID] {
 			continue
 		}
 		rels = append(rels, rel)
@@ -809,14 +907,22 @@ func (idx *Index) applyDelete(op operation) error {
 		restore()
 		return err
 	}
-	if err := idx.removeNodeFiles(id); err != nil {
-		restore()
-		return err
+	for nid := range removeNodes {
+		if err := idx.removeNodeFiles(nid); err != nil {
+			restore()
+			return err
+		}
 	}
 	if err := idx.reload(); err != nil {
 		return err
 	}
 	idx.invalidateLayoutLocked(parent)
+	if relParent != "" {
+		idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(relParent))
+	}
+	for rid := range removeRels {
+		idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(rid))
+	}
 	return nil
 }
 
@@ -837,12 +943,20 @@ func (idx *Index) validateMaterialised(n *Node, creating bool) error {
 	} else if _, ok := idx.Nodes[n.ID]; !ok {
 		return fmt.Errorf("%w: %q", ErrNotFound, n.ID)
 	}
+	if n.ParentID != "" && n.RelationshipID != "" {
+		return ErrContainerConflict
+	}
 	if n.ParentID != "" {
 		if _, ok := idx.Nodes[n.ParentID]; !ok && n.ParentID != n.ID {
 			return fmt.Errorf("%w: %q", ErrMissingParent, n.ParentID)
 		}
 		if parentCyclesIn(idx.Nodes, n.ID, n.ParentID) {
 			return fmt.Errorf("%w: %s -> %s", ErrCycle, n.ID, n.ParentID)
+		}
+	}
+	if n.RelationshipID != "" {
+		if _, i := idx.relByID(n.RelationshipID); i < 0 {
+			return fmt.Errorf("%w: %q", ErrRelationshipNotFound, n.RelationshipID)
 		}
 	}
 	return nil
@@ -938,11 +1052,17 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		}
 	case OpSetRelationship:
 		label, kind := deref(op.Label), deref(op.Kind)
-		row.Relationship = &RelSnapshot{From: op.From, To: op.To, Label: label, Kind: kind}
-		for _, rel := range idx.Relationships {
-			if string(rel.From) == op.From && string(rel.To) == op.To {
-				row.CurrentRelationship = &RelSnapshot{From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
-				break
+		row.Relationship = &RelSnapshot{ID: op.RelID, From: op.From, To: op.To, Label: label, Kind: kind}
+		if op.RelID != "" {
+			if rel, _ := idx.relByID(RelID(op.RelID)); rel != nil {
+				row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
+			}
+		} else {
+			for _, rel := range idx.Relationships {
+				if string(rel.From) == op.From && string(rel.To) == op.To {
+					row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
+					break
+				}
 			}
 		}
 	}
@@ -1269,6 +1389,7 @@ func snapshotNode(n *Node) *NodeSnapshot {
 		Type:           n.Type,
 		Status:         string(n.Status),
 		ParentID:       string(n.ParentID),
+		RelationshipID: string(n.RelationshipID),
 		Implementation: impl,
 		Scope:          scope,
 		Protected:      n.Protected,

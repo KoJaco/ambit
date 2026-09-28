@@ -21,6 +21,7 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			Type:           body.Type,
 			Spec:           body.Markdown,
 			ParentID:       core.NodeID(body.ParentID),
+			RelationshipID: core.RelID(body.RelationshipID),
 			Implementation: body.Implementation,
 			Scope:          body.Scope,
 			Protected:      body.Protected,
@@ -94,11 +95,35 @@ func putRelationship(idx *core.Index) http.HandlerFunc {
 			writeBadRequest(w, err)
 			return
 		}
-		if err := idx.SetRelationship(core.NodeID(body.From), core.NodeID(body.To), body.Label, body.Kind); err != nil {
+		rel, err := idx.SetRelationship(core.SetRelationshipInput{
+			ID:    core.RelID(body.ID),
+			From:  core.NodeID(body.From),
+			To:    core.NodeID(body.To),
+			Label: body.Label,
+			Kind:  body.Kind,
+		})
+		if err != nil {
 			writeAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, body)
+		writeJSON(w, http.StatusOK, relBody(rel))
+	}
+}
+
+func deleteRelationship(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := core.RelID(r.PathValue("id"))
+		if err := idx.DeleteRelationship(id); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func relBody(rel core.Relationship) relJSON {
+	return relJSON{
+		ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
 	}
 }
 
@@ -158,6 +183,7 @@ func nodeBody(n core.NodeView) nodeJSON {
 		Type:           n.Type,
 		Status:         string(n.Status),
 		ParentID:       string(n.ParentID),
+		RelationshipID: string(n.RelationshipID),
 		Implementation: impl,
 		Scope:          scope,
 		Protected:      n.Protected,
@@ -187,6 +213,7 @@ type createJSON struct {
 	Type           string   `json:"type"`
 	Status         string   `json:"status"`
 	ParentID       string   `json:"parent_id"`
+	RelationshipID string   `json:"relationship_id"`
 	Implementation []string `json:"implementation"`
 	Scope          []string `json:"scope"`
 	Protected      bool     `json:"protected"`

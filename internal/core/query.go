@@ -21,6 +21,7 @@ type NodeView struct {
 	Type           string
 	Status         Status
 	ParentID       NodeID
+	RelationshipID RelID
 	Implementation []string
 	Scope          []string
 	Protected      bool
@@ -29,10 +30,12 @@ type NodeView struct {
 
 // EdgeView is a relationship with both endpoints on the current level.
 type EdgeView struct {
-	From  NodeID
-	To    NodeID
-	Label string
-	Kind  string
+	ID        RelID
+	From      NodeID
+	To        NodeID
+	Label     string
+	Kind      string
+	Drillable bool
 }
 
 // Crossing is a relationship with exactly one endpoint on the current level.
@@ -44,6 +47,8 @@ type Crossing struct {
 	Label     string
 	Kind      string
 	OtherID   NodeID
+	RelID     RelID
+	Drillable bool
 }
 
 // Warnings copies the integrity diagnostics. They are warnings, not load failures.
@@ -111,16 +116,18 @@ func (idx *Index) Level(parent NodeID) (Level, error) {
 		toIn := set[rel.To]
 		switch {
 		case fromIn && toIn:
-			lvl.Relationships = append(lvl.Relationships, EdgeView{
-				From: rel.From, To: rel.To, Label: rel.Label, Kind: rel.Kind,
-			})
+			ev := edgeView(rel)
+			ev.Drillable = idx.isDrillable(rel.ID)
+			lvl.Relationships = append(lvl.Relationships, ev)
 		case fromIn:
 			lvl.Crossings = append(lvl.Crossings, Crossing{
 				NodeID: rel.From, Direction: "out", Label: rel.Label, Kind: rel.Kind, OtherID: rel.To,
+				RelID: rel.ID, Drillable: idx.isDrillable(rel.ID),
 			})
 		case toIn:
 			lvl.Crossings = append(lvl.Crossings, Crossing{
 				NodeID: rel.To, Direction: "in", Label: rel.Label, Kind: rel.Kind, OtherID: rel.From,
+				RelID: rel.ID, Drillable: idx.isDrillable(rel.ID),
 			})
 		}
 	}
@@ -134,6 +141,7 @@ func snapshot(n *Node) NodeView {
 		Type:           n.Type,
 		Status:         n.Status,
 		ParentID:       n.ParentID,
+		RelationshipID: n.RelationshipID,
 		Implementation: cloneStrings(n.Implementation),
 		Scope:          cloneStrings(n.Scope),
 		Protected:      n.Protected,

@@ -26,9 +26,17 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if !validStatus(status) {
 		return "", fmt.Errorf("%w: %q (valid: %s)", errBadStatus, status, statusList())
 	}
+	if in.ParentID != "" && in.RelationshipID != "" {
+		return "", ErrContainerConflict
+	}
 	if in.ParentID != "" {
 		if _, ok := idx.Nodes[in.ParentID]; !ok {
 			return "", fmt.Errorf("%w: %q", errMissingParent, in.ParentID)
+		}
+	}
+	if in.RelationshipID != "" {
+		if _, i := idx.relByID(in.RelationshipID); i < 0 {
+			return "", fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelationshipID)
 		}
 	}
 	base, err := slugify(in.Name)
@@ -42,6 +50,7 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 		Type:           in.Type,
 		Status:         status,
 		ParentID:       in.ParentID,
+		RelationshipID: in.RelationshipID,
 		Implementation: cloneStrings(in.Implementation),
 		Scope:          cloneStrings(in.Scope),
 		Protected:      in.Protected,
@@ -62,7 +71,11 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if err := idx.reload(); err != nil {
 		return "", err
 	}
-	idx.invalidateLayoutLocked(in.ParentID)
+	if in.RelationshipID != "" {
+		idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(in.RelationshipID))
+	} else {
+		idx.invalidateLayoutLocked(in.ParentID)
+	}
 	return id, nil
 }
 
@@ -109,6 +122,24 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 			}
 		}
 		next.ParentID = parent
+		if parent != "" {
+			next.RelationshipID = ""
+		}
+	}
+	if in.Relationship != nil {
+		rid := *in.Relationship
+		if rid != "" {
+			if _, i := idx.relByID(rid); i < 0 {
+				return fmt.Errorf("%w: %q", ErrRelationshipNotFound, rid)
+			}
+			if next.ParentID != "" {
+				return ErrContainerConflict
+			}
+		}
+		next.RelationshipID = rid
+		if rid != "" {
+			next.ParentID = ""
+		}
 	}
 	if in.Implementation != nil {
 		next.Implementation = cloneStrings(*in.Implementation)
@@ -145,19 +176,33 @@ func (idx *Index) Delete(id NodeID) error {
 		return fmt.Errorf("%w: %q", errNotFound, id)
 	}
 	parent := node.ParentID
+	relParent := node.RelationshipID
 	kids := idx.childIDs(id)
 	if len(kids) > 0 {
 		return fmt.Errorf("%w: %s has children: %s", errHasChildren, id, strings.Join(kids, ", "))
 	}
+	removeNodes := map[NodeID]bool{id: true}
+	removeRels := map[RelID]bool{}
+	for _, rel := range idx.Relationships {
+		if rel.From == id || rel.To == id {
+			closure := idx.relationshipClosure(rel.ID)
+			for nid := range closure.nodes {
+				removeNodes[nid] = true
+			}
+			for rid := range closure.rels {
+				removeRels[rid] = true
+			}
+		}
+	}
 	var order []NodeID
 	for _, existing := range idx.Order {
-		if existing != id {
+		if !removeNodes[existing] {
 			order = append(order, existing)
 		}
 	}
 	var rels []Relationship
 	for _, rel := range idx.Relationships {
-		if rel.From == id || rel.To == id {
+		if removeRels[rel.ID] {
 			continue
 		}
 		rels = append(rels, rel)
@@ -169,56 +214,175 @@ func (idx *Index) Delete(id NodeID) error {
 		idx.Order, idx.Relationships = prevOrder, prevRels
 		return err
 	}
-	if err := idx.removeNodeFiles(id); err != nil {
-		return err
+	for nid := range removeNodes {
+		if err := idx.removeNodeFiles(nid); err != nil {
+			return err
+		}
 	}
 	if err := idx.reload(); err != nil {
 		return err
 	}
 	idx.invalidateLayoutLocked(parent)
+	if relParent != "" {
+		idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(relParent))
+	}
+	for rid := range removeRels {
+		idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(rid))
+	}
 	return nil
 }
 
-// SetRelationship creates or updates the directed edge from -> to.
-// The opposite direction is a different edge.
-func (idx *Index) SetRelationship(from, to NodeID, label, kind string) error {
+// SetRelationship creates when ID is empty, or updates label and kind when ID is set.
+func (idx *Index) SetRelationship(in SetRelationshipInput) (Relationship, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	if err := idx.setRelationshipLocked(from, to, label, kind); err != nil {
+	rel, err := idx.setRelationshipLocked(in)
+	if err != nil {
+		return Relationship{}, err
+	}
+	if err := idx.reload(); err != nil {
+		return Relationship{}, err
+	}
+	return rel, nil
+}
+
+// DeleteRelationship removes the edge and cascades interior members.
+func (idx *Index) DeleteRelationship(id RelID) error {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if _, i := idx.relByID(id); i < 0 {
+		return fmt.Errorf("%w: %q", ErrRelationshipNotFound, id)
+	}
+	toRemove := idx.relationshipClosure(id)
+	var order []NodeID
+	for _, existing := range idx.Order {
+		if !toRemove.nodes[existing] {
+			order = append(order, existing)
+		}
+	}
+	var rels []Relationship
+	for _, rel := range idx.Relationships {
+		if toRemove.rels[rel.ID] {
+			continue
+		}
+		rels = append(rels, rel)
+	}
+	prevOrder, prevRels := idx.Order, idx.Relationships
+	idx.Order = order
+	idx.Relationships = rels
+	if err := idx.saveIndex(); err != nil {
+		idx.Order, idx.Relationships = prevOrder, prevRels
 		return err
 	}
-	return idx.reload()
+	for nid := range toRemove.nodes {
+		if err := idx.removeNodeFiles(nid); err != nil {
+			return err
+		}
+	}
+	if err := idx.reload(); err != nil {
+		return err
+	}
+	for rid := range toRemove.rels {
+		idx.invalidateLayoutKeyLocked(RelationshipLayoutKey(rid))
+	}
+	return nil
+}
+
+type relClosure struct {
+	nodes map[NodeID]bool
+	rels  map[RelID]bool
+}
+
+func (idx *Index) relationshipClosure(root RelID) relClosure {
+	out := relClosure{nodes: map[NodeID]bool{}, rels: map[RelID]bool{}}
+	var walk func(id RelID)
+	walk = func(id RelID) {
+		if out.rels[id] {
+			return
+		}
+		out.rels[id] = true
+		rel, _ := idx.relByID(id)
+		if rel == nil {
+			return
+		}
+		for _, mid := range idx.memberIDs(id) {
+			out.nodes[mid] = true
+			idx.collectDescendants(mid, out.nodes)
+		}
+		for _, edge := range idx.Relationships {
+			if out.rels[edge.ID] {
+				continue
+			}
+			touches := out.nodes[edge.From] || out.nodes[edge.To]
+			if !touches {
+				for _, mid := range idx.memberIDs(edge.ID) {
+					if out.nodes[mid] {
+						touches = true
+						break
+					}
+				}
+			}
+			if touches {
+				walk(edge.ID)
+			}
+		}
+	}
+	walk(root)
+	return out
+}
+
+func (idx *Index) collectDescendants(id NodeID, set map[NodeID]bool) {
+	for _, kid := range idx.Children[id] {
+		set[kid] = true
+		idx.collectDescendants(kid, set)
+	}
 }
 
 // setRelationshipLocked updates index.json. Caller holds idx.mu and reloads.
-func (idx *Index) setRelationshipLocked(from, to NodeID, label, kind string) error {
+func (idx *Index) setRelationshipLocked(in SetRelationshipInput) (Relationship, error) {
+	from, to, label, kind := in.From, in.To, in.Label, in.Kind
 	if _, ok := idx.Nodes[from]; !ok {
-		return fmt.Errorf("%w: %q", errMissingEndpoint, from)
+		return Relationship{}, fmt.Errorf("%w: %q", errMissingEndpoint, from)
 	}
 	if _, ok := idx.Nodes[to]; !ok {
-		return fmt.Errorf("%w: %q", errMissingEndpoint, to)
+		return Relationship{}, fmt.Errorf("%w: %q", errMissingEndpoint, to)
 	}
 	if kind != "" && !validKind(kind) {
-		return fmt.Errorf("%w: %s -> %s kind %q", errBadKind, from, to, kind)
+		return Relationship{}, fmt.Errorf("%w: %s -> %s kind %q", errBadKind, from, to, kind)
 	}
 	prev := append([]Relationship{}, idx.Relationships...)
-	found := false
-	for i, rel := range idx.Relationships {
-		if rel.From == from && rel.To == to {
-			rel.Label = label
-			rel.Kind = kind
-			idx.Relationships[i] = rel
-			found = true
+	if in.ID != "" {
+		rel, i := idx.relByID(in.ID)
+		if rel != nil {
+			updated := *rel
+			updated.Label = label
+			updated.Kind = kind
+			idx.Relationships[i] = updated
+			if err := idx.saveIndex(); err != nil {
+				idx.Relationships = prev
+				return Relationship{}, err
+			}
+			return updated, nil
 		}
+		created := Relationship{ID: in.ID, From: from, To: to, Label: label, Kind: kind}
+		idx.Relationships = append(idx.Relationships, created)
+		if err := idx.saveIndex(); err != nil {
+			idx.Relationships = prev
+			return Relationship{}, err
+		}
+		return created, nil
 	}
-	if !found {
-		idx.Relationships = append(idx.Relationships, Relationship{From: from, To: to, Label: label, Kind: kind})
+	id, err := idx.allocateRelationshipID(label)
+	if err != nil {
+		return Relationship{}, err
 	}
+	created := Relationship{ID: id, From: from, To: to, Label: label, Kind: kind}
+	idx.Relationships = append(idx.Relationships, created)
 	if err := idx.saveIndex(); err != nil {
 		idx.Relationships = prev
-		return err
+		return Relationship{}, err
 	}
-	return nil
+	return created, nil
 }
 
 // SetAssignment writes the active assignment into local.json.

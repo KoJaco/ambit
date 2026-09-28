@@ -196,6 +196,13 @@ func decodeNode(data []byte) (*Node, error) {
 		}
 		n.ParentID = NodeID(parent)
 	}
+	if raw, ok := take(obj, "relationship_id"); ok && !isNull(raw) {
+		rid, err := decodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("relationship_id: %w", err)
+		}
+		n.RelationshipID = RelID(rid)
+	}
 	if raw, ok := take(obj, "implementation"); ok {
 		impl, err := decodeStringSlice(raw)
 		if err != nil {
@@ -248,6 +255,11 @@ func encodeNode(n *Node) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if n.RelationshipID != "" {
+		if err = put("relationship_id", string(n.RelationshipID)); err != nil {
+			return nil, err
+		}
+	}
 	if len(n.Implementation) > 0 {
 		if err = put("implementation", n.Implementation); err != nil {
 			return nil, err
@@ -266,7 +278,7 @@ func encodeNode(n *Node) ([]byte, error) {
 	if err = put("status", string(n.Status)); err != nil {
 		return nil, err
 	}
-	order := []string{"id", "name", "type", "parent_id", "implementation", "scope", "protected", "status"}
+	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "status"}
 	return encodeObject(order, vals, n.Unknown)
 }
 
@@ -294,6 +306,16 @@ func decodeRelationship(data []byte) (Relationship, error) {
 	}
 	rel.From = NodeID(from)
 	rel.To = NodeID(to)
+	if raw, ok := take(obj, "id"); ok && !isNull(raw) {
+		id, err := decodeString(raw)
+		if err != nil || id == "" {
+			return Relationship{}, fmt.Errorf("relationship id must be a non-empty string")
+		}
+		if !slugPattern.MatchString(id) {
+			return Relationship{}, fmt.Errorf("relationship id %q is not a valid slug", id)
+		}
+		rel.ID = RelID(id)
+	}
 	if raw, ok := take(obj, "label"); ok && !isNull(raw) {
 		label, err := decodeString(raw)
 		if err != nil {
@@ -330,6 +352,11 @@ func encodeRelationship(rel Relationship) (jsonRaw, error) {
 	if err := put("to", string(rel.To)); err != nil {
 		return nil, err
 	}
+	if rel.ID != "" {
+		if err := put("id", string(rel.ID)); err != nil {
+			return nil, err
+		}
+	}
 	if rel.Label != "" {
 		if err := put("label", rel.Label); err != nil {
 			return nil, err
@@ -340,7 +367,7 @@ func encodeRelationship(rel Relationship) (jsonRaw, error) {
 			return nil, err
 		}
 	}
-	return encodeCompact([]string{"from", "to", "label", "kind"}, vals, rel.Unknown)
+	return encodeCompact([]string{"id", "from", "to", "label", "kind"}, vals, rel.Unknown)
 }
 
 func encodeCompact(order []string, vals map[string]jsonRaw, unknown map[string]jsonRaw) (jsonRaw, error) {

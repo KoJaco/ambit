@@ -45,7 +45,10 @@ var (
 	ErrProposalNotFound   = errors.New("proposal not found")
 	ErrUnreadableProposal = errors.New("unreadable proposal")
 	ErrBadOperation       = errors.New("invalid operation")
-	ErrExists             = errors.New("node already exists")
+	ErrExists                  = errors.New("node already exists")
+	ErrRelationshipNotFound    = errors.New("relationship not found")
+	ErrEmptyRelationship       = errors.New("relationship has no interior")
+	ErrContainerConflict       = errors.New("parent_id and relationship_id are mutually exclusive")
 
 	errCycle           = ErrCycle
 	errNotFound        = ErrNotFound
@@ -67,6 +70,7 @@ type Node struct {
 	Type           string
 	Status         Status
 	ParentID       NodeID
+	RelationshipID RelID
 	Implementation []string
 	Scope          []string
 	Protected      bool
@@ -76,6 +80,7 @@ type Node struct {
 
 // Relationship is a directed cross-cutting edge. It is not a hierarchy edge.
 type Relationship struct {
+	ID      RelID
 	From    NodeID
 	To      NodeID
 	Label   string
@@ -119,6 +124,7 @@ type CreateInput struct {
 	Type           string
 	Spec           string
 	ParentID       NodeID
+	RelationshipID RelID
 	Implementation []string
 	Scope          []string
 	Protected      bool
@@ -133,6 +139,7 @@ type UpdateInput struct {
 	Spec           *string
 	Status         *Status
 	Parent         *NodeID
+	Relationship   *RelID
 	Implementation *[]string
 	Scope          *[]string
 	Protected      *bool

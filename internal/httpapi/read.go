@@ -28,6 +28,66 @@ func getChildLevel(idx *core.Index) http.HandlerFunc {
 	}
 }
 
+func getRelationshipLevel(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		lvl, err := idx.RelationshipLevel(core.RelID(r.PathValue("id")))
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, relationshipLevelBody(lvl))
+	}
+}
+
+func relationshipLevelBody(lvl core.RelationshipLevel) relationshipLevelJSON {
+	body := relationshipLevelJSON{
+		Relationship: relViewJSON(lvl.Relationship),
+		Members:      make([]summaryJSON, 0, len(lvl.Members)),
+		Context:      make([]summaryJSON, 0, 2),
+		Relationships: make([]relJSON, 0, len(lvl.Relationships)),
+		Crossings:    make([]crossJSON, 0, len(lvl.Crossings)),
+		Warnings:     warningBodies(lvl.Warnings),
+	}
+	for _, m := range lvl.Members {
+		body.Members = append(body.Members, summaryOf(m))
+	}
+	body.Context = append(body.Context, summaryOf(lvl.Context[0]), summaryOf(lvl.Context[1]))
+	for _, rel := range lvl.Relationships {
+		body.Relationships = append(body.Relationships, relJSON{
+			ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
+			Drillable: rel.Drillable,
+		})
+	}
+	for _, c := range lvl.Crossings {
+		body.Crossings = append(body.Crossings, crossJSON{
+			NodeID: string(c.NodeID), Direction: c.Direction, Label: c.Label, Kind: c.Kind, OtherID: string(c.OtherID),
+			RelID: string(c.RelID), Drillable: c.Drillable,
+		})
+	}
+	return body
+}
+
+func relViewJSON(v core.RelView) relViewBody {
+	return relViewBody{ID: string(v.ID), From: string(v.From), To: string(v.To), Label: v.Label, Kind: v.Kind}
+}
+
+type relationshipLevelJSON struct {
+	Relationship  relViewBody   `json:"relationship"`
+	Members       []summaryJSON `json:"children"`
+	Context       []summaryJSON `json:"context"`
+	Relationships []relJSON     `json:"relationships"`
+	Crossings     []crossJSON   `json:"crossings"`
+	Warnings      []warnJSON    `json:"warnings"`
+}
+
+type relViewBody struct {
+	ID    string `json:"id"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
+}
+
 func getNode(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id := core.NodeID(r.PathValue("id"))
@@ -65,12 +125,14 @@ func levelBody(lvl core.Level) levelJSON {
 	}
 	for _, rel := range lvl.Relationships {
 		body.Relationships = append(body.Relationships, relJSON{
-			From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
+			ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
+			Drillable: rel.Drillable,
 		})
 	}
 	for _, c := range lvl.Crossings {
 		body.Crossings = append(body.Crossings, crossJSON{
 			NodeID: string(c.NodeID), Direction: c.Direction, Label: c.Label, Kind: c.Kind, OtherID: string(c.OtherID),
+			RelID: string(c.RelID), Drillable: c.Drillable,
 		})
 	}
 	return body
@@ -104,6 +166,7 @@ type nodeJSON struct {
 	Type           string   `json:"type"`
 	Status         string   `json:"status"`
 	ParentID       string   `json:"parent_id,omitempty"`
+	RelationshipID string   `json:"relationship_id,omitempty"`
 	Implementation []string `json:"implementation"`
 	Scope          []string `json:"scope"`
 	Protected      bool     `json:"protected"`
@@ -119,10 +182,12 @@ type summaryJSON struct {
 }
 
 type relJSON struct {
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Label string `json:"label"`
-	Kind  string `json:"kind"`
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Label     string `json:"label"`
+	Kind      string `json:"kind"`
+	Drillable bool   `json:"drillable,omitempty"`
 }
 
 type crossJSON struct {
@@ -131,6 +196,8 @@ type crossJSON struct {
 	Label     string `json:"label"`
 	Kind      string `json:"kind"`
 	OtherID   string `json:"other_id"`
+	RelID     string `json:"relationship_id,omitempty"`
+	Drillable bool   `json:"drillable,omitempty"`
 }
 
 type warnJSON struct {
@@ -150,7 +217,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func writeAPIError(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, core.ErrNotFound), errors.Is(err, core.ErrProposalNotFound):
+	case errors.Is(err, core.ErrNotFound), errors.Is(err, core.ErrProposalNotFound),
+		errors.Is(err, core.ErrRelationshipNotFound), errors.Is(err, core.ErrEmptyRelationship):
 		code = http.StatusNotFound
 	case errors.Is(err, core.ErrCycle),
 		errors.Is(err, core.ErrHasChildren),
@@ -163,7 +231,8 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrEmptyType),
 		errors.Is(err, core.ErrStale),
 		errors.Is(err, core.ErrUnreadableProposal),
-		errors.Is(err, core.ErrExists):
+		errors.Is(err, core.ErrExists),
+		errors.Is(err, core.ErrContainerConflict):
 		code = http.StatusConflict
 	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation):
 		code = http.StatusBadRequest
