@@ -51,8 +51,8 @@ Completed implementation passes land here. One section per pass. Status stays in
   payload and does not compare hashes. Vitest covers create, update, stale update, and
   `set_relationship`. Tasks 04.1–04.10 are checked. The release gate in 04.8 was already
   green, so this pass closes the stage.
-- **Deferred:** MCP tools, proposal garbage collection, and the merge to `main`. Stage 05
-  stays uncut until that merge is requested.
+- **Deferred:** MCP tools and proposal garbage collection. Relationship drill is
+  [stage 05](../05-relationship-drill/README.md); MCP is stage 06.
 - **Verified:** `npm test` and `npm run typecheck` pass. The manual pass was run once
   against Vite on `127.0.0.1:5173` with `ambit start` on a scratch model: the panel
   appeared through `proposals-changed` without a reload, a thirty-operation seed read as a

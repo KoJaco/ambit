@@ -434,8 +434,10 @@ The ordering rationale and release gates are in
 3. [Architect canvas](stages/03-architect-canvas/README.md) — local HTTP API, the frontend
    hard reset, drill-down at `/node/:nodeId`, elkjs.
 4. [Review gate](stages/04-review-gate/README.md) — proposals, apply/reject, review UI.
-5. [Agent interface](stages/05-agent-interface/README.md) — MCP server, stdio, all eight tools.
-6. [Distribution](stages/06-distribution/README.md) — `go:embed` and the npx shim.
+5. [Relationship drill](stages/05-relationship-drill/README.md) — relationship interiors,
+   drillable edges, connection-point presentation.
+6. [Agent interface](stages/06-agent-interface/README.md) — MCP server, stdio, all eight tools.
+7. [Distribution](stages/07-distribution/README.md) — `go:embed` and the npx shim.
 
 The canonical model and the enforcement check are the part worth getting right slowly —
 everything else builds on the schema and core package holding up.

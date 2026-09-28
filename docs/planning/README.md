@@ -38,7 +38,7 @@ Each stage directory holds:
   release gates.
 - [`checklist.md`](checklist.md) — every task and its status.
 - [`workflow.md`](workflow.md) — branch, merge, and the stage 03 worktree window.
-- [`stages/`](stages/) — the seven capability stages.
+- [`stages/`](stages/) — the eight capability stages.
 
 Supporting:
 
@@ -56,12 +56,13 @@ Supporting:
 | [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Done |
 | [03 Architect canvas](stages/03-architect-canvas/README.md) | The architect can see and edit one level at a time | 4–6 | Done |
 | [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Done |
-| [05 Agent interface](stages/05-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 8 | Not started |
-| [06 Distribution](stages/06-distribution/README.md) | One binary, installed without a toolchain | 9 | Not started |
+| [05 Relationship drill](stages/05-relationship-drill/README.md) | Relationships open as their own canvas level | 8 | Not started |
+| [06 Agent interface](stages/06-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 9 | Not started |
+| [07 Distribution](stages/07-distribution/README.md) | One binary, installed without a toolchain | 10 | Not started |
 
 ## Current status
 
-**Stage 04 done. Merge `stage/04-review-gate` to `main` before cutting stage 05.**
+**Stage 04 lands on `main` via PR. Cut `stage/05-relationship-drill` from `main` next.**
 
 A proposal can be staged, listed, and accepted or rejected per operation. Accept-all skips
 a stale operation, and confirming that operation applies it over the newer edit. The manual

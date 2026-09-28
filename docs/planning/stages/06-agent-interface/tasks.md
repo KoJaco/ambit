@@ -1,10 +1,10 @@
-# Stage 05 tasks
+# Stage 06 tasks
 
 Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 
-The tools are thin. The brief is not. Do not schedule 05.3 and 05.7 as an afternoon.
+The tools are thin. The brief is not. Do not schedule 06.3 and 06.7 as an afternoon.
 
-## 05.1 MCP process
+## 06.1 MCP process
 
 - [ ]
 
@@ -15,7 +15,7 @@ The tools are thin. The brief is not. Do not schedule 05.3 and 05.7 as an aftern
 dial `ambit start`. Killing the HTTP server leaves this process running. An ineffective
 gitignore produces the same loud warning as `ambit check`.
 
-## 05.2 Authoring tools
+## 06.2 Authoring tools
 
 - [ ]
 
@@ -28,9 +28,10 @@ message that states the change has not been applied. None of them write under
 `create_node` does not accept an `id`. `update_node` cannot change `id` or `status`.
 Unknown node ids error and do not fuzzy-match. Rejections required at proposal time
 (`delete_node` with children, cycles, missing relationship endpoints) surface as tool
-errors from the stage function, not as a second implementation.
+errors from the stage function, not as a second implementation. `set_relationship` uses
+stage 05 relationship ids and interiors, not the pre-stage-05 from/to upsert.
 
-## 05.3 `get_context`
+## 06.3 `get_context`
 
 - [ ]
 
@@ -47,7 +48,7 @@ errors from the stage function, not as a second implementation.
 
 A missing node id errors and names the id.
 
-## 05.4 `check_scope`
+## 06.4 `check_scope`
 
 - [ ]
 
@@ -57,7 +58,7 @@ A missing node id errors and names the id.
 and returns each file as allowed or as a violation naming the node and the rule. It does
 not read a git diff.
 
-## 05.5 `update_node_status`
+## 06.5 `update_node_status`
 
 - [ ]
 
@@ -68,7 +69,7 @@ not read a git diff.
 `blocked`. Anything else errors and lists those six. The tool does not create a proposal
 and does not change any other field.
 
-## 05.6 Release gate
+## 06.6 Release gate
 
 - [ ]
 
@@ -77,7 +78,7 @@ and does not change any other field.
 **Done when:** the equivalence case in [`test-plan.md`](test-plan.md) passes. The stage is
 not done without it.
 
-## 05.7 Brief iteration
+## 06.7 Brief iteration
 
 - [ ]
 

@@ -25,7 +25,7 @@ the test helper does not need the canvas.
 
 - The proposal directory format in [`proposals.md`](../../../contracts/proposals.md).
 - Staging, staleness, accept, reject, and atomic apply in `ambit-core`.
-- A test helper that writes a proposal. Stage 05's tools call the same staging function.
+- A test helper that writes a proposal. Stage 06's tools call the same staging function.
 - Proposal HTTP endpoints and the `proposals-changed` SSE event.
 - The review UI.
 - Vitest for proposal diffing.
@@ -33,7 +33,7 @@ the test helper does not need the canvas.
 
 ## Out of scope
 
-- The eight MCP tools. [Stage 05](../05-agent-interface/README.md). Do not add a temporary
+- The eight MCP tools. [Stage 06](../06-agent-interface/README.md). Do not add a temporary
   CLI that agents would be tempted to keep. Tests call the core function.
 - Garbage collection of abandoned proposals. Nothing expires a proposal that still has
   `pending` operations.

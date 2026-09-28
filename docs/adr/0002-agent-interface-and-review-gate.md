@@ -158,7 +158,7 @@ required regardless of how well the first two work.
 
 - **Follow-ups / TODOs**
   - `get_context` prompt framing needs real iteration against Codex, Cursor, and Claude Code
-    directly — budget time for it in build step 8 rather than treating it as a template.
+    directly — budget time for it in build step 9 rather than treating it as a template.
   - Decide whether proposals need expiry or a `ambit proposals prune` command once there is
     evidence about how many get abandoned in practice.
 

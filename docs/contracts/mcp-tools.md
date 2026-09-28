@@ -133,7 +133,7 @@ the agent infer its constraints, and inference is exactly what should not be hap
   finishing.
 
 **This framing needs real iteration against actual harnesses, not a one-shot template.**
-Build step 8 budgets time for it. Treat the wording as a tuned artifact and record what was
+Build step 9 budgets time for it. Treat the wording as a tuned artifact and record what was
 learned when it changes.
 
 #### `check_scope(node_id, files)`

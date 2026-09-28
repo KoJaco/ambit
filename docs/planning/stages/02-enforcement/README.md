@@ -33,7 +33,7 @@ Semantics: [`enforcement-model.md`](../../../architecture/enforcement-model.md).
 ## Out of scope
 
 - `check_scope` the MCP tool. The function lives here; the tool is
-  [stage 05](../05-agent-interface/README.md). The equivalence gate is stage 05, once both
+  [stage 06](../06-agent-interface/README.md). The equivalence gate is stage 06, once both
   callers exist. This stage's tests call `CheckScope` directly.
 - `--strict`, a blocking exit code, CI, a policy language, per-agent roles.
 - A second glob implementation. The inspector preview in stage 03 is a known duplicate and

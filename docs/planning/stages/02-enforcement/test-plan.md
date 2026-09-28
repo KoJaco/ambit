@@ -36,7 +36,7 @@ the assigned globs, and read the report. This does not replace the gate.
 
 ## Not in this stage
 
-- Equivalence with the MCP tool. Stage 05 task 05.6 calls the same function through both
+- Equivalence with the MCP tool. Stage 06 task 06.6 calls the same function through both
   front doors.
 - A shared fixture file with the TypeScript inspector. That is an open question, triggered
   when the inspector preview starts to matter. Stage 03 tests its preview separately.

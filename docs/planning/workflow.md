@@ -10,7 +10,7 @@ Live. How v1 stages move through git.
 
 ## Purpose
 
-Stages 01 through 06 are a chain. Each one extends `ambit-core`, and a later stage assumes
+Stages 01 through 07 are a chain. Each one extends `ambit-core`, and a later stage assumes
 the previous gate holds. The branch model follows that chain: one branch at a time, merged
 to `main` when the stage is finished.
 
@@ -41,8 +41,9 @@ Names match the stage directories:
 | `stage/02-enforcement` | [02](stages/02-enforcement/README.md) |
 | `stage/03-architect-canvas` | [03](stages/03-architect-canvas/README.md) |
 | `stage/04-review-gate` | [04](stages/04-review-gate/README.md) |
-| `stage/05-agent-interface` | [05](stages/05-agent-interface/README.md) |
-| `stage/06-distribution` | [06](stages/06-distribution/README.md) |
+| `stage/05-relationship-drill` | [05](stages/05-relationship-drill/README.md) |
+| `stage/06-agent-interface` | [06](stages/06-agent-interface/README.md) |
+| `stage/07-distribution` | [07](stages/07-distribution/README.md) |
 
 The next branch is cut from `main` after the merge. Leave stage 02 unstarted until stage 01
 is on `main`. The model and the check are the part worth getting right slowly, and a branch
@@ -83,19 +84,20 @@ git worktree add ../ambit-main main
 That worktree tracks finished `main`. It is removed when the reset builds and the stage
 merges. One extra checkout of `main`, for that window only.
 
-## Task 05.7
+## Task 06.7
 
-The equivalence gate (task 05.6) can merge with the rest of stage 05 while brief iteration
+The equivalence gate (task 06.6) can merge with the rest of stage 06 while brief iteration
 stays open. After that merge, wording changes go on a short branch cut from `main`, and
-what was learned goes in [`docs/decisions/`](../decisions/). The stage 05 slice log points
+what was learned goes in [`docs/decisions/`](../decisions/). The stage 06 slice log points
 at that note.
 
 ## What stays sequential
 
 Start a stage when its dependency is on `main`. Stage 04 needs stage 03's HTTP server.
-Stage 05 needs stage 04's staging function and stage 02's `CheckScope`. Stage 06 waits
-until the subcommands exist. Parallel stage branches would edit `internal/core` twice and
-drift.
+Stage 05 needs stage 04's staging function and the canvas. Stage 06 needs stage 05's
+relationship shape, stage 04's staging function, and stage 02's `CheckScope`. Stage 07
+waits until the subcommands exist. Parallel stage branches would edit `internal/core` twice
+and drift.
 
 ## References
 
