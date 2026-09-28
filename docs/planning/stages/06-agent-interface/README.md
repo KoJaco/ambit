@@ -2,7 +2,8 @@
 
 ## Status
 
-Not started.
+Tasks 06.1–06.6 are done. Task 06.7 (brief iteration against all harnesses) stays open;
+see [decision note 0005](../../../decisions/0005-get-context-brief-iteration.md).
 
 ## What this stage proves
 

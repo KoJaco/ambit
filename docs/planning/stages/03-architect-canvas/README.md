@@ -39,7 +39,8 @@ Contract: [`local-http-api.md`](../../../contracts/local-http-api.md). Behaviour
 - Proposal endpoints, the `proposals-changed` SSE event, and the review UI.
   [Stage 04](../04-review-gate/README.md). The SSE client built here should ignore event
   kinds it does not handle, so stage 04 can add one.
-- `go:embed` and SPA fallback on refresh. [Stage 07](../07-distribution/README.md). Until
+- Icon registry and node colour on the canvas. [Stage 07](../07-node-presentation/README.md).
+- `go:embed` and SPA fallback on refresh. [Stage 08](../08-distribution/README.md). Until
   then, `ambit start` may serve the API alone and the SPA runs from the Vite dev server
   against it. Document the dev URL in the frontend README when it exists.
 - MCP.

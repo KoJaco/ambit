@@ -87,6 +87,35 @@ autocomplete and no consistency: one model can hold `database`, `datastore`, and
 observable rather than imagined. Track what people actually type in the meantime; that data
 is the input.
 
+### How should drillable hierarchy be indicated on the canvas?
+
+Relationship interiors already expose `drillable` on crossings. **Child drill** (`/node/:id`)
+has no equivalent affordance on `NodeCard` — architects cannot see which nodes have
+children without opening each one.
+
+Candidate: `has_children` or `child_count` on level summaries + a minimal badge (possibly
+sharing the stage 07 icon registry). See
+[decision note 0007](../decisions/0007-drill-affordance-and-hierarchy-compression.md).
+
+**Trigger for revisit:** stage 07 slicing or the first canvas ergonomics pass after
+dogfooding the meta-model.
+
+### How should “lift” and “embed” hierarchy compression work?
+
+Users want to **embed** a small subsystem inside a node (collapse siblings under a container)
+and the **inverse lift** (promote children to the parent level) to cut visual clutter and
+drill depth without abandoning canonical structure.
+
+Likely implemented as **batched reparent / create_node operations** through the existing
+proposal gate, not a shadow “collapsed” view — unless virtual collapse proves necessary.
+
+Open: multi-select on canvas, relationship endpoints when members move, scope/implementation
+on new container nodes. See
+[decision note 0007](../decisions/0007-drill-affordance-and-hierarchy-compression.md).
+
+**Trigger for revisit:** after drill affordance ships and we have a deep model to stress-test
+(e.g. the ambit self-model).
+
 ---
 
 ## Workflow questions

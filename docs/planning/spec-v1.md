@@ -437,7 +437,8 @@ The ordering rationale and release gates are in
 5. [Relationship drill](stages/05-relationship-drill/README.md) — relationship interiors,
    drillable edges, connection-point presentation.
 6. [Agent interface](stages/06-agent-interface/README.md) — MCP server, stdio, all eight tools.
-7. [Distribution](stages/07-distribution/README.md) — `go:embed` and the npx shim.
+7. [Node presentation](stages/07-node-presentation/README.md) — icon registry and node colour.
+8. [Distribution](stages/08-distribution/README.md) — `go:embed` and the npx shim.
 
 The canonical model and the enforcement check are the part worth getting right slowly —
 everything else builds on the schema and core package holding up.

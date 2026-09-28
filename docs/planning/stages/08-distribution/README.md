@@ -1,8 +1,8 @@
-# Stage 07 — Distribution
+# Stage 08 — Distribution
 
 ## Status
 
-Not started.
+Not started. Renumbered from stage 07 when [stage 07 — Node presentation](../07-node-presentation/README.md) was inserted.
 
 ## What this stage proves
 
@@ -43,7 +43,7 @@ Distribution shape: [ADR-0003](../../../adr/0003-runtime-and-distribution.md).
 
 ## Release gate
 
-Task 07.5. A test feeds the shim a binary and a checksum that does not match, and the shim
+Task 08.5. A test feeds the shim a binary and a checksum that does not match, and the shim
 refuses to execute it. A matching checksum is allowed to proceed. The shim does not ship
 with this test failing or skipped.
 
