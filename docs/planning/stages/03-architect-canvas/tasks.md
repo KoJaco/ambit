@@ -7,7 +7,7 @@ deletes (03.10) land before the rebuild, and the tree is allowed not to build in
 
 ## 03.1 Localhost server
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`, `internal/httpapi`.
 
@@ -17,7 +17,7 @@ outbound call. The process loads `.arch` through `ambit-core`.
 
 ## 03.2 One drill-down level
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`.
 
@@ -29,7 +29,7 @@ endpoint may include, and it does not invent the missing node.
 
 ## 03.3 Single node
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
@@ -38,7 +38,7 @@ is 404 and names the id.
 
 ## 03.4 Integrity
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`.
 
@@ -48,7 +48,7 @@ node or the file.
 
 ## 03.5 Direct mutations
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
@@ -58,7 +58,7 @@ failures use 409 and name the node and the rule. There is no HTTP-specific valid
 
 ## 03.6 Assignment
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`,
 [`local-http-api.md`](../../../contracts/local-http-api.md).
@@ -71,7 +71,7 @@ assignment leaves the model otherwise untouched.
 
 ## 03.7 Layout cache
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `internal/httpapi`.
 
@@ -83,7 +83,7 @@ that level's cache stale so the client recomputes. A field edit does not.
 
 ## 03.8 SSE for model and integrity
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`. Uses the stage 01 file watcher.
 
@@ -93,7 +93,7 @@ stream. Proposal events are not emitted yet.
 
 ## 03.9 Ignore check on start
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`.
 
@@ -102,7 +102,7 @@ serves, and a failure is a loud warning that does not by itself refuse to serve.
 
 ## 03.10 Delete the pipeline domain
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/`, per [`frontend-refactor.md`](frontend-refactor.md) "Delete".
 
@@ -113,7 +113,7 @@ this task.
 
 ## 03.11 Routes and React Flow v12
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/routes.ts`, `frontend/app/routes/home.tsx`, `frontend/package.json`.
 
@@ -124,7 +124,7 @@ work.
 
 ## 03.12 Canvas
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/FlowCanvas.tsx`, `NodeCard.tsx`, `ControlBar.tsx`.
 
@@ -135,7 +135,7 @@ a generic shape and does not warn. The control bar's tool union still works.
 
 ## 03.13 Inspector
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/node-inspector.tsx`.
 
@@ -146,7 +146,7 @@ of assignment. There is no type dropdown and no port form.
 
 ## 03.14 Sidebar
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/Sidebar.tsx`, `Sidebar.module.css`.
 
@@ -155,7 +155,7 @@ a fixed set of kinds. Collapse behaviour and the module CSS remain.
 
 ## 03.15 API client and SSE client
 
-- [ ]
+- [x]
 
 **Touches:** new modules under `frontend/app/`.
 
@@ -164,7 +164,7 @@ refetches on model-changed and integrity-changed. Unknown event names are ignore
 
 ## 03.16 elkjs
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/`, `elkjs` dependency.
 
@@ -175,7 +175,7 @@ level reruns elk. Field edits do not.
 
 ## 03.17 Vitest
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` test setup.
 
@@ -185,7 +185,7 @@ plan. They are not imported from the Go suite.
 
 ## 03.18 Template leftovers
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/README.md`, `frontend/Dockerfile`, `frontend/.dockerignore`,
 `frontend/app/welcome/`.

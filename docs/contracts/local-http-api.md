@@ -39,9 +39,11 @@ format (see [`arch-model-format.md`](arch-model-format.md)), and the proposal fo
 
 ### Posture
 
-Binds to **localhost only**. No authentication, because there is no remote caller and no
-account system — adding auth to a single-user local process would be ceremony without a
-threat it addresses.
+Binds to **localhost only**. `ambit start` listens on `127.0.0.1:8080` unless `--addr` is
+set. `--addr` accepts only a loopback IP (`127.0.0.1` or `::1`) and a port. `0.0.0.0`,
+other interfaces, and hostnames are rejected before the process listens. No authentication,
+because there is no remote caller and no account system — adding auth to a single-user
+local process would be ceremony without a threat it addresses.
 
 There is **no LLM proxy endpoint** and no model-provider configuration. ambit makes no
 outbound calls to a model provider. This is the largest single deletion from the original
@@ -58,36 +60,59 @@ hard refresh.
 
 ### Graph reads
 
-- **Get a drill-down level** — returns the direct children of a node plus the relationships
-  among those children, plus the node itself for breadcrumb context. Root level is the set
-  of nodes with no `parent_id`.
+- **Get a drill-down level** — `GET /levels/{nodeId}` returns the direct children of that
+  node plus the relationships among those children, plus the node itself for breadcrumb
+  context. `GET /levels` is the root: nodes with no `parent_id`, and `node` is null.
+
+  A relationship with one endpoint outside that child set is absent from `relationships`.
+  It is listed in `crossings` as `node_id`, `direction` (`out` or `in`), `label`, `kind`,
+  and `other_id`. `other_id` is an id string. The response does not include that node, and
+  the client must not invent one.
 
   **This endpoint must never return the whole graph.** It is the one genuinely
   performance-relevant decision in the architecture: React Flow is fed a level, and
   filtering a full graph in the browser is the thing being avoided. See
   [`docs/architecture/frontend.md`](../architecture/frontend.md).
 
-- **Get a single node** — full detail including prose, for the inspector panel.
+- **Get a single node** — `GET /nodes/{id}` returns the structured fields and the
+  markdown. Unknown id is 404 and the message names the id.
 
-- **Get model integrity warnings** — orphans and dangling references, for a status surface.
-  Warnings never block a read.
+- **Get model integrity warnings** — `GET /integrity` returns orphans and dangling
+  references. The same list rides on `GET /levels` and `GET /levels/{nodeId}` as
+  `warnings`. Warnings never block a read. Each warning names the node or the file.
 
 ### Graph mutations
 
-Create, update, and delete a node; set a relationship. These **write directly** to the
-canonical model. Architect edits made in the UI need no review gate — the human is already
-in the seat. This is the asymmetry with MCP, where the same operations are staged.
+These **write directly** to the canonical model through `ambit-core`. Architect edits made
+in the UI need no review gate — the human is already in the seat. This is the asymmetry
+with MCP, where the same operations are staged.
 
-`status` is a normal updatable field here.
+- `POST /nodes` — create. The id is derived from the name.
+- `PATCH /nodes/{id}` — update. `status` is a normal field. Omitted fields are left
+  unchanged.
+- `DELETE /nodes/{id}` — delete.
+- `PUT /relationships` — set the directed edge `from` → `to`, with `label` and `kind`.
+
+A validation failure is 409 and the message is the core error, which names the node and
+the rule. There is no HTTP-specific validator.
+
+- `PUT /assignment` — body `{ "node_id", "assigned_at"? }`. Calls `SetAssignment`. Stored
+  only in `local.json`. Does not change the node's `status`.
+- `DELETE /assignment` — calls `ClearAssignment`. Leaves every node file alone.
 
 ### Layout
 
-- **Get cached layout for a level** — returns stored positions, or nothing if the level has
-  not been laid out yet, in which case the client runs elkjs and persists the result.
-- **Persist layout for a level** — stores computed or manually-dragged positions.
+- `GET /layout/{key}` — cached positions for one level, or `{"positions":[]}` when that
+  file is missing. A missing cache is not an error.
+- `PUT /layout/{key}` — stores `{ "positions": [{ "id", "x", "y" }] }` under
+  `.arch/.cache/layout/<key>.json`.
+
+`{key}` for `/node/:nodeId` is that node id. `/` has no node id; its key is `_root`.
+`_root` cannot collide with a node id, because ids match `^[a-z0-9]+(-[a-z0-9]+)*$`.
 
 Layout writes touch only `.arch/.cache/layout/`. They never write to the canonical model,
-which has no coordinates by design.
+which has no coordinates by design. Create, delete, and reparent delete that level's cache
+file so the client recomputes. A field edit does not.
 
 ### Proposals
 
@@ -108,14 +133,14 @@ which has no coordinates by design.
 
 A single one-way stream at `/events`, driven by `fsnotify` in the Go process.
 
-Event kinds:
+Event kinds, sent as SSE `event:` names. The client cannot send on this stream.
+Proposal events are not emitted yet.
 
-- **Model changed** — a node file or `index.json` changed on disk, whether from a UI write,
-  an MCP status write, or the architect's editor. Carries the affected node IDs so the
-  client can refetch narrowly rather than reloading everything.
-- **Proposals changed** — a proposal was staged, resolved, or deleted. This is what makes an
-  agent's work appear in the review panel without a refresh.
-- **Integrity changed** — the warning set changed.
+- `model-changed` — a node file or `index.json` changed on disk, whether from a UI write,
+  an MCP status write, or the architect's editor. `data` is `{ "node_ids": ["…"] }`.
+- `proposals-changed` — a proposal was staged, resolved, or deleted. Not emitted until the
+  review gate. A client built now must ignore event names it does not handle.
+- `integrity-changed` — the warning set changed.
 
 SSE rather than WebSocket because the traffic is strictly one-directional, the browser has
 the HTTP API for anything it needs to send, and SSE reconnects automatically where a
@@ -177,14 +202,25 @@ A drill-down level response for `platform`:
             "kind": "sync"
         }
     ],
+    "crossings": [
+        {
+            "node_id": "orders-service",
+            "direction": "out",
+            "label": "settles",
+            "kind": "async",
+            "other_id": "billing"
+        }
+    ],
     "warnings": []
 }
 ```
 
 Only the children of `platform` and only the relationships among those children. A
-relationship from `orders-service` to a node outside this level is not included; it is
-rendered as a boundary-crossing indicator by the client, not as an edge to a node that is
-not on screen.
+relationship from `orders-service` to a node outside this level is a `crossings` entry.
+`other_id` names the far endpoint. It is not a node in this response, and the client
+renders a boundary marker instead of inventing that node. `GET /levels` uses the same
+shape with `"node": null`. Each node object includes `status` and `protected`. Markdown,
+`implementation`, and `scope` are not on this response.
 
 ### Invalid example, with expected handling
 

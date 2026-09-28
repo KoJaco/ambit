@@ -70,24 +70,24 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/03-architect-canvas/README.md).
 
-- [ ] **03.1** `ambit start` binds to localhost and refuses other interfaces.
-- [ ] **03.2** Drill-down query and endpoint return one level.
-- [ ] **03.3** Single-node read, including prose, for the inspector.
-- [ ] **03.4** Integrity warnings ride along with reads and have their own fetch.
-- [ ] **03.5** Direct graph mutations over HTTP, through `ambit-core`.
-- [ ] **03.6** Assignment write into `local.json`, and the contract line that names it.
-- [ ] **03.7** Layout cache storage in core, and get/put endpoints that never touch canonical files.
-- [ ] **03.8** SSE for model-changed and integrity-changed.
-- [ ] **03.9** `ambit start` runs the ignore check before serving.
-- [ ] **03.10** Delete the pipeline domain and the abandoned canvas skeleton.
-- [ ] **03.11** Routes `/` and `/node/:nodeId`, on `@xyflow/react` v12.
-- [ ] **03.12** Canvas renders one fetched level, with labelled relationships.
-- [ ] **03.13** Inspector for ambit fields, including empty-scope and protected copy.
-- [ ] **03.14** Sidebar becomes hierarchy navigation and node creation.
-- [ ] **03.15** Typed API client and SSE client.
-- [ ] **03.16** elkjs per level, recompute only on structural change, drag writes the cache.
-- [ ] **03.17** Vitest on layout-cache keying and the inspector's scope preview.
-- [ ] **03.18** Remove confirmed-dead template leftovers and replace the frontend README.
+- [x] **03.1** `ambit start` binds to localhost and refuses other interfaces.
+- [x] **03.2** Drill-down query and endpoint return one level.
+- [x] **03.3** Single-node read, including prose, for the inspector.
+- [x] **03.4** Integrity warnings ride along with reads and have their own fetch.
+- [x] **03.5** Direct graph mutations over HTTP, through `ambit-core`.
+- [x] **03.6** Assignment write into `local.json`, and the contract line that names it.
+- [x] **03.7** Layout cache storage in core, and get/put endpoints that never touch canonical files.
+- [x] **03.8** SSE for model-changed and integrity-changed.
+- [x] **03.9** `ambit start` runs the ignore check before serving.
+- [x] **03.10** Delete the pipeline domain and the abandoned canvas skeleton.
+- [x] **03.11** Routes `/` and `/node/:nodeId`, on `@xyflow/react` v12.
+- [x] **03.12** Canvas renders one fetched level, with labelled relationships.
+- [x] **03.13** Inspector for ambit fields, including empty-scope and protected copy.
+- [x] **03.14** Sidebar becomes hierarchy navigation and node creation.
+- [x] **03.15** Typed API client and SSE client.
+- [x] **03.16** elkjs per level, recompute only on structural change, drag writes the cache.
+- [x] **03.17** Vitest on layout-cache keying and the inspector's scope preview.
+- [x] **03.18** Remove confirmed-dead template leftovers and replace the frontend README.
 
 ## Stage 04 — Review gate
 

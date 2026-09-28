@@ -64,7 +64,7 @@ func TestGitignoreGate(t *testing.T) {
 }
 
 func TestUnknownCommand(t *testing.T) {
-	cmd := exec.Command(binPath, "start")
+	cmd := exec.Command(binPath, "mcp")
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("expected unknown command to fail")

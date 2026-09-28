@@ -14,10 +14,10 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	defer idx.mu.Unlock()
 
 	if strings.TrimSpace(in.Name) == "" {
-		return "", fmt.Errorf("name must be non-empty")
+		return "", errEmptyName
 	}
 	if strings.TrimSpace(in.Type) == "" {
-		return "", fmt.Errorf("type must be non-empty")
+		return "", errEmptyType
 	}
 	status := in.Status
 	if status == "" {
@@ -62,6 +62,7 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if err := idx.reload(); err != nil {
 		return "", err
 	}
+	idx.invalidateLayoutLocked(in.ParentID)
 	return id, nil
 }
 
@@ -81,13 +82,13 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 
 	if in.Name != nil {
 		if strings.TrimSpace(*in.Name) == "" {
-			return fmt.Errorf("name must be non-empty")
+			return errEmptyName
 		}
 		next.Name = *in.Name
 	}
 	if in.Type != nil {
 		if strings.TrimSpace(*in.Type) == "" {
-			return fmt.Errorf("type must be non-empty")
+			return errEmptyType
 		}
 		next.Type = *in.Type
 	}
@@ -124,7 +125,14 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 	if err := idx.writeNode(&next); err != nil {
 		return err
 	}
-	return idx.reload()
+	if err := idx.reload(); err != nil {
+		return err
+	}
+	if in.Parent != nil && *in.Parent != node.ParentID {
+		idx.invalidateLayoutLocked(node.ParentID)
+		idx.invalidateLayoutLocked(*in.Parent)
+	}
+	return nil
 }
 
 // Delete removes a node that has no children, and drops relationships that name it.
@@ -132,9 +140,11 @@ func (idx *Index) Delete(id NodeID) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 
-	if _, ok := idx.Nodes[id]; !ok {
+	node, ok := idx.Nodes[id]
+	if !ok {
 		return fmt.Errorf("%w: %q", errNotFound, id)
 	}
+	parent := node.ParentID
 	kids := idx.childIDs(id)
 	if len(kids) > 0 {
 		return fmt.Errorf("%w: %s has children: %s", errHasChildren, id, strings.Join(kids, ", "))
@@ -162,7 +172,11 @@ func (idx *Index) Delete(id NodeID) error {
 	if err := idx.removeNodeFiles(id); err != nil {
 		return err
 	}
-	return idx.reload()
+	if err := idx.reload(); err != nil {
+		return err
+	}
+	idx.invalidateLayoutLocked(parent)
+	return nil
 }
 
 // SetRelationship creates or updates the directed edge from -> to.
