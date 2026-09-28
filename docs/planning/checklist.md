@@ -28,8 +28,8 @@ These six stop a stage being declared done early. Detail is in
 - [x] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
 - [x] **04.8** Proposal apply atomicity and staleness hash comparison.
 - [x] **05.6** Relationship interior level — duplicate edges, members scoped to the edge.
-- [ ] **06.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
-- [ ] **07.5** npx shim checksum verification. The shim does not ship without it.
+- [x] **06.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
+- [ ] **08.5** npx shim checksum verification. The shim does not ship without it.
 
 ## Stage 00 — Foundation
 
@@ -122,23 +122,37 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/06-agent-interface/README.md).
 
-- [ ] **06.1** `ambit mcp` over stdio, independent of `ambit start`.
-- [ ] **06.2** Five authoring tools, each staging a proposal and saying it was not applied.
-- [ ] **06.3** `get_context` returns an imperative brief with the required framing.
-- [ ] **06.4** `check_scope` calls the stage 02 function against a caller-supplied file list.
-- [ ] **06.5** `update_node_status` writes the status field directly.
-- [ ] **06.6** Release gate: `check_scope` and `ambit check` agree.
+- [x] **06.1** `ambit mcp` over stdio, independent of `ambit start`.
+- [x] **06.2** Five authoring tools, each staging a proposal and saying it was not applied.
+- [x] **06.3** `get_context` returns an imperative brief with the required framing.
+- [x] **06.4** `check_scope` calls the stage 02 function against a caller-supplied file list.
+- [x] **06.5** `update_node_status` writes the status field directly.
+- [x] **06.6** Release gate: `check_scope` and `ambit check` agree.
 - [ ] **06.7** Iterate the brief against Codex, Cursor, and Claude Code, and record what changed.
 
-## Stage 07 — Distribution
+## Stage 07 — Node presentation
 
-[Stage](stages/07-distribution/README.md).
+[Stage](stages/07-node-presentation/README.md). Planned after stage 06; see
+[product-iteration-notes.md](product-iteration-notes.md).
 
-- [ ] **07.1** `react-router build` produces the client bundle the Go build embeds.
-- [ ] **07.2** `ambit start` serves the embedded SPA.
-- [ ] **07.3** Unmatched non-API paths fall back to the SPA entry document.
-- [ ] **07.4** `npx ambit` detects the platform, downloads the binary, and caches it.
-- [ ] **07.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
+- [ ] **07.1** Closed icon registry; optional `icon` on nodes; MCP docs list allowed ids.
+- [ ] **07.2** Closed shape registry; `standard` default; optional `shape`; suggested pairings in docs only.
+- [ ] **07.3** Default node colour from `type`; free-form types get a neutral default.
+- [ ] **07.4** Inspector colour (and shape) picker; optional canonical fields.
+- [ ] **07.5** MCP optional `icon` / `shape` on create/update; colour architect-first unless opened.
+- [ ] **07.6** Contract/docs slice and slice log.
+- [ ] **07.7** Drill affordance: level summaries expose has-children; NodeCard shows hint.
+- [ ] **07.8** Lift/embed hierarchy compression (optional; see decision 0007 — not a gate unless pulled in).
+
+## Stage 08 — Distribution
+
+[Stage](stages/08-distribution/README.md).
+
+- [ ] **08.1** `react-router build` produces the client bundle the Go build embeds.
+- [ ] **08.2** `ambit start` serves the embedded SPA.
+- [ ] **08.3** Unmatched non-API paths fall back to the SPA entry document.
+- [ ] **08.4** `npx ambit` detects the platform, downloads the binary, and caches it.
+- [ ] **08.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
 
 ## Explicitly not v1
 

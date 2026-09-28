@@ -356,7 +356,7 @@ func (idx *Index) stageUpdate(in StageOp, nodes map[NodeID]*Node, material map[N
 		return operation{}, nil, fmt.Errorf("%w: %s already has materialised files in this proposal", ErrBadOperation, in.NodeID)
 	}
 	next := cloneNode(cur)
-	fields, err := applyStageUpdate(next, in.Update, nodes)
+	fields, err := applyStageUpdate(next, in.Update, nodes, idx)
 	if err != nil {
 		return operation{}, nil, err
 	}
@@ -1201,7 +1201,7 @@ func materialise(n *Node) (materialBody, error) {
 	return materialBody{json: raw, md: []byte(n.Spec)}, nil
 }
 
-func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node) ([]string, error) {
+func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Index) ([]string, error) {
 	var fields []string
 	if in.Name != nil {
 		if strings.TrimSpace(*in.Name) == "" {
@@ -1222,11 +1222,7 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node) ([]string
 		fields = append(fields, "spec")
 	}
 	if in.Status != nil {
-		if !validStatus(*in.Status) {
-			return nil, fmt.Errorf("%w: %q (valid: %s)", ErrBadStatus, *in.Status, statusList())
-		}
-		n.Status = *in.Status
-		fields = append(fields, "status")
+		return nil, fmt.Errorf("%w: status must be set with update_node_status, not update_node", ErrBadOperation)
 	}
 	if in.Parent != nil {
 		parent := *in.Parent
@@ -1239,7 +1235,33 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node) ([]string
 			}
 		}
 		n.ParentID = parent
+		if parent != "" {
+			n.RelationshipID = ""
+		}
 		fields = append(fields, "parent_id")
+	}
+	if in.Relationship != nil {
+		rid := *in.Relationship
+		if rid != "" {
+			found := false
+			for _, rel := range idx.Relationships {
+				if rel.ID == rid {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, rid)
+			}
+			if n.ParentID != "" {
+				return nil, ErrContainerConflict
+			}
+		}
+		n.RelationshipID = rid
+		if rid != "" {
+			n.ParentID = ""
+		}
+		fields = append(fields, "relationship_id")
 	}
 	if in.Implementation != nil {
 		n.Implementation = cloneStrings(*in.Implementation)

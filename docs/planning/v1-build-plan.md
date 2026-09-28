@@ -123,9 +123,16 @@ the wording changes.
 same inputs. The contract claims they cannot disagree; that should be enforced by a test
 rather than by intent.
 
-### Stage 07 — Distribution — step 10 — RELEASE GATE
+### Stage 07 — Node presentation — step 10
 
-[Stage README](stages/07-distribution/README.md).
+[Stage README](stages/07-node-presentation/README.md).
+
+Icon registry and optional node colour (architect-first). See
+[decision 0006](../decisions/0006-node-icon-and-color.md).
+
+### Stage 08 — Distribution — step 11 — RELEASE GATE
+
+[Stage README](stages/08-distribution/README.md).
 
 `go:embed` of the static SPA, and the `npx ambit` shim.
 
@@ -139,7 +146,7 @@ rather than by intent.
 3. **Proposal apply atomicity and staleness** (stage 04).
 4. **Relationship interior level** (stage 05).
 5. **`check_scope` / `ambit check` equivalence** (stage 06).
-6. **npx shim checksum verification** (stage 07).
+6. **npx shim checksum verification** (stage 08).
 
 Testing strategy: [decision note 0004](../decisions/0004-testing-strategy.md).
 

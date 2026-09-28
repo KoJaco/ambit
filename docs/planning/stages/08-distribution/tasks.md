@@ -2,7 +2,7 @@
 
 Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 
-## 07.1 Frontend build into the Go build
+## 08.1 Frontend build into the Go build
 
 - [ ]
 
@@ -13,7 +13,7 @@ fails if the client bundle directory is missing. The bundle is the static client
 (`ssr: false`). Dev workflow from stage 03 (Vite against `ambit start`) still works for
 local UI work.
 
-## 07.2 Embed and serve
+## 08.2 Embed and serve
 
 - [ ]
 
@@ -23,7 +23,7 @@ local UI work.
 localhost listener as the API. API paths are unchanged. No Node process is required to
 serve a page.
 
-## 07.3 Client-route fallback
+## 08.3 Client-route fallback
 
 - [ ]
 
@@ -33,7 +33,7 @@ serve a page.
 document, so a browser refresh on a drill-down URL renders the app. A missing API resource
 (unknown node id on an API path) is still a 404 JSON body and is not rewritten into HTML.
 
-## 07.4 npx shim
+## 08.4 npx shim
 
 - [ ]
 
@@ -45,7 +45,7 @@ the cache does not have it, and execs that binary so `init`, `start`, `mcp`, `ch
 `hook install` are the same subcommands as the Go binary. The shim does not stay resident
 as a server. A cache hit does not download again.
 
-## 07.5 Release gate
+## 08.5 Release gate
 
 - [ ]
 

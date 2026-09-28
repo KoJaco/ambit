@@ -43,7 +43,8 @@ Names match the stage directories:
 | `stage/04-review-gate` | [04](stages/04-review-gate/README.md) |
 | `stage/05-relationship-drill` | [05](stages/05-relationship-drill/README.md) |
 | `stage/06-agent-interface` | [06](stages/06-agent-interface/README.md) |
-| `stage/07-distribution` | [07](stages/07-distribution/README.md) |
+| `stage/07-node-presentation` | [07](stages/07-node-presentation/README.md) |
+| `stage/08-distribution` | [08](stages/08-distribution/README.md) |
 
 The next branch is cut from `main` after the merge. Leave stage 02 unstarted until stage 01
 is on `main`. The model and the check are the part worth getting right slowly, and a branch
@@ -96,8 +97,8 @@ at that note.
 Start a stage when its dependency is on `main`. Stage 04 needs stage 03's HTTP server.
 Stage 05 needs stage 04's staging function and the canvas. Stage 06 needs stage 05's
 relationship shape, stage 04's staging function, and stage 02's `CheckScope`. Stage 07
-waits until the subcommands exist. Parallel stage branches would edit `internal/core` twice
-and drift.
+needs the canvas from stage 03. Stage 08 waits until the subcommands exist. Parallel stage
+branches would edit `internal/core` twice and drift.
 
 ## References
 

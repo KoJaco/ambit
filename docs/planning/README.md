@@ -56,9 +56,10 @@ Supporting:
 | [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Done |
 | [03 Architect canvas](stages/03-architect-canvas/README.md) | The architect can see and edit one level at a time | 4–6 | Done |
 | [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Done |
-| [05 Relationship drill](stages/05-relationship-drill/README.md) | Relationships open as their own canvas level | 8 | Not started |
-| [06 Agent interface](stages/06-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 9 | Not started |
-| [07 Distribution](stages/07-distribution/README.md) | One binary, installed without a toolchain | 10 | Not started |
+| [05 Relationship drill](stages/05-relationship-drill/README.md) | Relationships open as their own canvas level | 8 | Done |
+| [06 Agent interface](stages/06-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 9 | In progress |
+| [07 Node presentation](stages/07-node-presentation/README.md) | Icons and colour on the canvas | 10 | Planned |
+| [08 Distribution](stages/08-distribution/README.md) | One binary, installed without a toolchain | 11 | Not started |
 
 ## Current status
 

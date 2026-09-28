@@ -6,7 +6,7 @@ The tools are thin. The brief is not. Do not schedule 06.3 and 06.7 as an aftern
 
 ## 06.1 MCP process
 
-- [ ]
+- [x]
 
 **Touches:** `cmd/ambit`, `internal/mcp`.
 
@@ -17,7 +17,7 @@ gitignore produces the same loud warning as `ambit check`.
 
 ## 06.2 Authoring tools
 
-- [ ]
+- [x]
 
 **Touches:** `internal/mcp`, calling the stage 04 stage function.
 
@@ -33,7 +33,7 @@ stage 05 relationship ids and interiors, not the pre-stage-05 from/to upsert.
 
 ## 06.3 `get_context`
 
-- [ ]
+- [x]
 
 **Touches:** `internal/mcp`, `internal/core` for the brief assembly.
 
@@ -50,7 +50,7 @@ A missing node id errors and names the id.
 
 ## 06.4 `check_scope`
 
-- [ ]
+- [x]
 
 **Touches:** `internal/mcp`.
 
@@ -60,7 +60,7 @@ not read a git diff.
 
 ## 06.5 `update_node_status`
 
-- [ ]
+- [x]
 
 **Touches:** `internal/mcp`, `internal/core`.
 
@@ -71,7 +71,7 @@ and does not change any other field.
 
 ## 06.6 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** a Go test that can invoke both the check command and `CheckScope`.
 

@@ -61,16 +61,19 @@ them modify the canonical model.** Every one of them must say so in its returned
 an agent does not report to its user that a change has been made when it has only been
 proposed.
 
-#### `seed_model(transcript, parent_id?)`
+#### `seed_model(transcript, parent_id?, nodes, relationships?)`
 
 Propose a model from a client transcript. The headline authoring tool: the architect pastes
 or points their harness at a transcript, and the harness produces a set of nodes and
-relationships.
+relationships. ambit does not call a model provider; the harness supplies the graph.
 
 - `transcript` — the transcript text. Required.
-- `parent_id` — optional. When present, the proposed nodes are children of that node,
-  allowing a transcript to seed one branch rather than a whole model. When absent, they are
-  root-level.
+- `parent_id` — optional. When present, proposed nodes without their own `parent_id` or
+  `relationship_id` become children of that node.
+- `nodes` — required array of node payloads (`name`, `type`, optional `parent_id`,
+  `relationship_id`, `implementation`, `scope`, `protected`, `spec`). At least one node.
+- `relationships` — optional array of edges (`from`, `to`, optional `label`, `kind`,
+  optional `relationship_id` when updating an existing edge).
 
 Returns the proposal ID and a summary of what was proposed — node count, names.
 
@@ -78,16 +81,17 @@ This tool exists **only** for transcript-seeded generation. Freeform
 natural-language-to-architecture is explicitly out of scope for v1; see
 [`docs/planning/spec-v1.md`](../planning/spec-v1.md) Section 12.
 
-#### `create_node(name, type, parent_id?, implementation?, scope?, protected?, spec?)`
+#### `create_node(name, type, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?)`
 
 Propose one new node. `spec` is the markdown prose that becomes the node's sibling `.md`.
 The node's `id` is derived from `name` by `ambit-core` at apply time, not supplied by the
-caller.
+caller. Optional `relationship_id` attaches the node to a relationship interior (mutually
+exclusive with `parent_id`).
 
 #### `update_node(node_id, ...fields)`
 
 Propose changes to an existing node. Any subset of mutable fields: `name`, `type`,
-`parent_id`, `implementation`, `scope`, `protected`, `spec`.
+`parent_id`, `relationship_id`, `implementation`, `scope`, `protected`, `spec`.
 
 `id` is immutable and cannot be updated. `status` is not settable here — use
 `update_node_status`.
@@ -98,10 +102,11 @@ Propose deleting a node. Deleting a node with children is rejected at proposal t
 than at apply time, so the agent gets the error while it still has context, instead of the
 architect discovering it at review.
 
-#### `set_relationship(from, to, label?, kind?)`
+#### `set_relationship(from, to, label?, kind?, relationship_id?)`
 
 Propose creating or modifying a cross-cutting relationship. Directed. `kind` is one of
-`sync`, `async`, `data`.
+`sync`, `async`, `data`. Omit `relationship_id` to create a new edge (stage 05 stable ids).
+Provide `relationship_id` to update label/kind on an existing edge.
 
 ---
 
