@@ -2,10 +2,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/KoJaco/ambit/internal/core"
+	"github.com/KoJaco/ambit/internal/mcp"
 	"github.com/KoJaco/ambit/internal/httpapi"
 )
 
@@ -52,6 +55,22 @@ func main() {
 			fmt.Fprintf(os.Stderr, "ambit hook install: %v\n", err)
 			os.Exit(1)
 		}
+	case "mcp":
+		if len(os.Args) > 3 {
+			usage(os.Stderr)
+			os.Exit(1)
+		}
+		dir := "."
+		if len(os.Args) == 3 {
+			dir = os.Args[2]
+		}
+		if err := mcp.Run(context.Background(), dir); err != nil && err != context.Canceled {
+			fmt.Fprintf(os.Stderr, "ambit mcp: %v\n", err)
+			if strings.Contains(err.Error(), ".arch directory is missing") {
+				fmt.Fprintln(os.Stderr, "ambit mcp: run `ambit init` in the project root (or pass the directory: ambit mcp [dir]).")
+			}
+			os.Exit(1)
+		}
 	case "start":
 		addr, err := parseStartArgs(os.Args[2:])
 		if err != nil {
@@ -93,5 +112,5 @@ func parseStartArgs(args []string) (string, error) {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit hook install\n       ambit start [--addr %s]\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
+	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
 }

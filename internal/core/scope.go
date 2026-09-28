@@ -46,11 +46,17 @@ func (e *DanglingAssignmentError) Error() string {
 
 // CheckScope judges files against the index. An empty assignment means no
 // assignment. The function does not call git and does not read or write
-// local.json. The caller must not run Watch on idx.
+// local.json. It is safe to call while Watch runs on idx.
 func CheckScope(assignment NodeID, files []string, idx *Index) ([]FileResult, error) {
 	if idx == nil {
 		return nil, errors.New("no index")
 	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	return checkScopeLocked(assignment, files, idx)
+}
+
+func checkScopeLocked(assignment NodeID, files []string, idx *Index) ([]FileResult, error) {
 	var assigned *Node
 	if assignment != "" {
 		n, ok := idx.Nodes[assignment]
