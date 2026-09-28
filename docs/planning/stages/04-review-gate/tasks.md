@@ -7,7 +7,7 @@ consume core.
 
 ## 04.1 Proposal files
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -20,7 +20,7 @@ is not applied as empty prose.
 
 ## 04.2 Stage function
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -34,7 +34,7 @@ hash of the node they name.
 
 ## 04.3 Staleness
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -46,7 +46,7 @@ case.
 
 ## 04.4 Accept and reject
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -60,7 +60,7 @@ Reject-all marks the rest rejected.
 
 ## 04.5 Resolved proposals
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -90,7 +90,7 @@ refresh the review surface on this kind.
 
 ## 04.8 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` tests.
 

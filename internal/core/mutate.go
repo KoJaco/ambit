@@ -184,7 +184,14 @@ func (idx *Index) Delete(id NodeID) error {
 func (idx *Index) SetRelationship(from, to NodeID, label, kind string) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	if err := idx.setRelationshipLocked(from, to, label, kind); err != nil {
+		return err
+	}
+	return idx.reload()
+}
 
+// setRelationshipLocked updates index.json. Caller holds idx.mu and reloads.
+func (idx *Index) setRelationshipLocked(from, to NodeID, label, kind string) error {
 	if _, ok := idx.Nodes[from]; !ok {
 		return fmt.Errorf("%w: %q", errMissingEndpoint, from)
 	}
@@ -211,7 +218,7 @@ func (idx *Index) SetRelationship(from, to NodeID, label, kind string) error {
 		idx.Relationships = prev
 		return err
 	}
-	return idx.reload()
+	return nil
 }
 
 // SetAssignment writes the active assignment into local.json.

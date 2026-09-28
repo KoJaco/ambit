@@ -26,7 +26,7 @@ These five stop a stage being declared done early. Detail is in
   `git add -A`, and `local.json`, `.arch/.cache/`, `.arch/.proposals/` absent from
   `git status --porcelain`.
 - [x] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
-- [ ] **04.8** Proposal apply atomicity and staleness hash comparison.
+- [x] **04.8** Proposal apply atomicity and staleness hash comparison.
 - [ ] **05.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
 - [ ] **06.5** npx shim checksum verification. The shim does not ship without it.
 
@@ -93,14 +93,14 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/04-review-gate/README.md).
 
-- [ ] **04.1** Read and write a proposal directory: manifest plus materialised node files.
-- [ ] **04.2** Stage a proposal from core, callable by tests before MCP exists.
-- [ ] **04.3** Compute staleness at read time from `base_hash`.
-- [ ] **04.4** Accept and reject per operation; accept is atomic; accept-all skips stale.
-- [ ] **04.5** Remove a proposal once every operation is resolved.
+- [x] **04.1** Read and write a proposal directory: manifest plus materialised node files.
+- [x] **04.2** Stage a proposal from core, callable by tests before MCP exists.
+- [x] **04.3** Compute staleness at read time from `base_hash`.
+- [x] **04.4** Accept and reject per operation; accept is atomic; accept-all skips stale.
+- [x] **04.5** Remove a proposal once every operation is resolved.
 - [ ] **04.6** Proposal HTTP endpoints, including the stale-confirm `409`.
 - [ ] **04.7** SSE event `proposals-changed`.
-- [ ] **04.8** Release gate: apply atomicity and staleness hash comparison.
+- [x] **04.8** Release gate: apply atomicity and staleness hash comparison.
 - [ ] **04.9** Review UI: per-node accept and reject, stale state visually distinct.
 - [ ] **04.10** Vitest on proposal diffing.
 
