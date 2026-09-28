@@ -39,3 +39,24 @@ Completed implementation passes land here. One section per pass. Status stays in
 - **Verified:** `go test ./internal/httpapi/` passes, including the stale 409, accept-all
   skip list, unreadable delete, and two `proposals-changed` events around stage and accept.
   A node edit still does not emit `proposals-changed`.
+
+## 2026-09-28 — Review UI, stage complete
+
+- **Landed:** The review panel hangs on the home overlay, so `/` and `/node/:nodeId` both
+  show it. Each proposal shows its summary, or its source and id, and one compact row per
+  operation from the server diff. Stale rows are visually distinct. A hash mismatch offers
+  "Apply over newer edit", which sends `confirm_stale`. A missing node has no accept
+  control. Accept-all renders the skipped operations from the response. About thirty
+  operations stay a summary plus a short row list. `proposalRows` copies `stale` from the
+  payload and does not compare hashes. Vitest covers create, update, stale update, and
+  `set_relationship`. Tasks 04.1–04.10 are checked. The release gate in 04.8 was already
+  green, so this pass closes the stage.
+- **Deferred:** MCP tools, proposal garbage collection, and the merge to `main`. Stage 05
+  stays uncut until that merge is requested.
+- **Verified:** `npm test` and `npm run typecheck` pass. The manual pass was run once
+  against Vite on `127.0.0.1:5173` with `ambit start` on a scratch model: the panel
+  appeared through `proposals-changed` without a reload, a thirty-operation seed read as a
+  summary and compact rows, an inspector save flipped the matching row to stale, accept-all
+  showed `Skipped scratch (base_hash mismatch)`, confirming that row applied the proposed
+  spec, and an accept plus a reject on a third still-pending operation survived a reload.
+  The scratch model was deleted.

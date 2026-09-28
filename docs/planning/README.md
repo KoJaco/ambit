@@ -55,21 +55,21 @@ Supporting:
 | [01 Canonical model](stages/01-canonical-model/README.md) | A valid `.arch` can be created and mutated | 1–2 | Done |
 | [02 Enforcement](stages/02-enforcement/README.md) | `ambit check` flags work outside the drawn boundary | 3 | Done |
 | [03 Architect canvas](stages/03-architect-canvas/README.md) | The architect can see and edit one level at a time | 4–6 | Done |
-| [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Not started |
+| [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Done |
 | [05 Agent interface](stages/05-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 8 | Not started |
 | [06 Distribution](stages/06-distribution/README.md) | One binary, installed without a toolchain | 9 | Not started |
 
 ## Current status
 
-**Stage 03 done. Merge `stage/03-architect-canvas` to `main` before cutting stage 04.**
+**Stage 04 done. Merge `stage/04-review-gate` to `main` before cutting stage 05.**
 
-The architect can open one drill-down level, edit a node, and keep positions across a
-reload. The manual pass in the stage 03 test plan has been run once. See
-[`workflow.md`](workflow.md).
+A proposal can be staged, listed, and accepted or rejected per operation. Accept-all skips
+a stale operation, and confirming that operation applies it over the newer edit. The manual
+pass was run once against the review panel. See [`workflow.md`](workflow.md).
 
 Stage 03 confirmed nothing invokes `frontend/Dockerfile` or `frontend/.dockerignore` and
 removed them. See [decision note 0001](../decisions/0001-repo-topology.md).
 
 ## Latest slice log
 
-[Stage 01](stages/01-canonical-model/slice-log.md). The gitignore release gate passed.
+[Stage 04](stages/04-review-gate/slice-log.md). The apply-atomicity and staleness release gate passed.

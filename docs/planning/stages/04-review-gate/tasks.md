@@ -99,7 +99,7 @@ The stage is not done without them.
 
 ## 04.9 Review UI
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/`, new review surface. The inventory names it in
 [`frontend-refactor.md`](../03-architect-canvas/frontend-refactor.md).
@@ -113,7 +113,7 @@ not one undifferentiated wall. The client does not compute staleness.
 
 ## 04.10 Proposal diffing tests
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` Vitest.
 

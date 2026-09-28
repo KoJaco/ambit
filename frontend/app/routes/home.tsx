@@ -12,6 +12,7 @@ import { useParams } from "react-router";
 import { subscribeEvents } from "../api";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import ScreenSizeAlert from "../components/ScreenSizeAlert";
+import { ProposalReview } from "../components/proposal-review";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
 export function meta({}: Route.MetaArgs) {
@@ -89,6 +90,7 @@ export default function Home() {
                                 onSaved={() => setRefreshKey((value) => value + 1)}
                             />
                         ) : null}
+                        <ProposalReview refreshKey={refreshKey + proposalRefreshKey} clearRight={selectedId != null} />
                     </div>
                     <ControlBar
                         selectedTool={tool}

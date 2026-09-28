@@ -642,6 +642,17 @@ func TestManualStage(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	ops := make([]StageOp, 30)
+	for i := range ops {
+		ops[i] = StageOp{Op: OpCreateNode, Create: CreateInput{
+			Name: "Seed " + strings.Repeat("n", i+1),
+			Type: "service",
+			Spec: "seed",
+		}}
+	}
+	if _, err := idx.Stage(StageInput{Source: SourceSeedModel, Summary: "thirty services", Ops: ops}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func stageCreate(t *testing.T, idx *Index, name, spec string) string {

@@ -101,8 +101,8 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **04.6** Proposal HTTP endpoints, including the stale-confirm `409`.
 - [x] **04.7** SSE event `proposals-changed`.
 - [x] **04.8** Release gate: apply atomicity and staleness hash comparison.
-- [ ] **04.9** Review UI: per-node accept and reject, stale state visually distinct.
-- [ ] **04.10** Vitest on proposal diffing.
+- [x] **04.9** Review UI: per-node accept and reject, stale state visually distinct.
+- [x] **04.10** Vitest on proposal diffing.
 
 ## Stage 05 — Agent interface
 
