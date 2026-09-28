@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started.
+Complete on branch `stage/05-relationship-drill`.
 
 ## What this stage proves
 

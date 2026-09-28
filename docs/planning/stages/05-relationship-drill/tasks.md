@@ -4,7 +4,7 @@ Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 
 ## 05.1 Identity
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`, `index.json` schema in
 [`arch-model-format.md`](../../../contracts/arch-model-format.md).
@@ -15,7 +15,7 @@ ids load as one relationship each. `set_relationship` no longer upserts solely o
 
 ## 05.2 Interior level
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` query layer.
 
@@ -25,7 +25,7 @@ levels of `from` or `to`. An empty interior is not a level and is not drillable.
 
 ## 05.3 Proposals
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` proposals, [`proposals.md`](../../../contracts/proposals.md).
 
@@ -35,7 +35,7 @@ staleness and rollback rules as node edits.
 
 ## 05.4 HTTP and route
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`, [`local-http-api.md`](../../../contracts/local-http-api.md),
 `frontend/` routes.
@@ -46,7 +46,7 @@ distinct from `/node/:nodeId`. Layout cache keys use the relationship id. SSE
 
 ## 05.5 Canvas drill
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` canvas and navigation,
 [`frontend.md`](../../../architecture/frontend.md).
@@ -56,7 +56,7 @@ returns to the level where the edge was drawn. A label with no interior is not n
 
 ## 05.6 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` test per [`test-plan.md`](test-plan.md).
 
@@ -64,7 +64,7 @@ returns to the level where the edge was drawn. A label with no interior is not n
 
 ## 05.7 Connection points (visual only)
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` React Flow layer, layout cache format.
 
@@ -75,7 +75,7 @@ connection point on that node. Positions persist in `.arch/.cache/layout/` only.
 
 ## 05.8 Review detail clarity
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/components/proposal-review.tsx`,
 `frontend/app/proposal-detail.ts`.

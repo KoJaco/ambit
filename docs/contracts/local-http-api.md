@@ -66,8 +66,19 @@ hard refresh.
 
   A relationship with one endpoint outside that child set is absent from `relationships`.
   It is listed in `crossings` as `node_id`, `direction` (`out` or `in`), `label`, `kind`,
-  and `other_id`. `other_id` is an id string. The response does not include that node, and
-  the client must not invent one.
+  `relationship_id`, `drillable`, and `other_id`. `other_id` is an id string. The response
+  does not include that node, and the client must not invent one.
+
+- **Get a relationship interior** — `GET /levels/relationships/{id}` returns member nodes,
+  relationships among them, crossings, endpoint `context`, and warnings. Unknown id or an
+  empty interior is 404.
+
+- `PUT /relationships` — create when `id` is omitted (returns the new id), or update
+  `label` and `kind` when `id` is set. `from` and `to` are required on create.
+
+- `DELETE /relationships/{id}` — removes the edge and cascades interior members.
+
+  Layout cache key for a relationship level is `_rel_{id}` (not the route path).
 
   **This endpoint must never return the whole graph.** It is the one genuinely
   performance-relevant decision in the architecture: React Flow is fed a level, and
@@ -137,7 +148,8 @@ Event kinds, sent as SSE `event:` names. The client cannot send on this stream.
 Proposal events are not emitted yet.
 
 - `model-changed` — a node file or `index.json` changed on disk, whether from a UI write,
-  an MCP status write, or the architect's editor. `data` is `{ "node_ids": ["…"] }`.
+  an MCP status write, or the architect's editor. `data` is
+  `{ "node_ids": ["…"], "relationship_ids": ["…"] }`.
 - `proposals-changed` — a proposal was staged, resolved, or deleted. Not emitted until the
   review gate. A client built now must ignore event names it does not handle.
 - `integrity-changed` — the warning set changed.
