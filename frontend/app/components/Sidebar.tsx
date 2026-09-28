@@ -25,7 +25,10 @@ export function Sidebar({
         const ac = new AbortController();
         getLevel(undefined, ac.signal)
             .then((level) => setRoots(level.children ?? []))
-            .catch(() => {});
+            .catch((err: unknown) => {
+                if (err instanceof DOMException && err.name === "AbortError") return;
+                setError(err instanceof Error ? err.message : "level request failed");
+            });
         return () => ac.abort();
     }, [nodeId, refreshKey]);
 
@@ -41,7 +44,10 @@ export function Sidebar({
                 setCurrent(level.node);
                 setChildren(level.children ?? []);
             })
-            .catch(() => {});
+            .catch((err: unknown) => {
+                if (err instanceof DOMException && err.name === "AbortError") return;
+                setError(err instanceof Error ? err.message : "level request failed");
+            });
         return () => ac.abort();
     }, [nodeId, refreshKey]);
 
@@ -61,19 +67,19 @@ export function Sidebar({
     return (
         <aside
             className={clsx(
-                "absolute top-0 left-0 z-40 h-screen border-r border-foreground/20 bg-background",
-                collapsed ? "w-12" : "w-64"
+                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-foreground/25 bg-card/95 shadow-sm backdrop-blur",
+                collapsed ? "w-12" : "max-h-full min-h-[25vh] w-64"
             )}
         >
             <button
                 type="button"
-                className="m-2 rounded-md border border-foreground/20 px-2 py-1 text-xs"
+                className="m-2 w-fit rounded-md border border-foreground/20 px-2 py-1 text-xs"
                 onClick={() => setCollapsed((value) => !value)}
             >
                 {collapsed ? ">" : "<"}
             </button>
             {collapsed ? null : (
-                <div className={clsx("flex h-[calc(100%-3rem)] flex-col gap-4 px-3 pb-4 text-sm", styles.sidebarScroll)}>
+                <div className={clsx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4 text-sm", styles.sidebarScroll)}>
                     <section>
                         <h2 className="mb-1 text-xs uppercase tracking-wide text-foreground/60">Roots</h2>
                         <NodeLinks items={roots} currentId={nodeId} />

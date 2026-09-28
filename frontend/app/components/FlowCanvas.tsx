@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+    applyNodeChanges,
     Background,
     MarkerType,
     ReactFlow,
@@ -12,21 +13,72 @@ import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
 import { getLayout, getLevel, layoutCacheKey, putLayout, type Level } from "../api";
 import { layoutLevel, type Point } from "../layout";
-import { NodeCard, type ArchNode, type CrossingMark } from "./NodeCard";
-import NodeInspector from "./node-inspector";
+import { NodeCard, type ArchNode, type ArchNodeData, type CrossingMark } from "./NodeCard";
 
 const nodeTypes = { arch: NodeCard };
+
+function crossingMarks(childId: string, crossings: Level["crossings"]): CrossingMark[] {
+    return (crossings ?? [])
+        .filter((crossing) => crossing.node_id === childId)
+        .map((crossing) => ({
+            direction: crossing.direction,
+            label: crossing.label,
+            otherId: crossing.other_id,
+        }));
+}
+
+function nodeData(child: Level["children"][number], crossings: Level["crossings"]): ArchNodeData {
+    return {
+        name: child.name,
+        type: child.type,
+        status: child.status,
+        protected: child.protected,
+        crossings: crossingMarks(child.id, crossings),
+    };
+}
+
+function buildArchNodes(level: Level, positions: Record<string, Point>): ArchNode[] {
+    return (level.children ?? []).map((child, index) => ({
+        id: child.id,
+        type: "arch",
+        position: positions[child.id] ?? {
+            x: (index % 4) * 280,
+            y: Math.floor(index / 4) * 160,
+        },
+        data: nodeData(child, level.crossings),
+    }));
+}
+
+function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
+    if (
+        left.name !== right.name ||
+        left.type !== right.type ||
+        left.status !== right.status ||
+        left.protected !== right.protected ||
+        left.crossings.length !== right.crossings.length
+    ) {
+        return false;
+    }
+    return left.crossings.every(
+        (mark, index) =>
+            mark.direction === right.crossings[index].direction &&
+            mark.label === right.crossings[index].label &&
+            mark.otherId === right.crossings[index].otherId,
+    );
+}
 
 export default function FlowCanvas({
     nodeId,
     tool,
     refreshKey = 0,
+    onSelectNode,
     onRequestRecenterRef,
     onRequestZoomRef,
 }: {
     nodeId?: string;
     tool: "grab" | "pointer";
     refreshKey?: number;
+    onSelectNode?: (id: string) => void;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
 }) {
@@ -34,12 +86,10 @@ export default function FlowCanvas({
     const { zoomIn, zoomOut, fitView } = useReactFlow();
     const [level, setLevel] = useState<Level | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
-    const [reloadKey, setReloadKey] = useState(0);
-    const [positions, setPositions] = useState<Record<string, Point> | null>(null);
+    const [nodes, setNodes] = useState<ArchNode[]>([]);
     const [fitToken, setFitToken] = useState(0);
-    const positionsRef = useRef<Record<string, Point> | null>(null);
-    positionsRef.current = positions;
+    const nodesRef = useRef(nodes);
+    nodesRef.current = nodes;
 
     useEffect(() => {
         onRequestZoomRef?.({
@@ -60,6 +110,10 @@ export default function FlowCanvas({
         void fitView({ padding: 0.2 });
     }, [fitToken, fitView]);
 
+    useEffect(() => {
+        setNodes([]);
+    }, [nodeId]);
+
     const parentId = level?.node?.id ?? "";
     const childIds = (level?.children ?? []).map((child) => child.id).join("\0");
     const edgeKey = (level?.relationships ?? []).map((rel) => `${rel.from}\0${rel.to}`).join("\n");
@@ -71,7 +125,6 @@ export default function FlowCanvas({
         const key = layoutCacheKey(nodeId);
         const ids = (level.children ?? []).map((child) => child.id);
         const edges = (level.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
-        setPositions(null);
         getLayout(key)
             .then(async (cached) => {
                 if (cancelled) return;
@@ -80,13 +133,13 @@ export default function FlowCanvas({
                     for (const position of cached.positions) {
                         stored[position.id] = { x: position.x, y: position.y };
                     }
-                    setPositions(stored);
+                    setNodes(buildArchNodes(level, stored));
                     setFitToken((value) => value + 1);
                     return;
                 }
                 const laid = await layoutLevel(ids, edges);
                 if (cancelled) return;
-                setPositions(laid);
+                setNodes(buildArchNodes(level, laid));
                 setFitToken((value) => value + 1);
                 await putLayout(key, {
                     positions: ids.map((id) => ({ id, x: laid[id].x, y: laid[id].y })),
@@ -117,34 +170,28 @@ export default function FlowCanvas({
                 setError(err instanceof Error ? err.message : "level request failed");
             });
         return () => ac.abort();
-    }, [nodeId, reloadKey, refreshKey]);
+    }, [nodeId, refreshKey]);
 
-    const nodes = useMemo<ArchNode[]>(() => {
-        const children = level?.children ?? [];
-        const crossings = level?.crossings ?? [];
-        return children.map((child, index) => {
-            const marks: CrossingMark[] = crossings
-                .filter((crossing) => crossing.node_id === child.id)
-                .map((crossing) => ({
-                    direction: crossing.direction,
-                    label: crossing.label,
-                    otherId: crossing.other_id,
-                }));
-            const point = positions?.[child.id];
-            return {
-                id: child.id,
-                type: "arch",
-                position: point ?? { x: (index % 4) * 280, y: Math.floor(index / 4) * 160 },
-                data: {
-                    name: child.name,
-                    type: child.type,
-                    status: child.status,
-                    protected: child.protected,
-                    crossings: marks,
-                },
-            };
+    useEffect(() => {
+        if (!level) return;
+        setNodes((current) => {
+            if (current.length === 0) return current;
+            const children = new Map((level.children ?? []).map((child) => [child.id, child]));
+            let changed = false;
+            const next = current.flatMap((node) => {
+                const child = children.get(node.id);
+                if (!child) {
+                    changed = true;
+                    return [];
+                }
+                const data = nodeData(child, level.crossings);
+                if (sameData(node.data, data)) return [node];
+                changed = true;
+                return [{ ...node, data }];
+            });
+            return changed ? next : current;
         });
-    }, [level, positions]);
+    }, [level]);
 
     const edges = useMemo<Edge[]>(() => {
         return (level?.relationships ?? []).map((rel) => ({
@@ -160,47 +207,36 @@ export default function FlowCanvas({
         navigate(`/node/${node.id}`);
     };
     const onNodeClick: NodeMouseHandler<ArchNode> = (_event, node) => {
-        setSelectedId(node.id);
+        onSelectNode?.(node.id);
     };
 
-    const onNodesChange = (changes: NodeChange<ArchNode>[]) => {
-        setPositions((prev) => {
-            if (!prev) return prev;
-            let next = prev;
-            for (const change of changes) {
-                if (change.type === "position" && change.position) {
-                    if (next === prev) next = { ...prev };
-                    next[change.id] = change.position;
-                }
-            }
-            positionsRef.current = next;
-            return next;
-        });
-    };
+    const onNodesChange = useCallback((changes: NodeChange<ArchNode>[]) => {
+        setNodes((current) => applyNodeChanges(changes, current));
+    }, []);
 
     const onNodeDragStop = (_event: unknown, node: ArchNode) => {
-        const current = { ...(positionsRef.current ?? {}), [node.id]: node.position };
-        positionsRef.current = current;
-        setPositions(current);
         const ids = (level?.children ?? []).map((child) => child.id);
+        const placed = new Map(nodesRef.current.map((item) => [item.id, item.position]));
+        placed.set(node.id, node.position);
         void putLayout(layoutCacheKey(nodeId), {
             positions: ids.map((id) => {
-                const point = id === node.id ? node.position : (current[id] ?? { x: 0, y: 0 });
+                const point = placed.get(id) ?? { x: 0, y: 0 };
                 return { id, x: point.x, y: point.y };
             }),
+        }).catch((err: unknown) => {
+            setError(err instanceof Error ? err.message : "layout save failed");
         });
     };
 
     return (
         <div className="h-screen w-full">
-            <div className="pointer-events-none absolute left-4 top-4 z-40 text-sm text-foreground">
-                {level?.node ? level.node.name : "Model"}
-            </div>
             {error ? (
-                <p className="absolute left-4 top-12 z-40 text-sm text-red-600">{error}</p>
+                <p className="pointer-events-none absolute top-16 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-md border border-red-600/30 bg-background px-3 py-1.5 text-sm text-red-600">
+                    {error}
+                </p>
             ) : null}
             <ReactFlow
-                nodes={positions ? nodes : []}
+                nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
                 onNodesChange={onNodesChange}
@@ -214,13 +250,6 @@ export default function FlowCanvas({
             >
                 <Background />
             </ReactFlow>
-            {selectedId ? (
-                <NodeInspector
-                    nodeId={selectedId}
-                    onClose={() => setSelectedId(null)}
-                    onSaved={() => setReloadKey((value) => value + 1)}
-                />
-            ) : null}
         </div>
     );
 }

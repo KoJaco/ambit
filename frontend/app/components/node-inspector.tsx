@@ -62,7 +62,7 @@ export default function NodeInspector({
         : null;
 
     return (
-        <aside className="absolute top-0 right-0 z-40 flex h-screen w-80 flex-col gap-3 overflow-y-auto border-l border-foreground/20 bg-background p-4 text-sm">
+        <aside className="pointer-events-auto absolute top-0 right-0 flex max-h-full w-80 flex-col gap-3 overflow-y-auto rounded-xl border border-foreground/25 bg-background/95 p-4 text-sm shadow-sm backdrop-blur">
             <div className="flex items-center justify-between">
                 <h2 className="font-semibold">Inspector</h2>
                 <button type="button" className="text-xs" onClick={onClose}>
@@ -95,7 +95,7 @@ export default function NodeInspector({
                             value={node.status}
                             onChange={(event) => setNode({ ...node, status: event.target.value })}
                         >
-                            {STATUSES.map((status) => (
+                            {statusOptions(node.status).map((status) => (
                                 <option key={status} value={status}>
                                     {status}
                                 </option>
@@ -128,13 +128,14 @@ export default function NodeInspector({
                     <p className="font-mono text-xs text-foreground/70">
                         {preview.globs.length > 0 ? preview.globs.join(", ") : "(no globs)"}
                     </p>
-                    <label className="flex items-start gap-2">
+                    <label className="flex items-center gap-2">
                         <input
                             type="checkbox"
+                            className="m-0 size-4 shrink-0"
                             checked={node.protected}
                             onChange={(event) => setNode({ ...node, protected: event.target.checked })}
                         />
-                        <span>Protected applies regardless of assignment.</span>
+                        <span className="leading-none">Protected applies regardless of assignment.</span>
                     </label>
                     <label className="flex flex-col gap-1">
                         Markdown
@@ -158,6 +159,11 @@ export default function NodeInspector({
             ) : null}
         </aside>
     );
+}
+
+function statusOptions(current: string): readonly string[] {
+    if ((STATUSES as readonly string[]).includes(current)) return STATUSES;
+    return [current, ...STATUSES];
 }
 
 function lines(value: string[]): string[] {

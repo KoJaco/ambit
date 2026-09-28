@@ -95,7 +95,6 @@ function ControlBarButton({
 export function ControlBar({
     selectedTool,
     onSelectTool,
-    showRecenter = false,
     onRecenter,
     onZoomOut,
     onZoomIn,
@@ -104,7 +103,6 @@ export function ControlBar({
 }: {
     selectedTool: ControlBarTool;
     onSelectTool: (tool: ControlBarTool) => void;
-    showRecenter?: boolean;
     onRecenter?: () => void;
     onZoomOut?: () => void;
     onZoomIn?: () => void;
@@ -137,7 +135,7 @@ export function ControlBar({
         }
     }
     return (
-        <div className="pointer-events-none fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+        <div className="pointer-events-none flex justify-center">
             <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-foreground/25 bg-background/90 backdrop-blur px-2 py-1.5">
                 {Object.entries(CONTROL_BUTTON_GROUPS).map(
                     ([groupKey, groupButtons], index) => {
@@ -167,16 +165,6 @@ export function ControlBar({
                                             />
                                         );
                                     }
-                                )}
-
-                                {showRecenter && (
-                                    <ControlBarButton
-                                        tool="recenter"
-                                        label="Re-center"
-                                        displayTitle="Re-center"
-                                        selectedTool={selectedTool}
-                                        onClick={() => onRecenter?.()}
-                                    />
                                 )}
                             </div>
                         );
