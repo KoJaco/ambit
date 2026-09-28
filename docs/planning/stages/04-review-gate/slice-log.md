@@ -26,3 +26,16 @@ Completed implementation passes land here. One section per pass. Status stays in
   the last resolution removes the directory; a wrong `manifest_version` and a missing
   `.md` are not applied; `delete_node` of a parent fails at stage time with the child
   count and names.
+
+## 2026-09-28 — Proposal HTTP and proposals-changed
+
+- **Landed:** List, diff, accept, reject, accept-all, reject-all, and delete are on
+  `/proposals`. A stale accept without `confirm_stale` is 409, names the node, and writes
+  nothing. Unreadable proposals are listed and can be deleted. The watcher treats
+  `.arch/.proposals/` separately from the model, and `/events` emits `proposals-changed`
+  with `{}` when a proposal is staged, resolved, or deleted. The client still ignores
+  unknown event names and refreshes proposal state on this one.
+- **Deferred:** the review panel and the Vitest row mapping.
+- **Verified:** `go test ./internal/httpapi/` passes, including the stale 409, accept-all
+  skip list, unreadable delete, and two `proposals-changed` events around stage and accept.
+  A node edit still does not emit `proposals-changed`.

@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,12 +15,14 @@ const watchDebounce = 150 * time.Millisecond
 
 // WatchNotice is one debounced reload. ModelChanged means a node file or
 // index.json changed. NodeIDs are the nodes those paths touched. IntegrityChanged
-// is true only when the warning set changed. Proposal events are not represented.
+// is true only when the warning set changed. ProposalsChanged means a proposal
+// directory was staged, updated, or removed. Proposal paths do not reload the model.
 type WatchNotice struct {
 	Err              error
 	ModelChanged     bool
 	NodeIDs          []NodeID
 	IntegrityChanged bool
+	ProposalsChanged bool
 }
 
 // Watch rebuilds the index through Open when a node file or index.json changes.
@@ -51,6 +54,16 @@ func (idx *Index) WatchNotices(ctx context.Context, onNotice func(WatchNotice)) 
 		watcher.Close()
 		return err
 	}
+	proposals := filepath.Join(arch, ".proposals")
+	if err := os.MkdirAll(proposals, 0o755); err != nil {
+		watcher.Close()
+		return err
+	}
+	if err := watcher.Add(proposals); err != nil {
+		watcher.Close()
+		return err
+	}
+	idx.watchExistingProposals(watcher)
 	go idx.watchLoop(ctx, watcher, onNotice)
 	return nil
 }
@@ -78,6 +91,7 @@ func (idx *Index) watchLoop(ctx context.Context, watcher *fsnotify.Watcher, onNo
 			if !ok {
 				return
 			}
+			idx.watchProposalDir(watcher, ev.Name)
 			if ev.Op == fsnotify.Chmod || !idx.relevantWatch(ev.Name) {
 				continue
 			}
@@ -106,6 +120,18 @@ func (idx *Index) watchLoop(ctx context.Context, watcher *fsnotify.Watcher, onNo
 }
 
 func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
+	model := map[string]struct{}{}
+	proposals := false
+	for path := range paths {
+		if idx.isProposalPath(path) {
+			proposals = true
+			continue
+		}
+		model[path] = struct{}{}
+	}
+	if len(model) == 0 {
+		return WatchNotice{ProposalsChanged: proposals}
+	}
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 	beforeWarn := warningKey(idx.Diagnostics)
@@ -113,11 +139,11 @@ func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
 	beforeRels := append([]Relationship{}, idx.Relationships...)
 	err := idx.reload()
 	if err != nil {
-		return WatchNotice{Err: err}
+		return WatchNotice{Err: err, ProposalsChanged: proposals}
 	}
 	ids := map[NodeID]struct{}{}
 	indexChanged := false
-	for path := range paths {
+	for path := range model {
 		base := filepath.Base(path)
 		if base == "index.json" {
 			indexChanged = true
@@ -137,7 +163,47 @@ func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
 		ModelChanged:     true,
 		NodeIDs:          sortedIDs(ids),
 		IntegrityChanged: warningKey(idx.Diagnostics) != beforeWarn,
+		ProposalsChanged: proposals,
 	}
+}
+
+func (idx *Index) watchExistingProposals(watcher *fsnotify.Watcher) {
+	root := filepath.Join(idx.arch(), ".proposals")
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			idx.watchProposalDir(watcher, filepath.Join(root, entry.Name()))
+		}
+	}
+}
+
+func (idx *Index) watchProposalDir(watcher *fsnotify.Watcher, path string) {
+	path = filepath.Clean(path)
+	if !idx.isProposalPath(path) {
+		return
+	}
+	st, err := os.Stat(path)
+	if err != nil || !st.IsDir() {
+		return
+	}
+	_ = watcher.Add(path)
+	nodes := filepath.Join(path, "nodes")
+	if st, err := os.Stat(nodes); err == nil && st.IsDir() {
+		_ = watcher.Add(nodes)
+	}
+}
+
+func (idx *Index) isProposalPath(path string) bool {
+	root := filepath.Clean(filepath.Join(idx.arch(), ".proposals"))
+	path = filepath.Clean(path)
+	rel, err := filepath.Rel(root, path)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	return true
 }
 
 func affectedByIndex(beforeOrder, afterOrder []NodeID, beforeRels, afterRels []Relationship) []NodeID {
@@ -206,6 +272,9 @@ func (idx *Index) relevantWatch(path string) bool {
 	base := filepath.Base(path)
 	if isScratch(base) {
 		return false
+	}
+	if idx.isProposalPath(path) {
+		return true
 	}
 	arch := filepath.Clean(idx.arch())
 	if base == "index.json" && filepath.Clean(filepath.Dir(path)) == arch {

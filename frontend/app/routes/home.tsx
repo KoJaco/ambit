@@ -26,11 +26,13 @@ export default function Home() {
     const { nodeId } = useParams();
     const [tool, setTool] = useState<ControlBarTool>("grab");
     const [refreshKey, setRefreshKey] = useState(0);
+    const [proposalRefreshKey, setProposalRefreshKey] = useState(0);
     useEffect(
         () =>
             subscribeEvents({
                 onModelChanged: () => setRefreshKey((value) => value + 1),
                 onIntegrityChanged: () => setRefreshKey((value) => value + 1),
+                onProposalsChanged: () => setProposalRefreshKey((value) => value + 1),
             }),
         [],
     );

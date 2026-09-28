@@ -98,8 +98,8 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **04.3** Compute staleness at read time from `base_hash`.
 - [x] **04.4** Accept and reject per operation; accept is atomic; accept-all skips stale.
 - [x] **04.5** Remove a proposal once every operation is resolved.
-- [ ] **04.6** Proposal HTTP endpoints, including the stale-confirm `409`.
-- [ ] **04.7** SSE event `proposals-changed`.
+- [x] **04.6** Proposal HTTP endpoints, including the stale-confirm `409`.
+- [x] **04.7** SSE event `proposals-changed`.
 - [x] **04.8** Release gate: apply atomicity and staleness hash comparison.
 - [ ] **04.9** Review UI: per-node accept and reject, stale state visually distinct.
 - [ ] **04.10** Vitest on proposal diffing.

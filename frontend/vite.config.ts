@@ -13,6 +13,7 @@ export default defineConfig({
       "/relationships": "http://127.0.0.1:8080",
       "/assignment": "http://127.0.0.1:8080",
       "/layout": "http://127.0.0.1:8080",
+      "/proposals": "http://127.0.0.1:8080",
       "/events": {
         target: "http://127.0.0.1:8080",
         changeOrigin: true,

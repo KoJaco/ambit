@@ -100,6 +100,51 @@ func TestIntegrityChangedWhenWarningsChange(t *testing.T) {
 	}
 }
 
+func TestProposalsChangedOnStageAndAccept(t *testing.T) {
+	idx, _ := newModel(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h := newHub(idx)
+	if err := h.start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(routes(idx, h))
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	pid, err := idx.Stage(core.StageInput{
+		Source: core.OpCreateNode,
+		Ops:    []core.StageOp{{Op: core.OpCreateNode, Create: core.CreateInput{Name: "Orders", Type: "service", Spec: "o"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	saw := 0
+	events := collectEvents(t, resp, 4*time.Second, func(name, data string) bool {
+		if name != "proposals-changed" {
+			return false
+		}
+		if data != "{}" {
+			t.Fatalf("payload %s", data)
+		}
+		saw++
+		if saw == 1 {
+			if err := idx.AcceptOperation(pid, 0, false); err != nil {
+				t.Errorf("accept %v", err)
+			}
+			return false
+		}
+		return true
+	})
+	if saw < 2 {
+		t.Fatalf("proposals-changed count %d, events %v", saw, events)
+	}
+}
+
 func collectEvents(t *testing.T, resp *http.Response, wait time.Duration, done func(name, data string) bool) []string {
 	t.Helper()
 	type pair struct {

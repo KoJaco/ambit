@@ -69,7 +69,7 @@ A proposal with any `pending` operation stays, including ones that are only stal
 
 ## 04.6 Proposal HTTP
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
@@ -80,7 +80,7 @@ operation, or rule. Unreadable proposals are listed as such and can be deleted.
 
 ## 04.7 Proposals SSE
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
