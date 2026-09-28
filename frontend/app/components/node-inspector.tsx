@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getNode, updateNode, type NodeDetail } from "../api";
 import { previewScope } from "../scope-preview";
+import { RightRailPanel } from "./right-rail-panel";
 
 const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
 
@@ -8,10 +9,12 @@ export default function NodeInspector({
     nodeId,
     onClose,
     onSaved,
+    onFocus,
 }: {
     nodeId: string;
     onClose: () => void;
     onSaved: () => void;
+    onFocus?: () => void;
 }) {
     const [node, setNode] = useState<NodeDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -55,14 +58,14 @@ export default function NodeInspector({
 
     const preview = node
         ? previewScope({
-              implementation: node.implementation,
-              scope: node.scope,
-              protected: node.protected,
-          })
+            implementation: node.implementation,
+            scope: node.scope,
+            protected: node.protected,
+        })
         : null;
 
     return (
-        <aside className="pointer-events-auto absolute top-0 right-0 flex max-h-full w-80 flex-col gap-3 overflow-y-auto rounded-xl border border-foreground/25 bg-background/95 p-4 text-sm shadow-sm backdrop-blur">
+        <RightRailPanel onPointerDown={() => onFocus?.()}>
             <div className="flex items-center justify-between">
                 <h2 className="font-semibold">Inspector</h2>
                 <button type="button" className="text-xs" onClick={onClose}>
@@ -147,7 +150,7 @@ export default function NodeInspector({
                     </label>
                     <button
                         type="button"
-                        className="rounded border border-foreground/30 px-3 py-1"
+                        className="rounded bg-primary text-primary-foreground px-3 py-1 mt-auto"
                         disabled={saving}
                         onClick={() => {
                             void save();
@@ -157,7 +160,7 @@ export default function NodeInspector({
                     </button>
                 </>
             ) : null}
-        </aside>
+        </RightRailPanel>
     );
 }
 
