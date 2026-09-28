@@ -97,9 +97,21 @@ A test helper stages proposals so apply and the review UI are provable before MC
 
 **Gate:** apply atomicity and staleness hash comparison under test.
 
-### Stage 05 — Agent interface — step 8 — RELEASE GATE
+### Stage 05 — Relationship drill — step 8 — RELEASE GATE
 
-[Stage README](stages/05-agent-interface/README.md).
+[Stage README](stages/05-relationship-drill/README.md).
+
+ADR: [0005](../adr/0005-relationship-drill.md).
+
+Relationships gain stable ids and drillable interiors. Connection-point placement stays in
+the layout cache. MCP waits for stage 06 so authoring tools stage the new shape.
+
+**Gate:** two relationships between the same pair coexist; interior members appear only on
+the relationship level; a relationship with no interior is not drillable.
+
+### Stage 06 — Agent interface — step 9 — RELEASE GATE
+
+[Stage README](stages/06-agent-interface/README.md).
 
 Contract: [`mcp-tools.md`](../contracts/mcp-tools.md).
 
@@ -111,9 +123,9 @@ the wording changes.
 same inputs. The contract claims they cannot disagree; that should be enforced by a test
 rather than by intent.
 
-### Stage 06 — Distribution — step 9 — RELEASE GATE
+### Stage 07 — Distribution — step 10 — RELEASE GATE
 
-[Stage README](stages/06-distribution/README.md).
+[Stage README](stages/07-distribution/README.md).
 
 `go:embed` of the static SPA, and the `npx ambit` shim.
 
@@ -125,8 +137,9 @@ rather than by intent.
    `git add -A`, asserting absence from `git status --porcelain`.
 2. **Enforcement unit coverage** (stage 02) — glob matching, `protected`, unmapped-file rules.
 3. **Proposal apply atomicity and staleness** (stage 04).
-4. **`check_scope` / `ambit check` equivalence** (stage 05).
-5. **npx shim checksum verification** (stage 06).
+4. **Relationship interior level** (stage 05).
+5. **`check_scope` / `ambit check` equivalence** (stage 06).
+6. **npx shim checksum verification** (stage 07).
 
 Testing strategy: [decision note 0004](../decisions/0004-testing-strategy.md).
 

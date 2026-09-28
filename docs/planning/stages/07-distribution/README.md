@@ -1,4 +1,4 @@
-# Stage 06 — Distribution
+# Stage 07 — Distribution
 
 ## Status
 
@@ -11,12 +11,12 @@ API are one binary. The npx shim will not run a binary it has not checksummed.
 
 ## Build-plan steps
 
-Step 9. Ordering: [`v1-build-plan.md`](../../v1-build-plan.md).
+Step 10. Ordering: [`v1-build-plan.md`](../../v1-build-plan.md).
 
 ## Depends on
 
 [Stage 03](../03-architect-canvas/README.md) for a SPA that can be built, and
-[stage 05](../05-agent-interface/README.md) if the binary is meant to include `ambit mcp`.
+[stage 06](../06-agent-interface/README.md) if the binary is meant to include `ambit mcp`.
 The embed itself only needs the frontend build. Shipping a downloadable binary that is
 missing MCP would be a broken release, so this stage waits until the subcommands exist.
 
@@ -43,7 +43,7 @@ Distribution shape: [ADR-0003](../../../adr/0003-runtime-and-distribution.md).
 
 ## Release gate
 
-Task 06.5. A test feeds the shim a binary and a checksum that does not match, and the shim
+Task 07.5. A test feeds the shim a binary and a checksum that does not match, and the shim
 refuses to execute it. A matching checksum is allowed to proceed. The shim does not ship
 with this test failing or skipped.
 

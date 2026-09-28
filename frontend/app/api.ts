@@ -148,12 +148,120 @@ export function putLayout(key: string, layout: Layout): Promise<Layout> {
     });
 }
 
+export type ProposalSummary = {
+    proposal_id: string;
+    created_at?: string;
+    source?: string;
+    summary?: string;
+    unreadable: boolean;
+    error?: string;
+    operations?: OpSummary[];
+};
+
+export type OpSummary = {
+    index: number;
+    op: string;
+    node_id: string;
+    status: string;
+    stale: boolean;
+    stale_reason?: string;
+    fields?: string[];
+};
+
+export type NodeSnapshot = {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    parent_id?: string;
+    implementation: string[];
+    scope: string[];
+    protected: boolean;
+    markdown: string;
+};
+
+export type RelSnapshot = {
+    from: string;
+    to: string;
+    label: string;
+    kind: string;
+};
+
+export type OpDiff = {
+    index: number;
+    op: string;
+    node_id: string;
+    status: string;
+    stale: boolean;
+    stale_reason?: string;
+    fields?: string[];
+    current: NodeSnapshot | null;
+    proposed: NodeSnapshot | null;
+    relationship: RelSnapshot | null;
+    current_relationship: RelSnapshot | null;
+    error?: string;
+};
+
+export type ProposalDiff = {
+    proposal_id: string;
+    created_at: string;
+    source: string;
+    summary?: string;
+    operations: OpDiff[];
+};
+
+export type SkippedOp = {
+    index: number;
+    op: string;
+    node_id: string;
+    reason: string;
+};
+
+export type AcceptAllResult = {
+    applied: number[];
+    skipped: SkippedOp[];
+    failed: { index: number; op: string; node_id: string; error: string }[];
+};
+
+export function listProposals(): Promise<{ proposals: ProposalSummary[] }> {
+    return send("/proposals");
+}
+
+export function getProposal(id: string): Promise<ProposalDiff> {
+    return send(`/proposals/${encodeURIComponent(id)}`);
+}
+
+export function acceptOperation(id: string, index: number, confirmStale = false): Promise<void> {
+    return send(`/proposals/${encodeURIComponent(id)}/operations/${index}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm_stale: confirmStale }),
+    });
+}
+
+export function rejectOperation(id: string, index: number): Promise<void> {
+    return send(`/proposals/${encodeURIComponent(id)}/operations/${index}/reject`, { method: "POST" });
+}
+
+export function acceptAll(id: string): Promise<AcceptAllResult> {
+    return send(`/proposals/${encodeURIComponent(id)}/accept`, { method: "POST" });
+}
+
+export function rejectAll(id: string): Promise<void> {
+    return send(`/proposals/${encodeURIComponent(id)}/reject`, { method: "POST" });
+}
+
+export function deleteProposal(id: string): Promise<void> {
+    return send(`/proposals/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export type EventHandlers = {
     onModelChanged: (nodeIds: string[]) => void;
     onIntegrityChanged: () => void;
+    onProposalsChanged: () => void;
 };
 
-// Unknown event names are ignored so a later proposals-changed event is a no-op here.
+// Unknown event names are ignored. proposals-changed refreshes the review surface only.
 export function dispatchEvent(name: string, data: string, handlers: EventHandlers) {
     if (name === "model-changed") {
         const parsed = JSON.parse(data) as { node_ids?: string[] };
@@ -162,6 +270,10 @@ export function dispatchEvent(name: string, data: string, handlers: EventHandler
     }
     if (name === "integrity-changed") {
         handlers.onIntegrityChanged();
+        return;
+    }
+    if (name === "proposals-changed") {
+        handlers.onProposalsChanged();
     }
 }
 
@@ -169,11 +281,14 @@ export function subscribeEvents(handlers: EventHandlers): () => void {
     const source = new EventSource("/events");
     const onModel = (event: MessageEvent) => dispatchEvent("model-changed", event.data, handlers);
     const onIntegrity = (event: MessageEvent) => dispatchEvent("integrity-changed", event.data, handlers);
+    const onProposals = (event: MessageEvent) => dispatchEvent("proposals-changed", event.data, handlers);
     source.addEventListener("model-changed", onModel);
     source.addEventListener("integrity-changed", onIntegrity);
+    source.addEventListener("proposals-changed", onProposals);
     return () => {
         source.removeEventListener("model-changed", onModel);
         source.removeEventListener("integrity-changed", onIntegrity);
+        source.removeEventListener("proposals-changed", onProposals);
         source.close();
     };
 }

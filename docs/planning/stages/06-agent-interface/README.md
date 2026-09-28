@@ -1,4 +1,4 @@
-# Stage 05 — Agent interface
+# Stage 06 — Agent interface
 
 ## Status
 
@@ -12,13 +12,15 @@ and without an authoring tool writing straight into `.arch/nodes/`.
 
 ## Build-plan steps
 
-Step 8. Ordering: [`v1-build-plan.md`](../../v1-build-plan.md).
+Step 9. Ordering: [`v1-build-plan.md`](../../v1-build-plan.md).
 
 ## Depends on
 
-[Stage 04](../04-review-gate/README.md) for the staging function, and
-[stage 02](../02-enforcement/README.md) for `CheckScope`. The MCP process loads `.arch`
-itself. It does not proxy through the HTTP server.
+[Stage 04](../04-review-gate/README.md) for the staging function,
+[stage 05](../05-relationship-drill/README.md) for relationship identity and interiors
+(MCP must stage the new shape), and [stage 02](../02-enforcement/README.md) for
+`CheckScope`. The MCP process loads `.arch` itself. It does not proxy through the HTTP
+server.
 
 ## In scope
 
@@ -40,7 +42,7 @@ itself. It does not proxy through the HTTP server.
 
 ## Release gate
 
-Task 05.6. One test builds a fixture, runs `ambit check` against a diff that contains a
+Task 06.6. One test builds a fixture, runs `ambit check` against a diff that contains a
 known file list, runs `check_scope` for the same assignment and the same list, and asserts
 the verdicts match node-for-node and rule-for-rule.
 

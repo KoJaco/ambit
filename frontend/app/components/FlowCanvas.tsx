@@ -229,7 +229,7 @@ export default function FlowCanvas({
     };
 
     return (
-        <div className="h-screen w-full">
+        <div className="h-full w-full">
             {error ? (
                 <p className="pointer-events-none absolute top-16 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-md border border-red-600/30 bg-background px-3 py-1.5 text-sm text-red-600">
                     {error}

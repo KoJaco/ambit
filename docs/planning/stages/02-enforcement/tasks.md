@@ -12,7 +12,7 @@ Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 and returns a per-file verdict. Empty or absent `scope` is evaluated as `implementation`.
 `protected` on the node that owns a file rejects the file even when that node is the
 assignment. A file matching more than one node's `implementation` considers every match.
-The function does not shell out to git. Stage 05's MCP tool and this stage's CLI both call
+The function does not shell out to git. Stage 06's MCP tool and this stage's CLI both call
 it.
 
 ## 02.2 Diff mapping

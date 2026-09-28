@@ -150,7 +150,7 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 func writeAPIError(w http.ResponseWriter, err error) {
 	code := http.StatusInternalServerError
 	switch {
-	case errors.Is(err, core.ErrNotFound):
+	case errors.Is(err, core.ErrNotFound), errors.Is(err, core.ErrProposalNotFound):
 		code = http.StatusNotFound
 	case errors.Is(err, core.ErrCycle),
 		errors.Is(err, core.ErrHasChildren),
@@ -160,9 +160,12 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrMissingEndpoint),
 		errors.Is(err, core.ErrMissingParent),
 		errors.Is(err, core.ErrEmptyName),
-		errors.Is(err, core.ErrEmptyType):
+		errors.Is(err, core.ErrEmptyType),
+		errors.Is(err, core.ErrStale),
+		errors.Is(err, core.ErrUnreadableProposal),
+		errors.Is(err, core.ErrExists):
 		code = http.StatusConflict
-	case errors.Is(err, core.ErrInvalidLayoutKey):
+	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation):
 		code = http.StatusBadRequest
 	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})

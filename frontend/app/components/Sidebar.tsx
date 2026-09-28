@@ -68,12 +68,12 @@ export function Sidebar({
         <aside
             className={clsx(
                 "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-foreground/25 bg-card/95 shadow-sm backdrop-blur",
-                collapsed ? "w-12" : "max-h-full min-h-[25vh] w-64"
+                collapsed ? "w-10" : "max-h-full min-h-[25vh] w-64"
             )}
         >
             <button
                 type="button"
-                className="m-2 w-fit rounded-md border border-foreground/20 px-2 py-1 text-xs"
+                className="ml-2 my-2 w-fit rounded-full border border-foreground/20 bg-primary/10 text-primary px-2 py-1 text-xs"
                 onClick={() => setCollapsed((value) => !value)}
             >
                 {collapsed ? ">" : "<"}
@@ -113,7 +113,7 @@ export function Sidebar({
                             onChange={(event) => setType(event.target.value)}
                         />
                         {error ? <p className="text-xs text-red-600">{error}</p> : null}
-                        <button type="submit" className="rounded border border-foreground/30 px-2 py-1">
+                        <button type="submit" className="rounded bg-primary text-primary-foreground px-2 py-1">
                             Create
                         </button>
                     </form>

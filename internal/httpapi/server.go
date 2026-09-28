@@ -29,6 +29,13 @@ func routes(idx *core.Index, h *hub) http.Handler {
 	mux.HandleFunc("GET /layout/{key}", getLayout(idx))
 	mux.HandleFunc("PUT /layout/{key}", putLayout(idx))
 	mux.HandleFunc("GET /integrity", getIntegrity(idx))
+	mux.HandleFunc("GET /proposals", getProposals(idx))
+	mux.HandleFunc("GET /proposals/{id}", getProposal(idx))
+	mux.HandleFunc("POST /proposals/{id}/operations/{index}/accept", postAcceptOperation(idx))
+	mux.HandleFunc("POST /proposals/{id}/operations/{index}/reject", postRejectOperation(idx))
+	mux.HandleFunc("POST /proposals/{id}/accept", postAcceptAll(idx))
+	mux.HandleFunc("POST /proposals/{id}/reject", postRejectAll(idx))
+	mux.HandleFunc("DELETE /proposals/{id}", deleteProposal(idx))
 	mux.HandleFunc("GET /events", getEvents(h))
 	return mux
 }

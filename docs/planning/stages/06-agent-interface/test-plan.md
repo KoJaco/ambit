@@ -1,9 +1,9 @@
-# Stage 05 test plan
+# Stage 06 test plan
 
 Tool behaviour is Go. The brief's effect on a harness is a written note, not an automated
 test. Decision: [0004](../../../decisions/0004-testing-strategy.md).
 
-## Release gate — task 05.6
+## Release gate — task 06.6
 
 One fixture model, one assignment, one file list that mixes an allowed path, a protected
 path, and an unmapped path.
@@ -28,11 +28,11 @@ path, and an unmapped path.
   id and does not suggest a neighbour.
 - `get_context` output contains the assigned scope globs as literal strings, contains the
   protected sibling's path or name, and contains the instruction to call `check_scope`.
-  This pins the required framing. It does not pin prose that task 05.7 is expected to tune;
+  This pins the required framing. It does not pin prose that task 06.7 is expected to tune;
   keep the assertion on the obligations, not on a full snapshot of the paragraph, unless a
   snapshot is the only practical way to stop the obligations being dropped.
 
-## Manual — task 05.7
+## Manual — task 06.7
 
 For each of Codex, Cursor, and Claude Code:
 
@@ -46,6 +46,6 @@ For each of Codex, Cursor, and Claude Code:
 
 ## Not in this stage
 
-- A test that the brief reduces violations in the wild. That is what 05.7 observes, and it
+- A test that the brief reduces violations in the wild. That is what 06.7 observes, and it
   is not a pass/fail gate.
 - Rate limiting `check_scope`.

@@ -113,7 +113,7 @@ The layered enforcement argument holds regardless — the backstop stays mandato
 but the framing's effectiveness determines how often the backstop fires and therefore how
 much the architect has to do by hand.
 
-**Trigger for revisit:** continuously during [stage 05](stages/05-agent-interface/README.md),
+**Trigger for revisit:** continuously during [stage 06](stages/06-agent-interface/README.md),
 and after real client work. Record what was learned when the wording changes, in
 [`docs/decisions/`](../decisions/).
 

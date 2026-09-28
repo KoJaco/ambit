@@ -7,7 +7,7 @@ consume core.
 
 ## 04.1 Proposal files
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -20,7 +20,7 @@ is not applied as empty prose.
 
 ## 04.2 Stage function
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -34,7 +34,7 @@ hash of the node they name.
 
 ## 04.3 Staleness
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -46,7 +46,7 @@ case.
 
 ## 04.4 Accept and reject
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -60,7 +60,7 @@ Reject-all marks the rest rejected.
 
 ## 04.5 Resolved proposals
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core`.
 
@@ -69,7 +69,7 @@ A proposal with any `pending` operation stays, including ones that are only stal
 
 ## 04.6 Proposal HTTP
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
@@ -80,7 +80,7 @@ operation, or rule. Unreadable proposals are listed as such and can be deleted.
 
 ## 04.7 Proposals SSE
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
@@ -90,7 +90,7 @@ refresh the review surface on this kind.
 
 ## 04.8 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core` tests.
 
@@ -99,7 +99,7 @@ The stage is not done without them.
 
 ## 04.9 Review UI
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/`, new review surface. The inventory names it in
 [`frontend-refactor.md`](../03-architect-canvas/frontend-refactor.md).
@@ -113,7 +113,7 @@ not one undifferentiated wall. The client does not compute staleness.
 
 ## 04.10 Proposal diffing tests
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` Vitest.
 

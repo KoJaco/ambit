@@ -30,17 +30,22 @@ const schemaVersion = 1
 
 var (
 	// Validation sentinels. HTTP maps these; it does not reimplement the rules.
-	ErrCycle            = errors.New("hierarchy cycle")
-	ErrNotFound         = errors.New("node not found")
-	ErrHasChildren      = errors.New("node has children")
-	ErrNoSlug           = errors.New("name has no slug")
-	ErrBadStatus        = errors.New("invalid status")
-	ErrBadKind          = errors.New("invalid relationship kind")
-	ErrMissingEndpoint  = errors.New("relationship endpoint does not exist")
-	ErrMissingParent    = errors.New("parent does not exist")
-	ErrEmptyName        = errors.New("name must be non-empty")
-	ErrEmptyType        = errors.New("type must be non-empty")
-	ErrInvalidLayoutKey = errors.New("invalid layout key")
+	ErrCycle              = errors.New("hierarchy cycle")
+	ErrNotFound           = errors.New("node not found")
+	ErrHasChildren        = errors.New("node has children")
+	ErrNoSlug             = errors.New("name has no slug")
+	ErrBadStatus          = errors.New("invalid status")
+	ErrBadKind            = errors.New("invalid relationship kind")
+	ErrMissingEndpoint    = errors.New("relationship endpoint does not exist")
+	ErrMissingParent      = errors.New("parent does not exist")
+	ErrEmptyName          = errors.New("name must be non-empty")
+	ErrEmptyType          = errors.New("type must be non-empty")
+	ErrInvalidLayoutKey   = errors.New("invalid layout key")
+	ErrStale              = errors.New("stale operation")
+	ErrProposalNotFound   = errors.New("proposal not found")
+	ErrUnreadableProposal = errors.New("unreadable proposal")
+	ErrBadOperation       = errors.New("invalid operation")
+	ErrExists             = errors.New("node already exists")
 
 	errCycle           = ErrCycle
 	errNotFound        = ErrNotFound

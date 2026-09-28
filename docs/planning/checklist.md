@@ -13,22 +13,23 @@ not replace these boxes.
 ## How to use this
 
 Work the stages in order. A stage is done when every task in it is checked and, where the
-stage has a release gate, that gate's test passes. Task 05.7 is the exception: brief
-iteration continues after the other stage 05 tasks and does not hold the equivalence gate.
+stage has a release gate, that gate's test passes. Task 06.7 is the exception: brief
+iteration continues after the other stage 06 tasks and does not hold the equivalence gate.
 Gates are also listed on their own below so they can be read without scanning the whole list.
 
 ## Release gates
 
-These five stop a stage being declared done early. Detail is in
+These six stop a stage being declared done early. Detail is in
 [`v1-build-plan.md`](v1-build-plan.md).
 
 - [x] **01.9** `.gitignore` integration test — real `ambit init`, real `git init`, real
   `git add -A`, and `local.json`, `.arch/.cache/`, `.arch/.proposals/` absent from
   `git status --porcelain`.
 - [x] **02.8** Enforcement unit coverage — glob matching, `protected`, unmapped-file rules.
-- [ ] **04.8** Proposal apply atomicity and staleness hash comparison.
-- [ ] **05.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
-- [ ] **06.5** npx shim checksum verification. The shim does not ship without it.
+- [x] **04.8** Proposal apply atomicity and staleness hash comparison.
+- [ ] **05.6** Relationship interior level — duplicate edges, members scoped to the edge.
+- [ ] **06.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
+- [ ] **07.5** npx shim checksum verification. The shim does not ship without it.
 
 ## Stage 00 — Foundation
 
@@ -93,38 +94,51 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/04-review-gate/README.md).
 
-- [ ] **04.1** Read and write a proposal directory: manifest plus materialised node files.
-- [ ] **04.2** Stage a proposal from core, callable by tests before MCP exists.
-- [ ] **04.3** Compute staleness at read time from `base_hash`.
-- [ ] **04.4** Accept and reject per operation; accept is atomic; accept-all skips stale.
-- [ ] **04.5** Remove a proposal once every operation is resolved.
-- [ ] **04.6** Proposal HTTP endpoints, including the stale-confirm `409`.
-- [ ] **04.7** SSE event `proposals-changed`.
-- [ ] **04.8** Release gate: apply atomicity and staleness hash comparison.
-- [ ] **04.9** Review UI: per-node accept and reject, stale state visually distinct.
-- [ ] **04.10** Vitest on proposal diffing.
+- [x] **04.1** Read and write a proposal directory: manifest plus materialised node files.
+- [x] **04.2** Stage a proposal from core, callable by tests before MCP exists.
+- [x] **04.3** Compute staleness at read time from `base_hash`.
+- [x] **04.4** Accept and reject per operation; accept is atomic; accept-all skips stale.
+- [x] **04.5** Remove a proposal once every operation is resolved.
+- [x] **04.6** Proposal HTTP endpoints, including the stale-confirm `409`.
+- [x] **04.7** SSE event `proposals-changed`.
+- [x] **04.8** Release gate: apply atomicity and staleness hash comparison.
+- [x] **04.9** Review UI: per-node accept and reject, stale state visually distinct.
+- [x] **04.10** Vitest on proposal diffing.
 
-## Stage 05 — Agent interface
+## Stage 05 — Relationship drill
 
-[Stage](stages/05-agent-interface/README.md).
+[Stage](stages/05-relationship-drill/README.md).
 
-- [ ] **05.1** `ambit mcp` over stdio, independent of `ambit start`.
-- [ ] **05.2** Five authoring tools, each staging a proposal and saying it was not applied.
-- [ ] **05.3** `get_context` returns an imperative brief with the required framing.
-- [ ] **05.4** `check_scope` calls the stage 02 function against a caller-supplied file list.
-- [ ] **05.5** `update_node_status` writes the status field directly.
-- [ ] **05.6** Release gate: `check_scope` and `ambit check` agree.
-- [ ] **05.7** Iterate the brief against Codex, Cursor, and Claude Code, and record what changed.
+- [ ] **05.1** Stable relationship ids; multiple edges between the same pair.
+- [ ] **05.2** Interior level query; members not on endpoint parent levels.
+- [ ] **05.3** Proposals stage and accept relationship interiors atomically.
+- [ ] **05.4** HTTP relationship level, client route, layout cache key, SSE.
+- [ ] **05.5** Canvas drill on labels with an interior.
+- [ ] **05.6** Release gate: interior level and duplicate-edge test.
+- [ ] **05.7** Connection points and edge-side drag (layout cache only).
+- [ ] **05.8** Review operation detail visual clarity pass.
 
-## Stage 06 — Distribution
+## Stage 06 — Agent interface
 
-[Stage](stages/06-distribution/README.md).
+[Stage](stages/06-agent-interface/README.md).
 
-- [ ] **06.1** `react-router build` produces the client bundle the Go build embeds.
-- [ ] **06.2** `ambit start` serves the embedded SPA.
-- [ ] **06.3** Unmatched non-API paths fall back to the SPA entry document.
-- [ ] **06.4** `npx ambit` detects the platform, downloads the binary, and caches it.
-- [ ] **06.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
+- [ ] **06.1** `ambit mcp` over stdio, independent of `ambit start`.
+- [ ] **06.2** Five authoring tools, each staging a proposal and saying it was not applied.
+- [ ] **06.3** `get_context` returns an imperative brief with the required framing.
+- [ ] **06.4** `check_scope` calls the stage 02 function against a caller-supplied file list.
+- [ ] **06.5** `update_node_status` writes the status field directly.
+- [ ] **06.6** Release gate: `check_scope` and `ambit check` agree.
+- [ ] **06.7** Iterate the brief against Codex, Cursor, and Claude Code, and record what changed.
+
+## Stage 07 — Distribution
+
+[Stage](stages/07-distribution/README.md).
+
+- [ ] **07.1** `react-router build` produces the client bundle the Go build embeds.
+- [ ] **07.2** `ambit start` serves the embedded SPA.
+- [ ] **07.3** Unmatched non-API paths fall back to the SPA entry document.
+- [ ] **07.4** `npx ambit` detects the platform, downloads the binary, and caches it.
+- [ ] **07.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
 
 ## Explicitly not v1
 

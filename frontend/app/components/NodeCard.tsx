@@ -23,7 +23,7 @@ export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
             className={clsx(
                 "min-w-48 rounded-lg border bg-card shadow-sm select-none",
                 selected
-                    ? "border-none shadow-xl ring-2 ring-offset-2"
+                    ? "border-foreground border-2 shadow-xl ring-primary"
                     : "border-foreground/25"
             )}
         >

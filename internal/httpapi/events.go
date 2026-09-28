@@ -69,20 +69,31 @@ func getEvents(h *hub) http.HandlerFunc {
 			case <-ctx.Done():
 				return
 			case n := <-ch:
-				if n.Err != nil || !n.ModelChanged && !n.IntegrityChanged {
+				if n.Err != nil {
 					continue
 				}
+				wrote := false
 				if n.ModelChanged {
 					if err := writeSSE(w, "model-changed", map[string]any{"node_ids": nodeIDStrings(n.NodeIDs)}); err != nil {
 						return
 					}
+					wrote = true
 				}
 				if n.IntegrityChanged {
 					if err := writeSSE(w, "integrity-changed", map[string]any{}); err != nil {
 						return
 					}
+					wrote = true
 				}
-				flusher.Flush()
+				if n.ProposalsChanged {
+					if err := writeSSE(w, "proposals-changed", map[string]any{}); err != nil {
+						return
+					}
+					wrote = true
+				}
+				if wrote {
+					flusher.Flush()
+				}
 			}
 		}
 	}
