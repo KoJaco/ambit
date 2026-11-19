@@ -73,7 +73,8 @@ proposal's age is obvious at a glance.
 - `proposal_id` — matching the directory name.
 - `created_at` — ISO 8601 timestamp.
 - `source` — which MCP tool produced this (`seed_model`, `create_node`, `update_node`,
-  `delete_node`, `set_relationship`).
+  `delete_node`, `set_relationship`, `group_nodes`, `ungroup_node`, `reparent_node`; the last
+  three come from the canvas via `POST /proposals/group|ungroup|reparent`).
 - `operations` — ordered list of operations.
 
 #### Optional fields

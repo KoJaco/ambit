@@ -1,6 +1,6 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
-import { ChevronDown, ChevronRight, Lock } from "lucide-react";
+import { ChevronDown, ChevronRight, Lock, Ungroup } from "lucide-react";
 import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
 import { summaryText } from "../level-view";
@@ -37,6 +37,8 @@ export type ArchNodeData = {
     expanded?: boolean;
     // Stable callback from the canvas; toggles group/summary for one node.
     onToggleMode?: (id: string) => void;
+    // Opens the ungroup form for a group (summary card or container header).
+    onUngroup?: (id: string) => void;
 };
 
 export type ArchNode = Node<ArchNodeData, CanvasNodeType>;
@@ -156,6 +158,21 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                                 onDoubleClick={(event) => event.stopPropagation()}
                             >
                                 <ChevronDown className="size-4" aria-hidden />
+                            </button>
+                        ) : null}
+                        {data.onUngroup ? (
+                            <button
+                                type="button"
+                                aria-label={`Ungroup ${data.name}`}
+                                title="Ungroup"
+                                className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    data.onUngroup?.(id);
+                                }}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                            >
+                                <Ungroup className="size-4" aria-hidden />
                             </button>
                         ) : null}
                         <span className="flex items-center font-medium" aria-hidden title="Double-click to open">

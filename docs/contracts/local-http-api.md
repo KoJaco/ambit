@@ -158,9 +158,9 @@ group is open). Each expanded set therefore has its own file, and positions of g
 are relative to their group. The `~` suffix is the client's convention; the server treats the
 key as opaque.
 
-Create, delete, and reparent remove only the base key, so `<key>~<hash>` files can outlive a
-structural change. The client therefore uses a cached layout only when it has a position for
-every visible node and no others, and lays the level out again otherwise.
+Create, delete, and reparent remove the base key and every `<key>~*` variant file for that
+level (exact prefix match `<key>~` inside the layout directory only). The client still uses a
+cached layout only when it has a position for every visible node and no others, as a safety net.
 
 The stored `Layout` is typed (`positions`, `ports`, `attachments`) and has no field for view
 modes, so the group/summary view modes are not stored here. The client keeps them in browser
@@ -169,7 +169,7 @@ modes, so the group/summary view modes are not stored here. The client keeps the
 
 Layout writes touch only `.arch/.cache/layout/`. They never write to the canonical model,
 which has no coordinates by design. Create, delete, and reparent delete that level's cache
-file so the client recomputes. A field edit does not.
+file and its `~<hash>` variants so the client recomputes. A field edit does not.
 
 ### Proposals
 

@@ -21,11 +21,24 @@ import {
     putLayout,
     relationshipDrillId,
     saveViewModes,
+    stageGroup,
+    stageReparent,
+    stageUngroup,
     type Level,
     type Relationship,
     type RelationshipLevel,
     type SchemaColumn,
 } from "../api";
+import {
+    containerAt,
+    defaultGroupName,
+    groupableSelection,
+    groupButtonLabel,
+    stageErrorMessage,
+    stagedMessage,
+    type Rect,
+} from "../canvas-structure";
+import { StructurePanel, type StructureRequest } from "./structure-panel";
 import { canvasEdgeType, canvasNodeType, nodeLayoutSize } from "../canvas-presentation";
 import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
 import {
@@ -76,6 +89,7 @@ function nodeData(
     child: SummaryLike,
     crossings: Level["crossings"],
     onToggleMode?: (id: string) => void,
+    onUngroup?: (id: string) => void,
 ): ArchNodeData {
     return {
         name: child.name,
@@ -92,6 +106,7 @@ function nodeData(
         internalRelCount: child.internal_rel_count,
         expanded: child.expanded,
         onToggleMode,
+        onUngroup: (child.child_count ?? 0) > 0 ? onUngroup : undefined,
     };
 }
 
@@ -117,6 +132,7 @@ function buildArchNodes(
     positions: Record<string, Point>,
     groupSizes: Record<string, NodeSize>,
     onToggleMode?: (id: string) => void,
+    onUngroup?: (id: string) => void,
 ): ArchNode[] {
     const children = level.children ?? [];
     const present = new Set(children.map((child) => child.id));
@@ -136,7 +152,7 @@ function buildArchNodes(
                 x: (index % 4) * 280,
                 y: Math.floor(index / 4) * 160,
             },
-            data: nodeData(child, level.crossings ?? [], onToggleMode),
+            data: nodeData(child, level.crossings ?? [], onToggleMode, onUngroup),
         };
     });
 }
@@ -213,6 +229,7 @@ export default function FlowCanvas({
     onSelectEdge,
     onRequestRecenterRef,
     onRequestZoomRef,
+    onProposalStaged,
 }: {
     nodeId?: string;
     relationshipId?: string;
@@ -222,6 +239,8 @@ export default function FlowCanvas({
     onSelectEdge?: (edge: Relationship | null) => void;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
+    // Called after a structure edit staged a proposal; the host brings the review panel forward.
+    onProposalStaged?: () => void;
 }) {
     const navigate = useNavigate();
     const { zoomIn, zoomOut, fitView, screenToFlowPosition, getInternalNode } = useReactFlow();
@@ -231,7 +250,10 @@ export default function FlowCanvas({
     const [notFound, setNotFound] = useState(false);
     const [nodes, setNodes] = useState<ArchNode[]>([]);
     const [fitToken, setFitToken] = useState(0);
-    const [notice, setNotice] = useState<string | null>(null);
+    const [notice, setNotice] = useState<{ kind: "info" | "staged" | "error"; text: string } | null>(null);
+    const [request, setRequest] = useState<StructureRequest | null>(null);
+    const [staging, setStaging] = useState(false);
+    const groupButtonRef = useRef<HTMLButtonElement | null>(null);
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
     const dragStart = useRef<{ id: string; position: Point } | null>(null);
@@ -267,7 +289,7 @@ export default function FlowCanvas({
 
     useEffect(() => {
         if (!notice) return;
-        const timer = window.setTimeout(() => setNotice(null), 8000);
+        const timer = window.setTimeout(() => setNotice(null), notice.kind === "staged" ? 12000 : 8000);
         return () => window.clearTimeout(timer);
     }, [notice]);
 
@@ -282,13 +304,56 @@ export default function FlowCanvas({
         [baseKey],
     );
 
-    // TODO(phase 4): stage a reparent proposal here. Until the proposal op exists this only explains
-    // why nothing changed. newParentId is "" for the level's own parent.
-    const requestReparent = useCallback((nodeId: string, newParentId: string) => {
-        void nodeId;
-        void newParentId;
-        setNotice("Moving a node out of its group changes the model, so it goes through a proposal. Nothing was changed.");
+    // Structure edits only ever stage a proposal; the model changes when the architect accepts it,
+    // and the model-changed event then reloads the level (refreshKey).
+    const stage = useCallback(
+        async (run: () => Promise<unknown>): Promise<boolean> => {
+            setStaging(true);
+            try {
+                await run();
+                setNotice({ kind: "staged", text: stagedMessage() });
+                onProposalStaged?.();
+                return true;
+            } catch (err: unknown) {
+                setNotice({ kind: "error", text: stageErrorMessage(err) });
+                return false;
+            } finally {
+                setStaging(false);
+            }
+        },
+        [onProposalStaged],
+    );
+
+    // newParentId is "" for the root.
+    const requestReparent = useCallback(
+        (movedId: string, newParentId: string) => {
+            void stage(() => stageReparent(movedId, newParentId));
+        },
+        [stage],
+    );
+
+    const onUngroup = useCallback((id: string) => {
+        const child = levelRef.current?.children.find((item) => item.id === id);
+        setRequest({ kind: "ungroup", id, name: child?.name ?? id });
     }, []);
+
+    const closeRequest = useCallback(() => {
+        setRequest(null);
+        window.setTimeout(() => groupButtonRef.current?.focus(), 0);
+    }, []);
+
+    const confirmRequest = useCallback(
+        async (value: { name: string; deleteContainer: boolean }) => {
+            if (!request) return;
+            const ok = await stage(() =>
+                request.kind === "group"
+                    ? stageGroup({ node_ids: request.ids, name: value.name })
+                    : stageUngroup(request.id, value.deleteContainer),
+            );
+            if (ok) closeRequest();
+        },
+        [request, stage, closeRequest],
+    );
 
     const activeLevel = relLevel ?? level;
     const parentId = level?.node?.id ?? "";
@@ -329,7 +394,7 @@ export default function FlowCanvas({
                 const usable =
                     ids.length > 0 && cached.positions.length === ids.length && ids.every((id) => stored[id]);
                 if (usable) {
-                    setNodes(buildArchNodes(activeLevel, stored, computeGroupSizes(compound, stored, sizes), onToggleMode));
+                    setNodes(buildArchNodes(activeLevel, stored, computeGroupSizes(compound, stored, sizes), onToggleMode, onUngroup));
                     setFitToken((v) => v + 1);
                     return;
                 }
@@ -337,7 +402,7 @@ export default function FlowCanvas({
                     ? (await layoutCompound(compound, edges, sizes)).positions
                     : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
-                setNodes(buildArchNodes(activeLevel, laid, computeGroupSizes(compound, laid, sizes), onToggleMode));
+                setNodes(buildArchNodes(activeLevel, laid, computeGroupSizes(compound, laid, sizes), onToggleMode, onUngroup));
                 setFitToken((v) => v + 1);
                 await putLayout(cacheKey, {
                     positions: ids.map((id) => ({ id, x: laid[id]?.x ?? 0, y: laid[id]?.y ?? 0 })),
@@ -352,7 +417,7 @@ export default function FlowCanvas({
         return () => {
             cancelled = true;
         };
-    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, expandedSig, activeLevel, relLevel, onToggleMode]);
+    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, expandedSig, activeLevel, relLevel, onToggleMode, onUngroup]);
 
     useEffect(() => {
         const ac = new AbortController();
@@ -391,7 +456,7 @@ export default function FlowCanvas({
                     changed = true;
                     return [];
                 }
-                const data = nodeData(child, activeLevel.crossings ?? [], onToggleMode);
+                const data = nodeData(child, activeLevel.crossings ?? [], onToggleMode, onUngroup);
                 const type = canvasNodeType(child.renderer, child.child_count, child.expanded);
                 if (node.type === type && sameData(node.data, data)) return [node];
                 if ((node.type === "container") !== (type === "container")) {
@@ -404,7 +469,7 @@ export default function FlowCanvas({
             });
             return changed ? next : current;
         });
-    }, [activeLevel, onToggleMode]);
+    }, [activeLevel, onToggleMode, onUngroup]);
 
     const edges = useMemo<Edge[]>(() => {
         const rels = activeLevel?.relationships ?? [];
@@ -475,6 +540,25 @@ export default function FlowCanvas({
         dragStart.current = { id: node.id, position: { ...node.position } };
     };
 
+    // Absolute rects of open containers, from React Flow's measured nodes.
+    function containerRects(): Rect[] {
+        const rects: Rect[] = [];
+        for (const item of nodesRef.current) {
+            if (item.type !== "container") continue;
+            const internal = getInternalNode(item.id);
+            if (!internal) continue;
+            const origin = internal.internals.positionAbsolute;
+            rects.push({
+                id: item.id,
+                x: origin.x,
+                y: origin.y,
+                width: internal.measured.width ?? 0,
+                height: internal.measured.height ?? 0,
+            });
+        }
+        return rects;
+    }
+
     // The member is clamped to its group (extent: parent), so leaving the group is read from the
     // pointer. Returns the drop target id ("" is the level itself), or null when still inside.
     function dropOutsideTarget(event: MouseEvent | TouchEvent, node: ArchNode): string | null {
@@ -482,23 +566,21 @@ export default function FlowCanvas({
         const pointer = pointerPoint(event);
         if (!pointer) return null;
         const at = screenToFlowPosition(pointer);
-        const contains = (id: string) => {
-            const internal = getInternalNode(id);
-            if (!internal) return false;
-            const origin = internal.internals.positionAbsolute;
-            const width = internal.measured.width ?? 0;
-            const height = internal.measured.height ?? 0;
-            return at.x >= origin.x && at.x <= origin.x + width && at.y >= origin.y && at.y <= origin.y + height;
-        };
-        if (contains(node.parentId)) return null;
-        const other = nodesRef.current.find(
-            (item) => item.type === "container" && item.id !== node.parentId && item.id !== node.id && contains(item.id),
-        );
-        return other?.id ?? "";
+        const rects = containerRects();
+        if (containerAt(at, rects.filter((rect) => rect.id === node.parentId)) !== null) return null;
+        return containerAt(at, rects, [node.parentId, node.id]) ?? "";
+    }
+
+    // A top-level node dropped on an open container moves into it (via proposal). Null otherwise.
+    function dropInTarget(event: MouseEvent | TouchEvent, node: ArchNode): string | null {
+        if (node.parentId || node.type === "container") return null;
+        const pointer = pointerPoint(event);
+        if (!pointer) return null;
+        return containerAt(screenToFlowPosition(pointer), containerRects(), [node.id]);
     }
 
     const onNodeDragStop: OnNodeDrag<ArchNode> = (event, node) => {
-        const outside = dropOutsideTarget(event, node);
+        const outside = dropOutsideTarget(event, node) ?? dropInTarget(event, node);
         if (outside !== null) {
             const start = dragStart.current?.id === node.id ? dragStart.current.position : null;
             if (start) {
@@ -522,6 +604,12 @@ export default function FlowCanvas({
             setError(err instanceof Error ? err.message : "layout save failed");
         });
     };
+
+    const groupIds = useMemo(() => (relationshipId ? [] : groupableSelection(nodes)), [nodes, relationshipId]);
+    const openGroupForm = useCallback(() => {
+        const names = (levelRef.current?.children ?? []).map((child) => child.name);
+        setRequest({ kind: "group", ids: groupIds, suggestion: defaultGroupName(names) });
+    }, [groupIds]);
 
     const hint = useMemo(() => {
         if (relationshipId) return null;
@@ -551,8 +639,22 @@ export default function FlowCanvas({
             {notice || hint ? (
                 <div className="pointer-events-none absolute top-24 left-1/2 z-50 flex max-w-md -translate-x-1/2 flex-col items-center gap-2">
                     {notice ? (
-                        <p role="status" className="rounded-full border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm">
-                            {notice}
+                        <p
+                            role={notice.kind === "error" ? "alert" : "status"}
+                            className={`flex items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-[11px] shadow-sm ${
+                                notice.kind === "error" ? "border-destructive/30 text-destructive" : "border-border text-foreground"
+                            }`}
+                        >
+                            <span>{notice.text}</span>
+                            {notice.kind === "staged" && onProposalStaged ? (
+                                <button
+                                    type="button"
+                                    onClick={onProposalStaged}
+                                    className="pointer-events-auto inline-flex h-6 items-center rounded-full border border-border px-2.5 font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                                >
+                                    Open Proposals
+                                </button>
+                            ) : null}
                         </p>
                     ) : null}
                     {hint ? (
@@ -560,6 +662,28 @@ export default function FlowCanvas({
                             {hint.message}
                         </p>
                     ) : null}
+                </div>
+            ) : null}
+            {request || groupIds.length >= 2 ? (
+                <div className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2">
+                    {request ? (
+                        <StructurePanel
+                            request={request}
+                            busy={staging}
+                            onConfirm={(value) => void confirmRequest(value)}
+                            onCancel={closeRequest}
+                        />
+                    ) : (
+                        <button
+                            ref={groupButtonRef}
+                            type="button"
+                            aria-label={groupButtonLabel(groupIds.length)}
+                            onClick={openGroupForm}
+                            className="pointer-events-auto inline-flex h-7 items-center rounded-full border border-border bg-card px-3 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        >
+                            {groupButtonLabel(groupIds.length)}
+                        </button>
+                    )}
                 </div>
             ) : null}
             <ReactFlow

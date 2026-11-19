@@ -106,4 +106,19 @@ func (idx *Index) invalidateLayoutKeyLocked(key string) {
 		return
 	}
 	_ = os.Remove(path)
+	// Hashed variants (<key>~<hash>.json) belong to the same level. Match the exact prefix inside
+	// the layout directory only; key already passed layoutPath, so it has no separators.
+	dir := filepath.Dir(path)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	prefix := key + "~"
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, prefix) || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }

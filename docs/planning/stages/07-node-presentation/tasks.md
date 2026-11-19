@@ -101,7 +101,7 @@ group opens a reparent proposal.
 
 ## 07.11 Group / ungroup proposals (0010 slice c)
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core/proposal.go`, `mutate.go`, `internal/httpapi/write.go`, frontend
 selection UI, MCP tool descriptions (guidance line only).

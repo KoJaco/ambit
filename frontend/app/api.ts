@@ -356,6 +356,37 @@ export function deleteProposal(id: string): Promise<void> {
     return send(`/proposals/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export type StageGroupInput = {
+    node_ids: string[];
+    name: string;
+    type?: string;
+    icon?: string;
+    color?: string;
+};
+
+function stage(path: string, body: unknown): Promise<ProposalDiff> {
+    return send<ProposalDiff>(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+}
+
+// Structure edits from the canvas never write the model: each stages a reviewed proposal (201).
+// Failures (400/404/409) reject with the server's `{error}` message, see `send`.
+export function stageGroup(input: StageGroupInput): Promise<ProposalDiff> {
+    return stage("/proposals/group", input);
+}
+
+export function stageUngroup(nodeId: string, deleteContainer = false): Promise<ProposalDiff> {
+    return stage("/proposals/ungroup", { node_id: nodeId, delete_container: deleteContainer });
+}
+
+// newParentId "" moves the node to the root.
+export function stageReparent(nodeId: string, newParentId: string): Promise<ProposalDiff> {
+    return stage("/proposals/reparent", { node_id: nodeId, new_parent_id: newParentId });
+}
+
 export type EventHandlers = {
     onModelChanged: (nodeIds: string[]) => void;
     onIntegrityChanged: () => void;

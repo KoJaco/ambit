@@ -1,6 +1,6 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, Ungroup } from "lucide-react";
 import { Link } from "react-router";
 import { nodeDotClass, nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../../node-presentation";
 import type { ArchNode } from "../NodeCard";
@@ -55,6 +55,21 @@ export function ContainerNode({ id, data, selected }: NodeProps<ArchNode>) {
                 >
                     Open
                 </Link>
+                {data.onUngroup ? (
+                    <button
+                        type="button"
+                        aria-label={`Ungroup ${data.name}`}
+                        title="Ungroup"
+                        className="nodrag nopan flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            data.onUngroup?.(id);
+                        }}
+                        onDoubleClick={(event) => event.stopPropagation()}
+                    >
+                        <Ungroup className="size-4" aria-hidden />
+                    </button>
+                ) : null}
                 {data.onToggleMode ? (
                     <button
                         type="button"
