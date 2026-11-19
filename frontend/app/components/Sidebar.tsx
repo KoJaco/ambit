@@ -119,13 +119,13 @@ export function Sidebar({
     return (
         <aside
             className={clsx(
-                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-foreground/25 bg-card/95 shadow-sm backdrop-blur",
+                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-md",
                 collapsed ? "w-10" : "max-h-full min-h-[25vh] w-64"
             )}
         >
             <button
                 type="button"
-                className="ml-2 my-2 w-fit rounded-full border border-foreground/20 bg-primary/10 text-primary px-2 py-1 text-xs"
+                className="ml-2 my-2 w-fit rounded-full border border-border bg-primary/10 text-primary px-2 py-1 text-xs"
                 onClick={() => setCollapsed((value) => !value)}
             >
                 {collapsed ? ">" : "<"}
@@ -172,13 +172,13 @@ export function Sidebar({
                             <div className="border p-1.5 rounded-md space-y-1.5">
                                 <h2 className="text-xs uppercase tracking-wide text-foreground/60">New node</h2>
                                 <input
-                                    className="rounded border border-foreground/20 bg-background px-2 w-full py-1"
+                                    className="rounded border border-border bg-accent px-2 w-full py-1"
                                     placeholder="Name"
                                     value={name}
                                     onChange={(event) => setName(event.target.value)}
                                 />
                                 <input
-                                    className="rounded border border-foreground/20 w-full bg-background px-2 py-1"
+                                    className="rounded border border-border w-full bg-accent px-2 py-1"
                                     placeholder="Type"
                                     value={type}
                                     onChange={(event) => setType(event.target.value)}
@@ -218,7 +218,7 @@ function NodeLinks({ items, currentId }: { items: Summary[]; currentId?: string 
                 <li key={item.id}>
                     <Link
                         to={`/node/${item.id}`}
-                        className={clsx("block rounded px-1 py-0.5", item.id === currentId && "bg-foreground/10")}
+                        className={clsx("block rounded px-1 py-0.5", item.id === currentId && "bg-accent")}
                     >
                         {item.name}
                         <span className="ml-2 text-xs text-foreground/50">{item.type}</span>

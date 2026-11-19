@@ -2,7 +2,7 @@ import clsx from "clsx";
 import type { ReactNode } from "react";
 
 export const rightRailPanelClass =
-    "pointer-events-auto flex min-h-[75vh] max-h-full w-full flex-col gap-3 overflow-y-auto rounded-xl border border-foreground/25 bg-background/95 p-4 text-sm shadow-sm backdrop-blur";
+    "pointer-events-auto flex min-h-[75vh] max-h-full w-full flex-col gap-6 overflow-y-auto rounded-[20px] border border-border bg-card p-6 text-sm shadow-md";
 
 export function RightRailPanel({
     children,

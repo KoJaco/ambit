@@ -366,7 +366,7 @@ export default function FlowCanvas({
     return (
         <div className="h-full w-full">
             {error ? (
-                <p className="pointer-events-none absolute top-16 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-md border border-red-600/30 bg-background px-3 py-1.5 text-sm text-red-600">
+                <p className="pointer-events-none absolute top-16 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-full border border-destructive/30 bg-card px-3 py-1.5 text-sm text-destructive">
                     {error}
                 </p>
             ) : null}
@@ -386,7 +386,7 @@ export default function FlowCanvas({
                 nodesConnectable={false}
                 proOptions={{ hideAttribution: true }}
             >
-                <Background />
+                <Background gap={24} size={1} color="var(--canvas-dot)" />
             </ReactFlow>
         </div>
     );

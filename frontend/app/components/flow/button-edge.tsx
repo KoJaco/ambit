@@ -1,7 +1,8 @@
 import { type KeyboardEvent, type MouseEvent } from "react";
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
-import { edgeGeometry } from "./edge-shared";
+import clsx from "clsx";
+import { edgeGeometry, edgePillClass, edgePillDrillableClass } from "./edge-shared";
 
 export function ButtonEdge(props: EdgeProps) {
     const navigate = useNavigate();
@@ -22,7 +23,7 @@ export function ButtonEdge(props: EdgeProps) {
             <EdgeLabelRenderer>
                 <button
                     type="button"
-                    className="nodrag nopan pointer-events-auto absolute rounded-full border border-foreground/25 bg-card px-2 py-0.5 text-[11px] shadow-sm"
+                    className={clsx("nodrag nopan pointer-events-auto absolute", edgePillClass, drillable && edgePillDrillableClass)}
                     style={{ transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)` }}
                     onClick={openRelationship}
                     onDoubleClick={openRelationship}

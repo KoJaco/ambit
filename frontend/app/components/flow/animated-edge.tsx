@@ -6,7 +6,7 @@ export function AnimatedEdge(props: EdgeProps) {
     return (
         <>
             <BaseEdge id={props.id} path={edgePath} markerEnd={props.markerEnd} interactionWidth={24} />
-            <circle r="3.5" className="fill-foreground">
+            <circle r="3.5" className="fill-primary">
                 <animateMotion dur="2.4s" repeatCount="indefinite" path={edgePath} />
             </circle>
         </>

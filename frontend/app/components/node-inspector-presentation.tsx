@@ -52,7 +52,7 @@ export function PresentationControls({
             <PresentationSubviewPanel title="Icon" backLabel={backLabel} onBack={() => onSubview(null)}>
                 <button
                     type="button"
-                    className="rounded border border-foreground/20 px-2 py-1 text-left text-xs"
+                    className="rounded border border-border px-2 py-1 text-left text-xs"
                     onClick={() => onPickIcon("")}
                 >
                     Default (colour dot)
@@ -73,8 +73,8 @@ export function PresentationControls({
                                         className={clsx(
                                             "flex items-center justify-center rounded border p-2",
                                             icon === id
-                                                ? "border-foreground bg-foreground/10"
-                                                : "border-foreground/15",
+                                                ? "border-primary bg-accent"
+                                                : "border-border",
                                         )}
                                         onClick={() => onPickIcon(id)}
                                     >
@@ -95,7 +95,7 @@ export function PresentationControls({
             <PresentationSubviewPanel title="Colour" backLabel={backLabel} onBack={() => onSubview(null)}>
                 <button
                     type="button"
-                    className="rounded border border-foreground/20 px-2 py-1 text-left text-xs"
+                    className="rounded border border-border px-2 py-1 text-left text-xs"
                     onClick={() => onPickColor("")}
                 >
                     Default (from type: {typeDefault})
@@ -108,8 +108,8 @@ export function PresentationControls({
                             className={clsx(
                                 "flex items-center gap-2 rounded border px-2 py-1.5 text-xs capitalize",
                                 color === token
-                                    ? "border-foreground bg-foreground/10"
-                                    : "border-foreground/15",
+                                    ? "border-primary bg-accent"
+                                    : "border-border",
                             )}
                             onClick={() => onPickColor(token)}
                         >
@@ -134,7 +134,7 @@ export function PresentationControls({
                             type="button"
                             className={clsx(
                                 "rounded border px-2 py-1 text-left text-xs",
-                                selected === id ? "border-foreground bg-foreground/10" : "border-foreground/15",
+                                selected === id ? "border-primary bg-accent" : "border-border",
                             )}
                             onClick={() => onPickRenderer(id === "card" ? "" : id)}
                         >
@@ -150,7 +150,7 @@ export function PresentationControls({
                         {rows.map((row, index) => (
                             <div key={index} className="flex gap-1">
                                 <input
-                                    className="min-w-0 flex-1 rounded border border-foreground/20 bg-background px-1.5 py-1 text-xs"
+                                    className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs"
                                     placeholder="title"
                                     value={row.title}
                                     onChange={(event) => {
@@ -160,7 +160,7 @@ export function PresentationControls({
                                     }}
                                 />
                                 <input
-                                    className="min-w-0 flex-1 rounded border border-foreground/20 bg-background px-1.5 py-1 text-xs"
+                                    className="min-w-0 flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs"
                                     placeholder="type"
                                     value={row.type}
                                     onChange={(event) => {
@@ -171,7 +171,7 @@ export function PresentationControls({
                                 />
                                 <button
                                     type="button"
-                                    className="rounded border border-foreground/20 px-1.5 text-xs"
+                                    className="rounded border border-border px-1.5 text-xs"
                                     onClick={() => onChangeSchema(rows.filter((_, rowIndex) => rowIndex !== index))}
                                 >
                                     ×
@@ -180,7 +180,7 @@ export function PresentationControls({
                         ))}
                         <button
                             type="button"
-                            className="rounded border border-foreground/20 px-2 py-1 text-left text-xs"
+                            className="rounded border border-border px-2 py-1 text-left text-xs"
                             onClick={() => onChangeSchema([...rows, { title: "", type: "" }])}
                         >
                             Add column
@@ -200,21 +200,21 @@ export function PresentationControls({
         <div className="grid grid-cols-2 gap-1.5">
             <button
                 type="button"
-                className="rounded border border-foreground/20 px-2 py-1 text-xs w-full"
+                className="rounded border border-border px-2 py-1 text-xs w-full"
                 onClick={() => onSubview("icon")}
             >
                 Icon{icon ? `: ${icon}` : ""}
             </button>
             <button
                 type="button"
-                className="rounded border border-foreground/20 px-2 py-1 text-xs w-full"
+                className="rounded border border-border px-2 py-1 text-xs w-full"
                 onClick={() => onSubview("color")}
             >
                 Colour{color ? `: ${color}` : ""}
             </button>
             <button
                 type="button"
-                className="col-span-2 rounded border border-foreground/20 px-2 py-1 text-xs w-full"
+                className="col-span-2 rounded border border-border px-2 py-1 text-xs w-full"
                 onClick={() => onSubview("renderer")}
             >
                 Canvas{rendererLabel ? `: ${rendererLabel}` : ""}

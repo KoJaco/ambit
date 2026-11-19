@@ -110,8 +110,8 @@ export function resolveIconComponent(iconId?: string): LucideIcon {
     return Circle;
 }
 
-export function nodeGlyphClass(token: ColorToken): string {
-    return `node-glyph node-glyph-${token}`;
+export function nodeGlyphClass(token: ColorToken, size: "md" | "lg" = "md"): string {
+    return size === "lg" ? `node-glyph node-glyph-lg node-glyph-${token}` : `node-glyph node-glyph-${token}`;
 }
 
 export function nodeDotClass(token: ColorToken): string {
@@ -120,4 +120,33 @@ export function nodeDotClass(token: ColorToken): string {
 
 export function nodeSwatchClass(token: ColorToken): string {
     return `node-swatch node-swatch-${token}`;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+    draft: "Draft",
+    specified: "Specified",
+    assigned: "Assigned",
+    in_progress: "In progress",
+    done: "Done",
+    blocked: "Blocked",
+};
+
+export function statusLabel(status: string): string {
+    return STATUS_LABELS[status] ?? status;
+}
+
+export function statusTone(status: string): ColorToken {
+    switch (status) {
+        case "in_progress":
+        case "assigned":
+            return "blue";
+        case "done":
+            return "teal";
+        case "blocked":
+            return "rose";
+        case "specified":
+            return "violet";
+        default:
+            return "neutral";
+    }
 }

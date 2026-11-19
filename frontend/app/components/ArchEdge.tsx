@@ -2,6 +2,7 @@ import { type KeyboardEvent, type MouseEvent } from "react";
 import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import type { Relationship } from "../api";
+import { edgePillClass, edgePillDrillableClass } from "./flow/edge-shared";
 
 type ArchEdgeData = {
     drillable?: boolean;
@@ -79,8 +80,8 @@ export function ArchEdge({
                         }
                     >
                         <span
-                            className={`block max-w-[11rem] break-words rounded px-1.5 py-1 text-center text-xs leading-normal bg-foreground text-background shadow-sm ring-1 ring-foreground/25 ${
-                                drillable ? "hover:ring-primary/50" : ""
+                            className={`block max-w-[11rem] break-words text-center leading-normal ${edgePillClass} ${
+                                drillable ? edgePillDrillableClass : ""
                             }`}
                         >
                             {label}

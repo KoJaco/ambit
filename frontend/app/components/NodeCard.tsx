@@ -1,5 +1,6 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
+import { Lock } from "lucide-react";
 import type { SchemaColumn } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
 import {
@@ -7,6 +8,7 @@ import {
     nodeGlyphClass,
     resolveIconComponent,
     resolveNodeColor,
+    statusLabel,
     type ColorToken,
 } from "../node-presentation";
 
@@ -44,7 +46,7 @@ function HeaderGlyph({
         const Icon = resolveIconComponent(iconId);
         return (
             <span className={nodeGlyphClass(colorToken)} aria-hidden>
-                <Icon className="size-3" strokeWidth={2.25} />
+                <Icon className="size-4" strokeWidth={2} />
             </span>
         );
     }
@@ -53,54 +55,59 @@ function HeaderGlyph({
 
 export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
     const colorToken = resolveNodeColor(data.type, data.color);
+    const childCount = data.childCount ?? 0;
+    const stacked = childCount > 0;
 
     return (
-        <div
-            className={clsx(
-                "min-w-48 rounded-lg border bg-card shadow-sm select-none",
-                selected
-                    ? "border-foreground border-2 shadow-xl ring-primary"
-                    : "border-foreground/25",
-            )}
-        >
-            <Handle type="target" position={Position.Left} />
-            <div className="flex flex-col">
-                <div className="flex items-center gap-2 border-b border-foreground/50 px-3 py-2">
+        <div className="relative w-[220px] select-none">
+            {stacked ? (
+                <>
+                    <div
+                        aria-hidden
+                        className="absolute inset-0 translate-x-2 translate-y-2 rounded-[16px] border border-border bg-[var(--sheet-2)]"
+                    />
+                    <div
+                        aria-hidden
+                        className="absolute inset-0 translate-x-1 translate-y-1 rounded-[16px] border border-border bg-[var(--sheet-1)]"
+                    />
+                </>
+            ) : null}
+            <div
+                className={clsx(
+                    "relative rounded-[14px] border bg-card transition-colors",
+                    selected
+                        ? "border-[1.5px] border-primary shadow-[0_0_0_4px_var(--selection-ring)]"
+                        : "border-border hover:border-foreground/25",
+                )}
+            >
+                <Handle type="target" position={Position.Left} />
+                <div className="flex items-center gap-2.5 px-3 py-2.5">
                     <HeaderGlyph iconId={data.icon} colorToken={colorToken} />
-                    <div className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                        {data.name}
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                            <span className="truncate text-sm font-medium text-foreground" title={data.name}>
+                                {data.name}
+                            </span>
+                            {data.protected ? (
+                                <Lock
+                                    className="size-3 shrink-0 text-muted-foreground"
+                                    aria-label="Protected"
+                                />
+                            ) : null}
+                        </div>
+                        <div className="truncate text-xs text-muted-foreground">
+                            {data.type} · {statusLabel(data.status)}
+                        </div>
                     </div>
-                    {data.childCount && data.childCount > 0 ? (
-                        <span
-                            className="ml-auto rounded bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-foreground/80"
-                            title="Direct children"
-                        >
-                            {data.childCount}
-                        </span>
-                    ) : null}
-                    {data.protected ? (
-                        <span
-                            className={clsx(
-                                "text-[10px] uppercase tracking-wide text-foreground/70",
-                                data.childCount && data.childCount > 0 ? "" : "ml-auto",
-                            )}
-                        >
-                            protected
-                        </span>
-                    ) : null}
-                </div>
-                <div className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-foreground/80">
-                    <span>{data.type}</span>
-                    <span>{data.status}</span>
                 </div>
                 {data.crossings.length > 0 ? (
-                    <ul className="border-t border-foreground/20 px-3 py-1.5 text-[10px] text-foreground/70">
+                    <ul className="border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">
                         {data.crossings.map((crossing) => (
                             <li key={`${crossing.direction}-${crossing.otherId}-${crossing.label}`}>
                                 {crossing.drillable && crossing.relationshipId ? (
                                     <a
                                         href={`/relationship/${crossing.relationshipId}`}
-                                        className="underline"
+                                        className="underline hover:text-primary"
                                         onClick={(e) => {
                                             e.preventDefault();
                                             e.stopPropagation();
@@ -119,8 +126,16 @@ export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
                         ))}
                     </ul>
                 ) : null}
+                {stacked ? (
+                    <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
+                        <span className="tabular-nums" title="Direct children">
+                            {childCount} inside
+                        </span>
+                        <span className="font-medium">Open ›</span>
+                    </div>
+                ) : null}
+                <Handle type="source" position={Position.Right} />
             </div>
-            <Handle type="source" position={Position.Right} />
         </div>
     );
 }
