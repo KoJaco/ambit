@@ -58,7 +58,7 @@ Supporting:
 | [04 Review gate](stages/04-review-gate/README.md) | Agent-authored structure waits for accept or reject | 7 | Done |
 | [05 Relationship drill](stages/05-relationship-drill/README.md) | Relationships open as their own canvas level | 8 | Done |
 | [06 Agent interface](stages/06-agent-interface/README.md) | A harness can propose, brief, and report through MCP | 9 | In progress |
-| [07 Node presentation](stages/07-node-presentation/README.md) | Icons and colour on the canvas | 10 | Planned |
+| [07 Node presentation](stages/07-node-presentation/README.md) | Icons, colour, groups and summary nodes on the canvas | 10 | Built, pending browser review |
 | [08 Distribution](stages/08-distribution/README.md) | One binary, installed without a toolchain | 11 | Not started |
 
 ## Current status

@@ -52,7 +52,7 @@ registries; colour documented as architect-first unless explicitly added for age
 
 ## 07.6 Slice and docs
 
-- [ ]
+- [x]
 
 **Done when:** ADR or contract amendment if needed; slice log entry; checklist updated.
 
