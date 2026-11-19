@@ -61,6 +61,13 @@ them modify the canonical model.** Every one of them must say so in its returned
 an agent does not report to its user that a change has been made when it has only been
 proposed.
 
+**Graph modeling.** Authoring harnesses should follow the **Modeling guidance** section in
+[`arch-model-format.md`](arch-model-format.md) (hierarchy vs relationships, reachability,
+external actors, entry→module patterns). That guidance is **not** injected into
+`get_context` for implementation agents — see
+[decision 0008](../decisions/0008-arch-graph-modeling-guidance.md). MCP tool descriptions
+for `seed_model`, `create_node`, and `set_relationship` summarise the same rules.
+
 #### `seed_model(transcript, parent_id?, nodes, relationships?)`
 
 Propose a model from a client transcript. The headline authoring tool: the architect pastes
@@ -77,13 +84,19 @@ relationships. ambit does not call a model provider; the harness supplies the gr
 
 Returns the proposal ID and a summary of what was proposed — node count, names.
 
+When proposing `relationships`, use them for runtime or logical flow at a level, not for
+containment (use `parent_id` on nodes). Mirror patterns in the reference `.arch` graph
+(`canvas-data-flow`, `agent-interface-data-flow` under `platform`).
+
 This tool exists **only** for transcript-seeded generation. Freeform
 natural-language-to-architecture is explicitly out of scope for v1; see
 [`docs/planning/spec-v1.md`](../planning/spec-v1.md) Section 12.
 
-#### `create_node(name, type, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?)`
+#### `create_node(name, type, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?, icon?)`
 
 Propose one new node. `spec` is the markdown prose that becomes the node's sibling `.md`.
+Optional `icon` must be an id from the closed registry in
+[`arch-model-format.md`](arch-model-format.md). Colour, canvas `renderer`, and `schema` rows are architect-only (HTTP inspector).
 The node's `id` is derived from `name` by `ambit-core` at apply time, not supplied by the
 caller. Optional `relationship_id` attaches the node to a relationship interior (mutually
 exclusive with `parent_id`).
@@ -91,7 +104,9 @@ exclusive with `parent_id`).
 #### `update_node(node_id, ...fields)`
 
 Propose changes to an existing node. Any subset of mutable fields: `name`, `type`,
-`parent_id`, `relationship_id`, `implementation`, `scope`, `protected`, `spec`.
+`parent_id`, `relationship_id`, `implementation`, `scope`, `protected`, `spec`, `icon`.
+Registry ids are documented in [`arch-model-format.md`](arch-model-format.md). `color`,
+`renderer`, and `schema` are not settable via MCP.
 
 `id` is immutable and cannot be updated. `status` is not settable here — use
 `update_node_status`.
@@ -107,6 +122,9 @@ architect discovering it at review.
 Propose creating or modifying a cross-cutting relationship. Directed. `kind` is one of
 `sync`, `async`, `data`. Omit `relationship_id` to create a new edge (stage 05 stable ids).
 Provide `relationship_id` to update label/kind on an existing edge.
+
+Do not add relationships merely to connect every sibling; add them where the architect needs
+to see control or data flow. Endpoints must reference existing node ids.
 
 ---
 

@@ -20,13 +20,31 @@ import {
     type Level,
     type Relationship,
     type RelationshipLevel,
+    type SchemaColumn,
 } from "../api";
+import { canvasEdgeType, canvasNodeType, nodeLayoutSize } from "../canvas-presentation";
 import { layoutLevel, type Point } from "../layout";
 import { NodeCard, type ArchNode, type ArchNodeData, type CrossingMark } from "./NodeCard";
 import { ArchEdge } from "./ArchEdge";
+import { AnimatedEdge } from "./flow/animated-edge";
+import { ButtonEdge } from "./flow/button-edge";
+import { DataEdge } from "./flow/data-edge";
+import { GroupFrame } from "./flow/group-node";
+import { PlaceholderFrame } from "./flow/placeholder-node";
+import { SchemaNode } from "./flow/schema-node";
 
-const nodeTypes = { arch: NodeCard };
-const edgeTypes = { arch: ArchEdge };
+const nodeTypes = {
+    card: NodeCard,
+    schema: SchemaNode,
+    placeholder: PlaceholderFrame,
+    group: GroupFrame,
+};
+const edgeTypes = {
+    arch: ArchEdge,
+    button: ButtonEdge,
+    animated: AnimatedEdge,
+    data: DataEdge,
+};
 
 function crossingMarks(childId: string, crossings: Level["crossings"]): CrossingMark[] {
     return (crossings ?? [])
@@ -47,10 +65,26 @@ function nodeData(child: SummaryLike, crossings: Level["crossings"]): ArchNodeDa
         status: child.status,
         protected: child.protected,
         crossings: crossingMarks(child.id, crossings),
+        icon: child.icon,
+        color: child.color,
+        renderer: child.renderer,
+        schema: child.schema,
+        childCount: child.child_count,
     };
 }
 
-type SummaryLike = { id: string; name: string; type: string; status: string; protected: boolean };
+type SummaryLike = {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+    protected: boolean;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
+    child_count?: number;
+};
 
 function buildArchNodes(
     level: Level | RelationshipLevel,
@@ -59,7 +93,7 @@ function buildArchNodes(
     const children = level.children ?? [];
     return children.map((child, index) => ({
         id: child.id,
-        type: "arch" as const,
+        type: canvasNodeType(child.renderer),
         selectable: true,
         draggable: true,
         position: positions[child.id] ?? {
@@ -76,7 +110,20 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
         left.type !== right.type ||
         left.status !== right.status ||
         left.protected !== right.protected ||
-        left.crossings.length !== right.crossings.length
+        left.icon !== right.icon ||
+        left.color !== right.color ||
+        left.renderer !== right.renderer ||
+        left.childCount !== right.childCount ||
+        left.crossings.length !== right.crossings.length ||
+        (left.schema?.length ?? 0) !== (right.schema?.length ?? 0)
+    ) {
+        return false;
+    }
+    if (
+        (left.schema ?? []).some(
+            (row, index) =>
+                row.title !== right.schema?.[index]?.title || row.type !== right.schema?.[index]?.type,
+        )
     ) {
         return false;
     }
@@ -149,6 +196,10 @@ export default function FlowCanvas({
         if (!relationshipId && (nodeId ?? "") !== parentId && nodeId !== undefined) return;
         let cancelled = false;
         const ids = (activeLevel.children ?? []).map((c) => c.id);
+        const sizes: Record<string, { width: number; height: number }> = {};
+        for (const child of activeLevel.children ?? []) {
+            sizes[child.id] = nodeLayoutSize(child.renderer, child.schema?.length ?? 0);
+        }
         const edges = (activeLevel.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
         getLayout(cacheKey)
             .then(async (cached) => {
@@ -162,7 +213,7 @@ export default function FlowCanvas({
                     setFitToken((v) => v + 1);
                     return;
                 }
-                const laid = await layoutLevel(ids, edges);
+                const laid = await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
                 setNodes(buildArchNodes(activeLevel, laid));
                 setFitToken((v) => v + 1);
@@ -219,9 +270,10 @@ export default function FlowCanvas({
                     return [];
                 }
                 const data = nodeData(child, activeLevel.crossings ?? []);
-                if (sameData(node.data, data)) return [node];
+                const type = canvasNodeType(child.renderer);
+                if (node.type === type && sameData(node.data, data)) return [node];
                 changed = true;
-                return [{ ...node, data }];
+                return [{ ...node, type, data }];
             });
             return changed ? next : current;
         });
@@ -235,6 +287,7 @@ export default function FlowCanvas({
             pairCount.set(key, (pairCount.get(key) ?? 0) + 1);
         }
         const pairIndex = new Map<string, number>();
+        const names = new Map((activeLevel?.children ?? []).map((child) => [child.id, child.name]));
         return rels.map((rel) => {
             const key = `${rel.from}\0${rel.to}`;
             const labelIndex = pairIndex.get(key) ?? 0;
@@ -242,12 +295,20 @@ export default function FlowCanvas({
             const labelCount = pairCount.get(key) ?? 1;
             return {
                 id: rel.id,
-                type: "arch",
+                type: canvasEdgeType(rel.kind),
                 source: rel.from,
                 target: rel.to,
                 markerEnd: { type: MarkerType.ArrowClosed },
                 style: { cursor: rel.drillable ? "pointer" : "default" },
-                data: { drillable: rel.drillable, rel, fromNodeId: nodeId, labelIndex, labelCount },
+                data: {
+                    drillable: rel.drillable,
+                    rel,
+                    fromNodeId: nodeId,
+                    fromName: names.get(rel.from),
+                    toName: names.get(rel.to),
+                    labelIndex,
+                    labelCount,
+                },
             };
         });
     }, [activeLevel, nodeId]);

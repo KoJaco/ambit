@@ -112,16 +112,20 @@ type OpDiff struct {
 
 // NodeSnapshot is the node body a diff row renders.
 type NodeSnapshot struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Type           string   `json:"type"`
-	Status         string   `json:"status"`
-	ParentID       string   `json:"parent_id,omitempty"`
-	RelationshipID string   `json:"relationship_id,omitempty"`
-	Implementation []string `json:"implementation"`
-	Scope          []string `json:"scope"`
-	Protected      bool     `json:"protected"`
-	Markdown       string   `json:"markdown"`
+	ID             string         `json:"id"`
+	Name           string         `json:"name"`
+	Type           string         `json:"type"`
+	Status         string         `json:"status"`
+	ParentID       string         `json:"parent_id,omitempty"`
+	RelationshipID string         `json:"relationship_id,omitempty"`
+	Implementation []string       `json:"implementation"`
+	Scope          []string       `json:"scope"`
+	Protected      bool           `json:"protected"`
+	Markdown       string         `json:"markdown"`
+	Icon           string         `json:"icon,omitempty"`
+	Color          string         `json:"color,omitempty"`
+	Renderer       string         `json:"renderer,omitempty"`
+	Schema         []SchemaColumn `json:"schema,omitempty"`
 }
 
 // RelSnapshot is one directed edge.
@@ -337,6 +341,13 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 		Scope:          cloneStrings(in.Create.Scope),
 		Protected:      in.Create.Protected,
 		Spec:           in.Create.Spec,
+		Icon:           strings.TrimSpace(in.Create.Icon),
+		Color:          strings.TrimSpace(in.Create.Color),
+		Renderer:       strings.TrimSpace(in.Create.Renderer),
+		Schema:         normalizeSchema(in.Create.Schema),
+	}
+	if err := validateCreatePresentation(node.Icon, node.Color, node.Renderer, node.Schema); err != nil {
+		return operation{}, nil, err
 	}
 	body, err := materialise(node)
 	if err != nil {
@@ -1275,6 +1286,30 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 		n.Protected = *in.Protected
 		fields = append(fields, "protected")
 	}
+	if in.Icon != nil {
+		if err := applyIconPatch(n, in.Icon); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "icon")
+	}
+	if in.Color != nil {
+		if err := applyColorPatch(n, in.Color); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "color")
+	}
+	if in.Renderer != nil {
+		if err := applyRendererPatch(n, in.Renderer); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "renderer")
+	}
+	if in.Schema != nil {
+		if err := applySchemaPatch(n, in.Schema); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "schema")
+	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("%w: update_node %s changes no fields", ErrBadOperation, n.ID)
 	}
@@ -1416,6 +1451,10 @@ func snapshotNode(n *Node) *NodeSnapshot {
 		Scope:          scope,
 		Protected:      n.Protected,
 		Markdown:       n.Spec,
+		Icon:           n.Icon,
+		Color:          n.Color,
+		Renderer:       n.Renderer,
+		Schema:         append([]SchemaColumn(nil), n.Schema...),
 	}
 }
 

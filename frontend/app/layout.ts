@@ -7,11 +7,13 @@ const nodeWidth = 220;
 const nodeHeight = 96;
 
 export type Point = { x: number; y: number };
+export type NodeSize = { width: number; height: number };
 
 // Browser-only. The Go server stores these positions and does not compute them.
 export async function layoutLevel(
     ids: string[],
     edges: { from: string; to: string }[],
+    sizes?: Record<string, NodeSize>,
 ): Promise<Record<string, Point>> {
     const graph: ElkNode = {
         id: "level",
@@ -21,7 +23,11 @@ export async function layoutLevel(
             "elk.spacing.nodeNode": "40",
             "elk.layered.spacing.nodeNodeBetweenLayers": "80",
         },
-        children: ids.map((id) => ({ id, width: nodeWidth, height: nodeHeight })),
+        children: ids.map((id) => ({
+            id,
+            width: sizes?.[id]?.width ?? nodeWidth,
+            height: sizes?.[id]?.height ?? nodeHeight,
+        })),
         edges: edges.map((edge, index) => ({
             id: `e${index}`,
             sources: [edge.from],

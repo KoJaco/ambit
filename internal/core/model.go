@@ -30,25 +30,26 @@ const schemaVersion = 1
 
 var (
 	// Validation sentinels. HTTP maps these; it does not reimplement the rules.
-	ErrCycle              = errors.New("hierarchy cycle")
-	ErrNotFound           = errors.New("node not found")
-	ErrHasChildren        = errors.New("node has children")
-	ErrNoSlug             = errors.New("name has no slug")
-	ErrBadStatus          = errors.New("invalid status")
-	ErrBadKind            = errors.New("invalid relationship kind")
-	ErrMissingEndpoint    = errors.New("relationship endpoint does not exist")
-	ErrMissingParent      = errors.New("parent does not exist")
-	ErrEmptyName          = errors.New("name must be non-empty")
-	ErrEmptyType          = errors.New("type must be non-empty")
-	ErrInvalidLayoutKey   = errors.New("invalid layout key")
-	ErrStale              = errors.New("stale operation")
-	ErrProposalNotFound   = errors.New("proposal not found")
-	ErrUnreadableProposal = errors.New("unreadable proposal")
-	ErrBadOperation       = errors.New("invalid operation")
-	ErrExists                  = errors.New("node already exists")
-	ErrRelationshipNotFound    = errors.New("relationship not found")
-	ErrEmptyRelationship       = errors.New("relationship has no interior")
-	ErrContainerConflict       = errors.New("parent_id and relationship_id are mutually exclusive")
+	ErrCycle                = errors.New("hierarchy cycle")
+	ErrNotFound             = errors.New("node not found")
+	ErrHasChildren          = errors.New("node has children")
+	ErrNoSlug               = errors.New("name has no slug")
+	ErrBadStatus            = errors.New("invalid status")
+	ErrBadKind              = errors.New("invalid relationship kind")
+	ErrMissingEndpoint      = errors.New("relationship endpoint does not exist")
+	ErrMissingParent        = errors.New("parent does not exist")
+	ErrEmptyName            = errors.New("name must be non-empty")
+	ErrEmptyType            = errors.New("type must be non-empty")
+	ErrInvalidLayoutKey     = errors.New("invalid layout key")
+	ErrStale                = errors.New("stale operation")
+	ErrProposalNotFound     = errors.New("proposal not found")
+	ErrUnreadableProposal   = errors.New("unreadable proposal")
+	ErrBadOperation         = errors.New("invalid operation")
+	ErrExists               = errors.New("node already exists")
+	ErrRelationshipNotFound = errors.New("relationship not found")
+	ErrEmptyRelationship    = errors.New("relationship has no interior")
+	ErrContainerConflict    = errors.New("parent_id and relationship_id are mutually exclusive")
+	ErrInvalidPresentation  = errors.New("invalid presentation field")
 
 	errCycle           = ErrCycle
 	errNotFound        = ErrNotFound
@@ -75,6 +76,10 @@ type Node struct {
 	Scope          []string
 	Protected      bool
 	Spec           string
+	Icon           string
+	Color          string
+	Renderer       string
+	Schema         []SchemaColumn
 	Unknown        map[string]jsonRaw
 }
 
@@ -129,6 +134,16 @@ type CreateInput struct {
 	Scope          []string
 	Protected      bool
 	Status         Status
+	Icon           string
+	Color          string
+	Renderer       string
+	Schema         []SchemaColumn
+}
+
+// SchemaColumn is one visual row on a database-schema canvas renderer.
+type SchemaColumn struct {
+	Title string `json:"title"`
+	Type  string `json:"type"`
 }
 
 // UpdateInput patches a node. Nil pointers leave the field unchanged.
@@ -143,6 +158,10 @@ type UpdateInput struct {
 	Implementation *[]string
 	Scope          *[]string
 	Protected      *bool
+	Icon           *string
+	Color          *string
+	Renderer       *string
+	Schema         *[]SchemaColumn
 }
 
 // EffectiveScope returns scope, or implementation when scope is absent or empty.

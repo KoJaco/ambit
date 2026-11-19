@@ -41,12 +41,12 @@ func getRelationshipLevel(idx *core.Index) http.HandlerFunc {
 
 func relationshipLevelBody(lvl core.RelationshipLevel) relationshipLevelJSON {
 	body := relationshipLevelJSON{
-		Relationship: relViewJSON(lvl.Relationship),
-		Members:      make([]summaryJSON, 0, len(lvl.Members)),
-		Context:      make([]summaryJSON, 0, 2),
+		Relationship:  relViewJSON(lvl.Relationship),
+		Members:       make([]summaryJSON, 0, len(lvl.Members)),
+		Context:       make([]summaryJSON, 0, 2),
 		Relationships: make([]relJSON, 0, len(lvl.Relationships)),
-		Crossings:    make([]crossJSON, 0, len(lvl.Crossings)),
-		Warnings:     warningBodies(lvl.Warnings),
+		Crossings:     make([]crossJSON, 0, len(lvl.Crossings)),
+		Warnings:      warningBodies(lvl.Warnings),
 	}
 	for _, m := range lvl.Members {
 		body.Members = append(body.Members, summaryOf(m))
@@ -141,6 +141,7 @@ func levelBody(lvl core.Level) levelJSON {
 func summaryOf(n core.NodeView) summaryJSON {
 	return summaryJSON{
 		ID: string(n.ID), Name: n.Name, Type: n.Type, Status: string(n.Status), Protected: n.Protected,
+		Icon: n.Icon, Color: n.Color, Renderer: n.Renderer, Schema: n.Schema, ChildCount: n.ChildCount,
 	}
 }
 
@@ -161,24 +162,33 @@ type levelJSON struct {
 }
 
 type nodeJSON struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Type           string   `json:"type"`
-	Status         string   `json:"status"`
-	ParentID       string   `json:"parent_id,omitempty"`
-	RelationshipID string   `json:"relationship_id,omitempty"`
-	Implementation []string `json:"implementation"`
-	Scope          []string `json:"scope"`
-	Protected      bool     `json:"protected"`
-	Markdown       string   `json:"markdown"`
+	ID             string              `json:"id"`
+	Name           string              `json:"name"`
+	Type           string              `json:"type"`
+	Status         string              `json:"status"`
+	ParentID       string              `json:"parent_id,omitempty"`
+	RelationshipID string              `json:"relationship_id,omitempty"`
+	Implementation []string            `json:"implementation"`
+	Scope          []string            `json:"scope"`
+	Protected      bool                `json:"protected"`
+	Markdown       string              `json:"markdown"`
+	Icon           string              `json:"icon,omitempty"`
+	Color          string              `json:"color,omitempty"`
+	Renderer       string              `json:"renderer,omitempty"`
+	Schema         []core.SchemaColumn `json:"schema,omitempty"`
 }
 
 type summaryJSON struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Status    string `json:"status"`
-	Protected bool   `json:"protected"`
+	ID         string              `json:"id"`
+	Name       string              `json:"name"`
+	Type       string              `json:"type"`
+	Status     string              `json:"status"`
+	Protected  bool                `json:"protected"`
+	Icon       string              `json:"icon,omitempty"`
+	Color      string              `json:"color,omitempty"`
+	Renderer   string              `json:"renderer,omitempty"`
+	Schema     []core.SchemaColumn `json:"schema,omitempty"`
+	ChildCount int                 `json:"child_count"`
 }
 
 type relJSON struct {
@@ -234,7 +244,8 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrExists),
 		errors.Is(err, core.ErrContainerConflict):
 		code = http.StatusConflict
-	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation):
+	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation),
+		errors.Is(err, core.ErrInvalidPresentation):
 		code = http.StatusBadRequest
 	}
 	writeJSON(w, code, map[string]string{"error": err.Error()})

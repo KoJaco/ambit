@@ -26,6 +26,11 @@ type NodeView struct {
 	Scope          []string
 	Protected      bool
 	Spec           string
+	Icon           string
+	Color          string
+	Renderer       string
+	Schema         []SchemaColumn
+	ChildCount     int
 }
 
 // EdgeView is a relationship with both endpoints on the current level.
@@ -106,7 +111,9 @@ func (idx *Index) Level(parent NodeID) (Level, error) {
 			continue
 		}
 		set[id] = true
-		lvl.Children = append(lvl.Children, snapshot(n))
+		view := snapshot(n)
+		view.ChildCount = len(idx.Children[id])
+		lvl.Children = append(lvl.Children, view)
 	}
 
 	lvl.Relationships = []EdgeView{}
@@ -146,5 +153,9 @@ func snapshot(n *Node) NodeView {
 		Scope:          cloneStrings(n.Scope),
 		Protected:      n.Protected,
 		Spec:           n.Spec,
+		Icon:           n.Icon,
+		Color:          n.Color,
+		Renderer:       n.Renderer,
+		Schema:         append([]SchemaColumn(nil), n.Schema...),
 	}
 }

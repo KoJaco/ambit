@@ -26,6 +26,10 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			Scope:          body.Scope,
 			Protected:      body.Protected,
 			Status:         core.Status(body.Status),
+			Icon:           body.Icon,
+			Color:          body.Color,
+			Renderer:       body.Renderer,
+			Schema:         body.Schema,
 		})
 		if err != nil {
 			writeAPIError(w, err)
@@ -64,6 +68,10 @@ func patchNode(idx *core.Index) http.HandlerFunc {
 			parent := core.NodeID(*body.ParentID)
 			in.Parent = &parent
 		}
+		in.Icon = body.Icon
+		in.Color = body.Color
+		in.Renderer = body.Renderer
+		in.Schema = body.Schema
 		if err := idx.Update(id, in); err != nil {
 			writeAPIError(w, err)
 			return
@@ -188,6 +196,10 @@ func nodeBody(n core.NodeView) nodeJSON {
 		Scope:          scope,
 		Protected:      n.Protected,
 		Markdown:       n.Spec,
+		Icon:           n.Icon,
+		Color:          n.Color,
+		Renderer:       n.Renderer,
+		Schema:         n.Schema,
 	}
 }
 
@@ -209,24 +221,32 @@ func writeBadRequest(w http.ResponseWriter, err error) {
 }
 
 type createJSON struct {
-	Name           string   `json:"name"`
-	Type           string   `json:"type"`
-	Status         string   `json:"status"`
-	ParentID       string   `json:"parent_id"`
-	RelationshipID string   `json:"relationship_id"`
-	Implementation []string `json:"implementation"`
-	Scope          []string `json:"scope"`
-	Protected      bool     `json:"protected"`
-	Markdown       string   `json:"markdown"`
+	Name           string              `json:"name"`
+	Type           string              `json:"type"`
+	Status         string              `json:"status"`
+	ParentID       string              `json:"parent_id"`
+	RelationshipID string              `json:"relationship_id"`
+	Implementation []string            `json:"implementation"`
+	Scope          []string            `json:"scope"`
+	Protected      bool                `json:"protected"`
+	Markdown       string              `json:"markdown"`
+	Icon           string              `json:"icon"`
+	Color          string              `json:"color"`
+	Renderer       string              `json:"renderer"`
+	Schema         []core.SchemaColumn `json:"schema"`
 }
 
 type patchJSON struct {
-	Name           *string   `json:"name"`
-	Type           *string   `json:"type"`
-	Status         *string   `json:"status"`
-	ParentID       *string   `json:"parent_id"`
-	Implementation *[]string `json:"implementation"`
-	Scope          *[]string `json:"scope"`
-	Protected      *bool     `json:"protected"`
-	Markdown       *string   `json:"markdown"`
+	Name           *string              `json:"name"`
+	Type           *string              `json:"type"`
+	Status         *string              `json:"status"`
+	ParentID       *string              `json:"parent_id"`
+	Implementation *[]string            `json:"implementation"`
+	Scope          *[]string            `json:"scope"`
+	Protected      *bool                `json:"protected"`
+	Markdown       *string              `json:"markdown"`
+	Icon           *string              `json:"icon"`
+	Color          *string              `json:"color"`
+	Renderer       *string              `json:"renderer"`
+	Schema         *[]core.SchemaColumn `json:"schema"`
 }

@@ -5,12 +5,19 @@ export function layoutCacheKey(opts: { nodeId?: string; relationshipId?: string 
     return opts.nodeId ? opts.nodeId : rootLayoutKey;
 }
 
+export type SchemaColumn = { title: string; type: string };
+
 export type Summary = {
     id: string;
     name: string;
     type: string;
     status: string;
     protected: boolean;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
+    child_count?: number;
 };
 
 export type Crossing = {
@@ -66,6 +73,10 @@ export type NodeDetail = {
     scope: string[];
     protected: boolean;
     markdown: string;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
 };
 
 export type NodePatch = {
@@ -77,6 +88,10 @@ export type NodePatch = {
     scope?: string[];
     protected?: boolean;
     markdown?: string;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
 };
 
 export type Position = { id: string; x: number; y: number };
@@ -123,6 +138,10 @@ export function createNode(input: {
     parent_id?: string;
     relationship_id?: string;
     markdown?: string;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
 }): Promise<NodeDetail> {
     return send<NodeDetail>("/nodes", {
         method: "POST",
@@ -210,6 +229,8 @@ export type NodeSnapshot = {
     scope: string[];
     protected: boolean;
     markdown: string;
+    icon?: string;
+    color?: string;
 };
 
 export type RelSnapshot = {
