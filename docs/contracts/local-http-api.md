@@ -152,6 +152,19 @@ the rule. There is no HTTP-specific validator.
   `.arch/.cache/layout/<key>.json`.
 
 `{key}` for `/node/:nodeId` is that node id. `/` has no node id; its key is `_root`.
+When groups are open on a level (`?expand=`), the client appends `~<hash>` to that key, where
+`<hash>` is the 8-hex-digit FNV-1a hash of the sorted expanded ids (nothing is appended when no
+group is open). Each expanded set therefore has its own file, and positions of group members
+are relative to their group. The `~` suffix is the client's convention; the server treats the
+key as opaque.
+
+Create, delete, and reparent remove only the base key, so `<key>~<hash>` files can outlive a
+structural change. The client therefore uses a cached layout only when it has a position for
+every visible node and no others, and lays the level out again otherwise.
+
+The stored `Layout` is typed (`positions`, `ports`, `attachments`) and has no field for view
+modes, so the group/summary view modes are not stored here. The client keeps them in browser
+`localStorage` per base level key.
 `_root` cannot collide with a node id, because ids match `^[a-z0-9]+(-[a-z0-9]+)*$`.
 
 Layout writes touch only `.arch/.cache/layout/`. They never write to the canonical model,

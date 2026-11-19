@@ -1,8 +1,9 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
-import { Lock } from "lucide-react";
-import type { SchemaColumn } from "../api";
+import { ChevronDown, ChevronRight, Lock } from "lucide-react";
+import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
+import { summaryText } from "../level-view";
 import {
     nodeDotClass,
     nodeGlyphClass,
@@ -31,6 +32,11 @@ export type ArchNodeData = {
     renderer?: string;
     schema?: SchemaColumn[];
     childCount?: number;
+    typeMix?: TypeMixEntry[];
+    internalRelCount?: number;
+    expanded?: boolean;
+    // Stable callback from the canvas; toggles group/summary for one node.
+    onToggleMode?: (id: string) => void;
 };
 
 export type ArchNode = Node<ArchNodeData, CanvasNodeType>;
@@ -53,7 +59,7 @@ function HeaderGlyph({
     return <div className={nodeDotClass(colorToken)} aria-hidden />;
 }
 
-export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
+export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
     const colorToken = resolveNodeColor(data.type, data.color);
     const childCount = data.childCount ?? 0;
     const stacked = childCount > 0;
@@ -127,11 +133,34 @@ export function NodeCard({ data, selected }: NodeProps<ArchNode>) {
                     </ul>
                 ) : null}
                 {stacked ? (
-                    <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
-                        <span className="tabular-nums" title="Direct children">
-                            {childCount} inside
+                    <div className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
+                        <span className="min-w-0 flex-1 truncate tabular-nums" title="Direct children">
+                            {summaryText(childCount, data.typeMix)}
+                            {data.internalRelCount ? (
+                                <span className="ml-1.5" title="Relationships hidden inside this node">
+                                    · {data.internalRelCount} internal
+                                </span>
+                            ) : null}
                         </span>
-                        <span className="font-medium">Open ›</span>
+                        {data.onToggleMode ? (
+                            <button
+                                type="button"
+                                aria-label={`Expand ${data.name}`}
+                                aria-expanded={false}
+                                title="Expand"
+                                className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    data.onToggleMode?.(id);
+                                }}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                            >
+                                <ChevronDown className="size-4" aria-hidden />
+                            </button>
+                        ) : null}
+                        <span className="flex items-center font-medium" aria-hidden title="Double-click to open">
+                            Open <ChevronRight className="size-3" />
+                        </span>
                     </div>
                 ) : null}
                 <Handle type="source" position={Position.Right} />

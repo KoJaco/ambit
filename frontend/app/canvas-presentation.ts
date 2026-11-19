@@ -2,10 +2,14 @@ import type { SchemaColumn } from "./api";
 
 export const RENDERER_IDS = ["card", "schema", "placeholder", "group"] as const;
 
-export type CanvasNodeType = "card" | "schema" | "placeholder" | "group";
+export type CanvasNodeType = "card" | "schema" | "placeholder" | "group" | "container";
 export type CanvasEdgeType = "arch" | "button" | "animated" | "data";
 
-export function canvasNodeType(renderer?: string): CanvasNodeType {
+// An open group is always a container. A collapsed node with children is a summary card, even
+// when its renderer is `group` (0010): the static group frame stays for leaves only.
+export function canvasNodeType(renderer?: string, childCount = 0, expanded = false): CanvasNodeType {
+    if (expanded) return "container";
+    if (renderer === "group" && childCount > 0) return "card";
     if (renderer === "schema" || renderer === "placeholder" || renderer === "group") return renderer;
     return "card";
 }

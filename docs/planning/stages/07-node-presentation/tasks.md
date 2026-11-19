@@ -88,7 +88,7 @@ too-deep ids, and empty expand.
 
 ## 07.10 Group and summary rendering (0010 slice b)
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/app/layout.ts`, `api.ts` (cache key), `FlowCanvas.tsx`, `NodeCard.tsx`,
 `components/flow/group-node.tsx`, new pure `level-view.ts`.

@@ -8,6 +8,7 @@ import {
     type Edge,
     type NodeChange,
     type NodeMouseHandler,
+    type OnNodeDrag,
 } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
@@ -16,20 +17,32 @@ import {
     getLevel,
     getRelationshipLevel,
     layoutCacheKey,
+    loadViewModes,
     putLayout,
+    relationshipDrillId,
+    saveViewModes,
     type Level,
     type Relationship,
     type RelationshipLevel,
     type SchemaColumn,
 } from "../api";
 import { canvasEdgeType, canvasNodeType, nodeLayoutSize } from "../canvas-presentation";
-import { layoutLevel, type Point } from "../layout";
+import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
+import {
+    expandedGroups,
+    fallbackViewDefaults,
+    maxLevelFetches,
+    overBudgetHint,
+    resolveExpanded,
+    toggleMode,
+    type ViewModes,
+} from "../level-view";
 import { NodeCard, type ArchNode, type ArchNodeData, type CrossingMark } from "./NodeCard";
 import { ArchEdge } from "./ArchEdge";
 import { AnimatedEdge } from "./flow/animated-edge";
 import { ButtonEdge } from "./flow/button-edge";
 import { DataEdge } from "./flow/data-edge";
-import { GroupFrame } from "./flow/group-node";
+import { ContainerNode, GroupFrame } from "./flow/group-node";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
@@ -38,6 +51,7 @@ const nodeTypes = {
     schema: SchemaNode,
     placeholder: PlaceholderFrame,
     group: GroupFrame,
+    container: ContainerNode,
 };
 const edgeTypes = {
     arch: ArchEdge,
@@ -58,7 +72,11 @@ function crossingMarks(childId: string, crossings: Level["crossings"]): Crossing
         }));
 }
 
-function nodeData(child: SummaryLike, crossings: Level["crossings"]): ArchNodeData {
+function nodeData(
+    child: SummaryLike,
+    crossings: Level["crossings"],
+    onToggleMode?: (id: string) => void,
+): ArchNodeData {
     return {
         name: child.name,
         type: child.type,
@@ -70,6 +88,10 @@ function nodeData(child: SummaryLike, crossings: Level["crossings"]): ArchNodeDa
         renderer: child.renderer,
         schema: child.schema,
         childCount: child.child_count,
+        typeMix: child.type_mix,
+        internalRelCount: child.internal_rel_count,
+        expanded: child.expanded,
+        onToggleMode,
     };
 }
 
@@ -84,24 +106,51 @@ type SummaryLike = {
     renderer?: string;
     schema?: SchemaColumn[];
     child_count?: number;
+    group_id?: string;
+    expanded?: boolean;
+    internal_rel_count?: number;
+    type_mix?: { type: string; count: number }[];
 };
 
 function buildArchNodes(
     level: Level | RelationshipLevel,
     positions: Record<string, Point>,
+    groupSizes: Record<string, NodeSize>,
+    onToggleMode?: (id: string) => void,
 ): ArchNode[] {
     const children = level.children ?? [];
-    return children.map((child, index) => ({
-        id: child.id,
-        type: canvasNodeType(child.renderer),
-        selectable: true,
-        draggable: true,
-        position: positions[child.id] ?? {
-            x: (index % 4) * 280,
-            y: Math.floor(index / 4) * 160,
-        },
-        data: nodeData(child, level.crossings ?? []),
-    }));
+    const present = new Set(children.map((child) => child.id));
+    // Members must follow their group in the array; the server already orders them that way.
+    return children.map((child, index) => {
+        const parentId = child.group_id && present.has(child.group_id) ? child.group_id : undefined;
+        const type = canvasNodeType(child.renderer, child.child_count, child.expanded);
+        const size = groupSizes[child.id];
+        return {
+            id: child.id,
+            type,
+            selectable: true,
+            draggable: true,
+            ...(parentId ? { parentId, extent: "parent" as const } : {}),
+            ...(type === "container" && size ? { style: { width: size.width, height: size.height } } : {}),
+            position: positions[child.id] ?? {
+                x: (index % 4) * 280,
+                y: Math.floor(index / 4) * 160,
+            },
+            data: nodeData(child, level.crossings ?? [], onToggleMode),
+        };
+    });
+}
+
+function sameSet(left: string[], right: string[]): boolean {
+    return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function pointerPoint(event: MouseEvent | TouchEvent): { x: number; y: number } | null {
+    if ("changedTouches" in event) {
+        const touch = event.changedTouches[0];
+        return touch ? { x: touch.clientX, y: touch.clientY } : null;
+    }
+    return { x: event.clientX, y: event.clientY };
 }
 
 function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
@@ -114,6 +163,10 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
         left.color !== right.color ||
         left.renderer !== right.renderer ||
         left.childCount !== right.childCount ||
+        left.expanded !== right.expanded ||
+        left.internalRelCount !== right.internalRelCount ||
+        (left.typeMix ?? []).map((entry) => `${entry.type}:${entry.count}`).join() !==
+            (right.typeMix ?? []).map((entry) => `${entry.type}:${entry.count}`).join() ||
         left.crossings.length !== right.crossings.length ||
         (left.schema?.length ?? 0) !== (right.schema?.length ?? 0)
     ) {
@@ -133,6 +186,22 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
             mark.label === right.crossings[index].label &&
             mark.otherId === right.crossings[index].otherId,
     );
+}
+
+// Fetch a level, then refine the expand set by the 0010 defaults. The client only learns about
+// depth-2 candidates from a response, so this is bounded to maxLevelFetches requests.
+async function loadLevel(nodeId: string | undefined, modes: ViewModes, signal: AbortSignal): Promise<Level> {
+    let expand = Object.keys(modes)
+        .filter((id) => modes[id] === "group")
+        .sort();
+    let body = await getLevel(nodeId, signal, expand);
+    for (let fetches = 1; fetches < maxLevelFetches; fetches += 1) {
+        const next = resolveExpanded(body.children ?? [], modes, body.view_defaults ?? fallbackViewDefaults);
+        if (sameSet(next, expand)) break;
+        expand = next;
+        body = await getLevel(nodeId, signal, expand);
+    }
+    return body;
 }
 
 export default function FlowCanvas({
@@ -155,15 +224,26 @@ export default function FlowCanvas({
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
 }) {
     const navigate = useNavigate();
-    const { zoomIn, zoomOut, fitView } = useReactFlow();
+    const { zoomIn, zoomOut, fitView, screenToFlowPosition, getInternalNode } = useReactFlow();
     const [level, setLevel] = useState<Level | null>(null);
     const [relLevel, setRelLevel] = useState<RelationshipLevel | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [notFound, setNotFound] = useState(false);
     const [nodes, setNodes] = useState<ArchNode[]>([]);
     const [fitToken, setFitToken] = useState(0);
+    const [notice, setNotice] = useState<string | null>(null);
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
+    const dragStart = useRef<{ id: string; position: Point } | null>(null);
+
+    // View modes are per level (base key), kept out of the model: see layout-cache notes in
+    // docs/contracts/local-http-api.md. The layout key additionally carries the expanded-set hash.
+    const baseKey = layoutCacheKey({ nodeId, relationshipId });
+    const storedModes = useMemo(() => loadViewModes(baseKey), [baseKey]);
+    const [modeOverride, setModeOverride] = useState<{ key: string; modes: ViewModes } | null>(null);
+    const viewModes = modeOverride?.key === baseKey ? modeOverride.modes : storedModes;
+    const viewModesRef = useRef(viewModes);
+    viewModesRef.current = viewModes;
 
     useEffect(() => {
         onRequestZoomRef?.({
@@ -182,25 +262,61 @@ export default function FlowCanvas({
         setNodes([]);
         setLevel(null);
         setRelLevel(null);
+        setNotice(null);
     }, [nodeId, relationshipId]);
+
+    useEffect(() => {
+        if (!notice) return;
+        const timer = window.setTimeout(() => setNotice(null), 8000);
+        return () => window.clearTimeout(timer);
+    }, [notice]);
+
+    const levelRef = useRef<Level | null>(null);
+    levelRef.current = level;
+    const onToggleMode = useCallback(
+        (id: string) => {
+            const next = toggleMode(viewModesRef.current, levelRef.current?.children ?? [], id);
+            saveViewModes(baseKey, next);
+            setModeOverride({ key: baseKey, modes: next });
+        },
+        [baseKey],
+    );
+
+    // TODO(phase 4): stage a reparent proposal here. Until the proposal op exists this only explains
+    // why nothing changed. newParentId is "" for the level's own parent.
+    const requestReparent = useCallback((nodeId: string, newParentId: string) => {
+        void nodeId;
+        void newParentId;
+        setNotice("Moving a node out of its group changes the model, so it goes through a proposal. Nothing was changed.");
+    }, []);
 
     const activeLevel = relLevel ?? level;
     const parentId = level?.node?.id ?? "";
-    const childIds = (activeLevel?.children ?? []).map((child) => child.id).join("\0");
+    const childIds = (activeLevel?.children ?? [])
+        .map((child) => `${child.id}>${child.group_id ?? ""}`)
+        .join("\0");
     const edgeKey = (activeLevel?.relationships ?? []).map((rel) => rel.id).join("\n");
-    const cacheKey = layoutCacheKey({ nodeId, relationshipId });
+    const expandedIds = useMemo(
+        () => (activeLevel?.children ?? []).filter((child) => child.expanded).map((child) => child.id),
+        [activeLevel],
+    );
+    const expandedSig = expandedIds.join("\0");
+    const cacheKey = layoutCacheKey({ nodeId, relationshipId, expanded: expandedIds });
 
     useEffect(() => {
         if (!activeLevel) return;
         if (relationshipId && !relLevel) return;
         if (!relationshipId && (nodeId ?? "") !== parentId && nodeId !== undefined) return;
         let cancelled = false;
-        const ids = (activeLevel.children ?? []).map((c) => c.id);
-        const sizes: Record<string, { width: number; height: number }> = {};
-        for (const child of activeLevel.children ?? []) {
+        const kids = activeLevel.children ?? [];
+        const ids = kids.map((c) => c.id);
+        const compound = kids.map((c) => ({ id: c.id, parentId: c.group_id }));
+        const sizes: Record<string, NodeSize> = {};
+        for (const child of kids) {
             sizes[child.id] = nodeLayoutSize(child.renderer, child.schema?.length ?? 0);
         }
         const edges = (activeLevel.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
+        const nested = kids.some((c) => c.group_id);
         getLayout(cacheKey)
             .then(async (cached) => {
                 if (cancelled) return;
@@ -208,14 +324,20 @@ export default function FlowCanvas({
                 for (const position of cached.positions) {
                     stored[position.id] = { x: position.x, y: position.y };
                 }
-                if (cached.positions.length > 0) {
-                    setNodes(buildArchNodes(activeLevel, stored));
+                // Hashed variants are not invalidated by create/delete/reparent (only the base key is),
+                // so a cache is only trusted when it covers exactly the nodes on screen.
+                const usable =
+                    ids.length > 0 && cached.positions.length === ids.length && ids.every((id) => stored[id]);
+                if (usable) {
+                    setNodes(buildArchNodes(activeLevel, stored, computeGroupSizes(compound, stored, sizes), onToggleMode));
                     setFitToken((v) => v + 1);
                     return;
                 }
-                const laid = await layoutLevel(ids, edges, sizes);
+                const laid = nested
+                    ? (await layoutCompound(compound, edges, sizes)).positions
+                    : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
-                setNodes(buildArchNodes(activeLevel, laid));
+                setNodes(buildArchNodes(activeLevel, laid, computeGroupSizes(compound, laid, sizes), onToggleMode));
                 setFitToken((v) => v + 1);
                 await putLayout(cacheKey, {
                     positions: ids.map((id) => ({ id, x: laid[id]?.x ?? 0, y: laid[id]?.y ?? 0 })),
@@ -230,7 +352,7 @@ export default function FlowCanvas({
         return () => {
             cancelled = true;
         };
-    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, activeLevel, relLevel]);
+    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, expandedSig, activeLevel, relLevel, onToggleMode]);
 
     useEffect(() => {
         const ac = new AbortController();
@@ -246,7 +368,7 @@ export default function FlowCanvas({
                     setError(err instanceof Error ? err.message : "level request failed");
                 });
         } else {
-            getLevel(nodeId, ac.signal)
+            loadLevel(nodeId, viewModesRef.current, ac.signal)
                 .then((body) => setLevel(body))
                 .catch((err: unknown) => {
                     if (err instanceof DOMException && err.name === "AbortError") return;
@@ -255,7 +377,7 @@ export default function FlowCanvas({
                 });
         }
         return () => ac.abort();
-    }, [nodeId, relationshipId, refreshKey]);
+    }, [nodeId, relationshipId, refreshKey, viewModes]);
 
     useEffect(() => {
         if (!activeLevel) return;
@@ -269,15 +391,20 @@ export default function FlowCanvas({
                     changed = true;
                     return [];
                 }
-                const data = nodeData(child, activeLevel.crossings ?? []);
-                const type = canvasNodeType(child.renderer);
+                const data = nodeData(child, activeLevel.crossings ?? [], onToggleMode);
+                const type = canvasNodeType(child.renderer, child.child_count, child.expanded);
                 if (node.type === type && sameData(node.data, data)) return [node];
+                if ((node.type === "container") !== (type === "container")) {
+                    // Open/closed changed: the layout effect rebuilds the level with sizes and parents.
+                    changed = true;
+                    return [];
+                }
                 changed = true;
                 return [{ ...node, type, data }];
             });
             return changed ? next : current;
         });
-    }, [activeLevel]);
+    }, [activeLevel, onToggleMode]);
 
     const edges = useMemo<Edge[]>(() => {
         const rels = activeLevel?.relationships ?? [];
@@ -289,17 +416,18 @@ export default function FlowCanvas({
         const pairIndex = new Map<string, number>();
         const names = new Map((activeLevel?.children ?? []).map((child) => [child.id, child.name]));
         return rels.map((rel) => {
+            const kindForType = rel.aggregated ? undefined : rel.kind;
             const key = `${rel.from}\0${rel.to}`;
             const labelIndex = pairIndex.get(key) ?? 0;
             pairIndex.set(key, labelIndex + 1);
             const labelCount = pairCount.get(key) ?? 1;
             return {
                 id: rel.id,
-                type: canvasEdgeType(rel.kind),
+                type: canvasEdgeType(kindForType),
                 source: rel.from,
                 target: rel.to,
                 markerEnd: { type: MarkerType.ArrowClosed },
-                style: { cursor: rel.drillable ? "pointer" : "default" },
+                style: { cursor: relationshipDrillId(rel) ? "pointer" : "default" },
                 data: {
                     drillable: rel.drillable,
                     rel,
@@ -324,7 +452,8 @@ export default function FlowCanvas({
     const onEdgeClick = useCallback(
         (_event: unknown, edge: Edge) => {
             const rel = edge.data?.rel as Relationship | undefined;
-            if (rel) onSelectEdge?.(rel);
+            // Aggregated edges have no relationship of their own to inspect; their pill lists the members.
+            if (rel && !rel.aggregated) onSelectEdge?.(rel);
         },
         [onSelectEdge],
     );
@@ -332,7 +461,8 @@ export default function FlowCanvas({
     const onEdgeDoubleClick = useCallback(
         (_event: unknown, edge: Edge) => {
             const rel = edge.data?.rel as Relationship | undefined;
-            if (rel?.drillable) navigate(`/relationship/${rel.id}`, { state: { fromNodeId: nodeId } });
+            const drillId = rel ? relationshipDrillId(rel) : undefined;
+            if (drillId) navigate(`/relationship/${drillId}`, { state: { fromNodeId: nodeId } });
         },
         [navigate, nodeId],
     );
@@ -341,8 +471,46 @@ export default function FlowCanvas({
         setNodes((current) => applyNodeChanges(changes, current));
     }, []);
 
-    const onNodeDragStop = (_event: unknown, node: ArchNode) => {
+    const onNodeDragStart: OnNodeDrag<ArchNode> = (_event, node) => {
+        dragStart.current = { id: node.id, position: { ...node.position } };
+    };
+
+    // The member is clamped to its group (extent: parent), so leaving the group is read from the
+    // pointer. Returns the drop target id ("" is the level itself), or null when still inside.
+    function dropOutsideTarget(event: MouseEvent | TouchEvent, node: ArchNode): string | null {
+        if (!node.parentId) return null;
+        const pointer = pointerPoint(event);
+        if (!pointer) return null;
+        const at = screenToFlowPosition(pointer);
+        const contains = (id: string) => {
+            const internal = getInternalNode(id);
+            if (!internal) return false;
+            const origin = internal.internals.positionAbsolute;
+            const width = internal.measured.width ?? 0;
+            const height = internal.measured.height ?? 0;
+            return at.x >= origin.x && at.x <= origin.x + width && at.y >= origin.y && at.y <= origin.y + height;
+        };
+        if (contains(node.parentId)) return null;
+        const other = nodesRef.current.find(
+            (item) => item.type === "container" && item.id !== node.parentId && item.id !== node.id && contains(item.id),
+        );
+        return other?.id ?? "";
+    }
+
+    const onNodeDragStop: OnNodeDrag<ArchNode> = (event, node) => {
+        const outside = dropOutsideTarget(event, node);
+        if (outside !== null) {
+            const start = dragStart.current?.id === node.id ? dragStart.current.position : null;
+            if (start) {
+                setNodes((current) =>
+                    current.map((item) => (item.id === node.id ? { ...item, position: start } : item)),
+                );
+            }
+            requestReparent(node.id, outside);
+            return;
+        }
         const ids = (activeLevel?.children ?? []).map((child) => child.id);
+        // Members are stored relative to their group, as React Flow holds them.
         const placed = new Map(nodesRef.current.map((item) => [item.id, item.position]));
         placed.set(node.id, node.position);
         void putLayout(cacheKey, {
@@ -354,6 +522,16 @@ export default function FlowCanvas({
             setError(err instanceof Error ? err.message : "layout save failed");
         });
     };
+
+    const hint = useMemo(() => {
+        if (relationshipId) return null;
+        const kids = level?.children ?? [];
+        return overBudgetHint(
+            kids.length,
+            (level?.view_defaults ?? fallbackViewDefaults).level_budget,
+            expandedGroups(kids),
+        );
+    }, [level, relationshipId]);
 
     if (notFound && relationshipId) {
         return (
@@ -370,6 +548,20 @@ export default function FlowCanvas({
                     {error}
                 </p>
             ) : null}
+            {notice || hint ? (
+                <div className="pointer-events-none absolute top-24 left-1/2 z-50 flex max-w-md -translate-x-1/2 flex-col items-center gap-2">
+                    {notice ? (
+                        <p role="status" className="rounded-full border border-border bg-card px-3 py-1.5 text-sm text-foreground shadow-sm">
+                            {notice}
+                        </p>
+                    ) : null}
+                    {hint ? (
+                        <p role="status" className="rounded-full border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground shadow-sm">
+                            {hint.message}
+                        </p>
+                    ) : null}
+                </div>
+            ) : null}
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -380,6 +572,7 @@ export default function FlowCanvas({
                 onNodeDoubleClick={onNodeDoubleClick}
                 onEdgeClick={onEdgeClick}
                 onEdgeDoubleClick={onEdgeDoubleClick}
+                onNodeDragStart={onNodeDragStart}
                 onNodeDragStop={onNodeDragStop}
                 panOnDrag={tool === "grab"}
                 selectionOnDrag={tool === "pointer"}

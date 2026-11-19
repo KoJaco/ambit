@@ -12,6 +12,14 @@ describe("canvas presentation", () => {
         expect(canvasNodeType("group")).toBe("group");
     });
 
+    it("renders open groups as containers and collapsed groups as summary cards", () => {
+        expect(canvasNodeType("card", 3, true)).toBe("container");
+        expect(canvasNodeType("schema", 3, true)).toBe("container");
+        expect(canvasNodeType("group", 3, false)).toBe("card");
+        expect(canvasNodeType("group", 0, false)).toBe("group");
+        expect(canvasNodeType(undefined, 3, false)).toBe("card");
+    });
+
     it("maps relationship kind onto edge types", () => {
         expect(canvasEdgeType("sync")).toBe("button");
         expect(canvasEdgeType("async")).toBe("animated");

@@ -144,7 +144,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **07.7** Drill affordance: level summaries expose has-children; NodeCard shows hint.
 - [ ] **07.8** ~~Lift/embed~~ superseded by 07.9-07.11 (decision 0010).
 - [x] **07.9** Core anchor roll-up: `Level(parent, expanded)`, aggregated edges, `expand` param, config thresholds.
-- [ ] **07.10** Group/summary rendering, compound ELK layout, view mode in layout cache.
+- [x] **07.10** Group/summary rendering, compound ELK layout, view mode in layout cache.
 - [ ] **07.11** Group/ungroup as reviewed proposals; shallow-model agent guidance.
 
 ## Stage 08 — Distribution

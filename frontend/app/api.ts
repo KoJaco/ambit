@@ -1,8 +1,38 @@
+import { expandedKey, sanitizeViewModes, type ViewDefaults, type ViewModes } from "./level-view";
+
 export const rootLayoutKey = "_root";
 
-export function layoutCacheKey(opts: { nodeId?: string; relationshipId?: string }): string {
+// The expanded-set hash is appended only when a group is open, so flat levels keep their old key.
+// The separator cannot appear in a node id (ids are lowercase slugs).
+export function layoutCacheKey(opts: {
+    nodeId?: string;
+    relationshipId?: string;
+    expanded?: Iterable<string>;
+}): string {
     if (opts.relationshipId) return `_rel_${opts.relationshipId}`;
-    return opts.nodeId ? opts.nodeId : rootLayoutKey;
+    const base = opts.nodeId ? opts.nodeId : rootLayoutKey;
+    const hash = expandedKey(opts.expanded ?? []);
+    return hash ? `${base}~${hash}` : base;
+}
+
+// View modes (group or summary per node) are per level, not per expanded set, so they use the base key.
+const viewModesStoragePrefix = "ambit:view-modes:";
+
+export function loadViewModes(baseKey: string): ViewModes {
+    try {
+        const raw = window.localStorage.getItem(viewModesStoragePrefix + baseKey);
+        return raw ? sanitizeViewModes(JSON.parse(raw)) : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveViewModes(baseKey: string, modes: ViewModes): void {
+    try {
+        window.localStorage.setItem(viewModesStoragePrefix + baseKey, JSON.stringify(modes));
+    } catch {
+        // Private mode or quota: view modes are a convenience, the level still renders.
+    }
 }
 
 export type SchemaColumn = { title: string; type: string };
@@ -18,7 +48,13 @@ export type Summary = {
     renderer?: string;
     schema?: SchemaColumn[];
     child_count?: number;
+    group_id?: string;
+    expanded?: boolean;
+    internal_rel_count?: number;
+    type_mix?: TypeMixEntry[];
 };
+
+export type TypeMixEntry = { type: string; count: number };
 
 export type Crossing = {
     node_id: string;
@@ -37,7 +73,16 @@ export type Relationship = {
     label: string;
     kind: string;
     drillable?: boolean;
+    aggregated?: boolean;
+    members?: string[];
+    kinds?: string[];
 };
+
+// Aggregated edges carry a synthetic id; only a single-member one can be drilled, via that member.
+export function relationshipDrillId(rel: Relationship): string | undefined {
+    if (!rel.drillable) return undefined;
+    return rel.aggregated ? rel.members?.[0] : rel.id;
+}
 
 export type Warning = {
     severity: string;
@@ -51,6 +96,7 @@ export type Level = {
     relationships: Relationship[];
     crossings: Crossing[];
     warnings: Warning[];
+    view_defaults?: ViewDefaults;
 };
 
 export type RelationshipLevel = {
@@ -115,9 +161,10 @@ async function send<T>(path: string, init?: RequestInit): Promise<T> {
     return res.json() as Promise<T>;
 }
 
-export function getLevel(nodeId?: string, signal?: AbortSignal): Promise<Level> {
-    const path = nodeId ? `/levels/${encodeURIComponent(nodeId)}` : "/levels";
-    return send<Level>(path, { signal });
+export function getLevel(nodeId?: string, signal?: AbortSignal, expand: string[] = []): Promise<Level> {
+    const base = nodeId ? `/levels/${encodeURIComponent(nodeId)}` : "/levels";
+    const query = expand.length > 0 ? `?expand=${expand.map(encodeURIComponent).join(",")}` : "";
+    return send<Level>(base + query, { signal });
 }
 
 export function getNode(id: string, signal?: AbortSignal): Promise<NodeDetail> {
