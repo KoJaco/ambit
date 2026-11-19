@@ -2,7 +2,11 @@
 
 ## Status
 
-Proposed from product dogfooding (2026-09-28). Not scheduled to a stage gate yet.
+Proposed from product dogfooding (2026-09-28). **Partly superseded by
+[0010](0010-flat-first-groups-and-summary-nodes.md) (2026-11-20):** the drill-affordance
+design is replaced (the `child_count` indicator already shipped in stage 07), and the
+"no virtual collapse" non-goal is reversed for view-only collapse. Lift/embed as a
+hierarchy-mutating proposal stays in scope as group/ungroup (0010 §6).
 
 ## Context
 
