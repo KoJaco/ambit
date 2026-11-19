@@ -93,6 +93,38 @@ export function resolveExpanded(
     return [...open].sort();
 }
 
+// Whether to offer the Expand/Collapse control. Open groups can always collapse. A collapsed node
+// can open only on a normal level and only within the server's max expand depth.
+export function canExpandChild(child: LevelChild, children: LevelChild[], onRelationshipLevel: boolean): boolean {
+    if (child.expanded) return true;
+    if (onRelationshipLevel || (child.child_count ?? 0) <= 0) return false;
+    const byId = new Map(children.map((item) => [item.id, item]));
+    return depthOf(child, byId) <= maxExpandDepth;
+}
+
+// Signature of the level's membership (sorted `id>group_id` pairs). Cached layouts are only valid
+// while it matches: the same ids moved between two open groups keep the same id set.
+export function layoutSignature(children: { id: string; group_id?: string }[]): string {
+    return children
+        .map((child) => `${child.id}>${child.group_id ?? ""}`)
+        .sort()
+        .join("\n");
+}
+
+// A cached layout is trusted only when it covers exactly the nodes on screen and its stored
+// membership signature is present and equal to the current one.
+export function layoutUsable(
+    ids: string[],
+    cachedIds: string[],
+    storedSig: string | null,
+    currentSig: string,
+): boolean {
+    if (ids.length === 0 || storedSig === null || storedSig !== currentSig) return false;
+    if (cachedIds.length !== ids.length) return false;
+    const cached = new Set(cachedIds);
+    return ids.every((id) => cached.has(id));
+}
+
 export type OverBudgetHint = {
     message: string;
     largest: { id: string; name: string; members: number }[];

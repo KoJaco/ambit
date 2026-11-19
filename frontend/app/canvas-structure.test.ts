@@ -3,6 +3,7 @@ import {
     containerAt,
     defaultGroupName,
     groupableSelection,
+    outsideReparentTarget,
     groupButtonLabel,
     resolveGroupName,
     stageErrorMessage,
@@ -61,5 +62,18 @@ describe("labels", () => {
     it("maps errors to the server message", () => {
         expect(stageErrorMessage(new Error("node is already in that group"))).toBe("node is already in that group");
         expect(stageErrorMessage("x")).toBe("Could not stage the proposal");
+    });
+});
+
+describe("outsideReparentTarget", () => {
+    it("falls back to the model root at the root level", () => {
+        expect(outsideReparentTarget(null, undefined)).toBe("");
+        expect(outsideReparentTarget(null, "")).toBe("");
+    });
+    it("falls back to the level's node on a nested level", () => {
+        expect(outsideReparentTarget(null, "x")).toBe("x");
+    });
+    it("prefers the container under the pointer", () => {
+        expect(outsideReparentTarget("other", "x")).toBe("other");
     });
 });

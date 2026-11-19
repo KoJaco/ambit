@@ -17,7 +17,9 @@ import {
     getLevel,
     getRelationshipLevel,
     layoutCacheKey,
+    loadLayoutSig,
     loadViewModes,
+    saveLayoutSig,
     putLayout,
     relationshipDrillId,
     saveViewModes,
@@ -31,6 +33,7 @@ import {
 } from "../api";
 import {
     containerAt,
+    outsideReparentTarget,
     defaultGroupName,
     groupableSelection,
     groupButtonLabel,
@@ -42,7 +45,10 @@ import { StructurePanel, type StructureRequest } from "./structure-panel";
 import { canvasEdgeType, canvasNodeType, nodeLayoutSize } from "../canvas-presentation";
 import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
 import {
+    canExpandChild,
     expandedGroups,
+    layoutSignature,
+    layoutUsable,
     fallbackViewDefaults,
     maxLevelFetches,
     overBudgetHint,
@@ -110,6 +116,15 @@ function nodeData(
     };
 }
 
+// The expand control is withheld where the server would ignore the request.
+function toggleFor(
+    child: SummaryLike,
+    level: Level | RelationshipLevel,
+    onToggleMode?: (id: string) => void,
+): ((id: string) => void) | undefined {
+    return canExpandChild(child, level.children ?? [], "relationship" in level) ? onToggleMode : undefined;
+}
+
 type SummaryLike = {
     id: string;
     name: string;
@@ -152,7 +167,7 @@ function buildArchNodes(
                 x: (index % 4) * 280,
                 y: Math.floor(index / 4) * 160,
             },
-            data: nodeData(child, level.crossings ?? [], onToggleMode, onUngroup),
+            data: nodeData(child, level.crossings ?? [], toggleFor(child, level, onToggleMode), onUngroup),
         };
     });
 }
@@ -254,6 +269,7 @@ export default function FlowCanvas({
     const [request, setRequest] = useState<StructureRequest | null>(null);
     const [staging, setStaging] = useState(false);
     const groupButtonRef = useRef<HTMLButtonElement | null>(null);
+    const openerRef = useRef<HTMLElement | null>(null);
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
     const dragStart = useRef<{ id: string; position: Point } | null>(null);
@@ -333,13 +349,18 @@ export default function FlowCanvas({
     );
 
     const onUngroup = useCallback((id: string) => {
+        openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         const child = levelRef.current?.children.find((item) => item.id === id);
         setRequest({ kind: "ungroup", id, name: child?.name ?? id });
     }, []);
 
     const closeRequest = useCallback(() => {
         setRequest(null);
-        window.setTimeout(() => groupButtonRef.current?.focus(), 0);
+        const opener = openerRef.current;
+        openerRef.current = null;
+        window.setTimeout(() => {
+            if (opener && opener.isConnected) opener.focus();
+        }, 0);
     }, []);
 
     const confirmRequest = useCallback(
@@ -391,8 +412,15 @@ export default function FlowCanvas({
                 }
                 // Hashed variants are not invalidated by create/delete/reparent (only the base key is),
                 // so a cache is only trusted when it covers exactly the nodes on screen.
-                const usable =
-                    ids.length > 0 && cached.positions.length === ids.length && ids.every((id) => stored[id]);
+                // The id set alone is not enough: a node moved between two open groups keeps it, so the
+                // membership signature (id>group_id) must also match the one saved with the layout.
+                const sig = layoutSignature(kids);
+                const usable = layoutUsable(
+                    ids,
+                    cached.positions.map((position) => position.id),
+                    loadLayoutSig(cacheKey),
+                    sig,
+                );
                 if (usable) {
                     setNodes(buildArchNodes(activeLevel, stored, computeGroupSizes(compound, stored, sizes), onToggleMode, onUngroup));
                     setFitToken((v) => v + 1);
@@ -409,6 +437,7 @@ export default function FlowCanvas({
                     ports: cached.ports,
                     attachments: cached.attachments,
                 });
+                saveLayoutSig(cacheKey, sig);
             })
             .catch((err: unknown) => {
                 if (cancelled) return;
@@ -456,7 +485,7 @@ export default function FlowCanvas({
                     changed = true;
                     return [];
                 }
-                const data = nodeData(child, activeLevel.crossings ?? [], onToggleMode, onUngroup);
+                const data = nodeData(child, activeLevel.crossings ?? [], toggleFor(child, activeLevel, onToggleMode), onUngroup);
                 const type = canvasNodeType(child.renderer, child.child_count, child.expanded);
                 if (node.type === type && sameData(node.data, data)) return [node];
                 if ((node.type === "container") !== (type === "container")) {
@@ -568,7 +597,7 @@ export default function FlowCanvas({
         const at = screenToFlowPosition(pointer);
         const rects = containerRects();
         if (containerAt(at, rects.filter((rect) => rect.id === node.parentId)) !== null) return null;
-        return containerAt(at, rects, [node.parentId, node.id]) ?? "";
+        return outsideReparentTarget(containerAt(at, rects, [node.parentId, node.id]), level?.node?.id);
     }
 
     // A top-level node dropped on an open container moves into it (via proposal). Null otherwise.
@@ -600,13 +629,14 @@ export default function FlowCanvas({
                 const point = placed.get(id) ?? { x: 0, y: 0 };
                 return { id, x: point.x, y: point.y };
             }),
-        }).catch((err: unknown) => {
+        }).then(() => saveLayoutSig(cacheKey, layoutSignature(activeLevel?.children ?? []))).catch((err: unknown) => {
             setError(err instanceof Error ? err.message : "layout save failed");
         });
     };
 
     const groupIds = useMemo(() => (relationshipId ? [] : groupableSelection(nodes)), [nodes, relationshipId]);
     const openGroupForm = useCallback(() => {
+        openerRef.current = groupButtonRef.current;
         const names = (levelRef.current?.children ?? []).map((child) => child.name);
         setRequest({ kind: "group", ids: groupIds, suggestion: defaultGroupName(names) });
     }, [groupIds]);

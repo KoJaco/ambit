@@ -106,6 +106,31 @@ func (idx *Index) invalidateLayoutKeyLocked(key string) {
 		return
 	}
 	_ = os.Remove(path)
+	idx.removeLayoutVariantsLocked(key)
+}
+
+// invalidateAncestorVariantsLocked drops the hashed variants (an open group on an ancestor
+// level may contain the moved node) of the level for id and every level above it. Base
+// layouts of those levels are kept.
+func (idx *Index) invalidateAncestorVariantsLocked(id NodeID) {
+	seen := map[NodeID]bool{}
+	for cur := id; cur != "" && !seen[cur]; {
+		seen[cur] = true
+		idx.removeLayoutVariantsLocked(string(cur))
+		n := idx.Nodes[cur]
+		if n == nil {
+			break
+		}
+		cur = n.ParentID
+	}
+	idx.removeLayoutVariantsLocked(RootLayoutKey)
+}
+
+func (idx *Index) removeLayoutVariantsLocked(key string) {
+	path, err := idx.layoutPath(key)
+	if err != nil {
+		return
+	}
 	// Hashed variants (<key>~<hash>.json) belong to the same level. Match the exact prefix inside
 	// the layout directory only; key already passed layoutPath, so it has no separators.
 	dir := filepath.Dir(path)

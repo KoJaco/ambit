@@ -35,6 +35,26 @@ export function saveViewModes(baseKey: string, modes: ViewModes): void {
     }
 }
 
+// Membership signature of a cached layout (see layoutSignature). The server Layout schema is
+// typed and cannot carry it, so it lives next to the view modes, keyed by the cache key.
+const layoutSigStoragePrefix = "ambit:layout-sig:";
+
+export function loadLayoutSig(cacheKey: string): string | null {
+    try {
+        return window.localStorage.getItem(layoutSigStoragePrefix + cacheKey);
+    } catch {
+        return null;
+    }
+}
+
+export function saveLayoutSig(cacheKey: string, sig: string): void {
+    try {
+        window.localStorage.setItem(layoutSigStoragePrefix + cacheKey, sig);
+    } catch {
+        // Without it the layout is simply recomputed next time.
+    }
+}
+
 export type SchemaColumn = { title: string; type: string };
 
 export type Summary = {

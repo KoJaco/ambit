@@ -38,6 +38,13 @@ export function containerAt(
     return best?.id ?? null;
 }
 
+// Where a node dragged out of its group lands: the container under the pointer, else the level
+// itself. `levelNodeId` is the node whose level is shown ("" at the model root). An empty result
+// means the model root, so on a nested level the level's own node id must be used.
+export function outsideReparentTarget(found: string | null, levelNodeId: string | undefined): string {
+    return found ?? levelNodeId ?? "";
+}
+
 export type SelectableNode = { id: string; selected?: boolean; parentId?: string };
 
 // Ids that can be grouped together: at least two selected nodes that share the same parent.

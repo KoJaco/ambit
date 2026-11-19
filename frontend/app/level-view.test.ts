@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+    canExpandChild,
     expandedGroups,
     expandedKey,
+    layoutSignature,
+    layoutUsable,
     overBudgetHint,
     resolveExpanded,
     sanitizeViewModes,
@@ -199,5 +202,47 @@ describe("summaryText", () => {
     it("falls back to the count", () => {
         expect(summaryText(4)).toBe("4");
         expect(summaryText(4, [])).toBe("4");
+    });
+});
+
+describe("layout signature", () => {
+    const before = [{ id: "a", group_id: "g1" }, { id: "b", group_id: "g2" }, { id: "g1" }, { id: "g2" }];
+    const after = [{ id: "a", group_id: "g2" }, { id: "b", group_id: "g1" }, { id: "g1" }, { id: "g2" }];
+    it("differs when the same ids move between groups and ignores order", () => {
+        expect(layoutSignature(before)).not.toBe(layoutSignature(after));
+        expect(layoutSignature(before)).toBe(layoutSignature([...before].reverse()));
+    });
+    it("only trusts a cache with a matching signature and id set", () => {
+        const ids = ["a", "b"];
+        const sig = layoutSignature(before);
+        expect(layoutUsable(ids, ids, sig, sig)).toBe(true);
+        expect(layoutUsable(ids, ids, null, sig)).toBe(false);
+        expect(layoutUsable(ids, ids, sig, layoutSignature(after))).toBe(false);
+        expect(layoutUsable(ids, ["a"], sig, sig)).toBe(false);
+        expect(layoutUsable([], [], sig, sig)).toBe(false);
+    });
+});
+
+describe("canExpandChild", () => {
+    const kids: LevelChild[] = [
+        { id: "top", child_count: 3, expanded: true },
+        { id: "mid", child_count: 2, group_id: "top", expanded: true },
+        { id: "deep", child_count: 2, group_id: "mid" },
+        { id: "leaf" },
+        { id: "closed", child_count: 4 },
+        { id: "inner", child_count: 1, group_id: "top" },
+    ];
+    const find = (id: string) => kids.find((k) => k.id === id)!;
+    it("offers expand for collapsed nodes within depth", () => {
+        expect(canExpandChild(find("closed"), kids, false)).toBe(true);
+        expect(canExpandChild(find("inner"), kids, false)).toBe(true);
+    });
+    it("hides expand when too deep, childless or on a relationship level", () => {
+        expect(canExpandChild(find("deep"), kids, false)).toBe(false);
+        expect(canExpandChild(find("leaf"), kids, false)).toBe(false);
+        expect(canExpandChild(find("closed"), kids, true)).toBe(false);
+    });
+    it("keeps collapse for open groups", () => {
+        expect(canExpandChild(find("mid"), kids, false)).toBe(true);
     });
 });

@@ -572,6 +572,9 @@ func (idx *Index) AcceptOperation(id string, index int, confirmStale bool) error
 	if err := idx.rejectIfStale(m.Operations, op, confirmStale); err != nil {
 		return err
 	}
+	if idx.createDependencyUnmet(id, m.Operations, op) {
+		return fmt.Errorf("%w: %s %s moves under a container whose create_node in this proposal is not accepted", ErrStale, op.Op, op.NodeID)
+	}
 	if err := idx.applyOp(id, op); err != nil {
 		return err
 	}
@@ -616,6 +619,12 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 		if stale {
 			result.Skipped = append(result.Skipped, SkippedOp{
 				Index: i, Op: op.Op, NodeID: op.NodeID, Reason: reason,
+			})
+			continue
+		}
+		if idx.createDependencyUnmet(id, m.Operations, op) {
+			result.Skipped = append(result.Skipped, SkippedOp{
+				Index: i, Op: op.Op, NodeID: op.NodeID, Reason: staleCreateNotAccepted,
 			})
 			continue
 		}
@@ -692,7 +701,53 @@ func (idx *Index) rejectIfStale(ops []operation, op operation, confirm bool) err
 const (
 	staleMissing  = "node is missing"
 	staleMismatch = "base_hash mismatch"
+
+	staleCreateNotAccepted = "container create_node was not accepted"
 )
+
+// createDependencyUnmet reports whether an update op proposes a parent that is the node id of
+// a create op in the same proposal which has not been accepted. Applying it would reparent the
+// node under a same-id container from elsewhere (or one that never got created).
+func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op operation) bool {
+	if op.Op != OpUpdateNode {
+		return false
+	}
+	jsonBytes, _, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", op.NodeID))
+	if err != nil {
+		return false
+	}
+	node, err := decodeNode(jsonBytes)
+	if err != nil || node.ParentID == "" {
+		return false
+	}
+	for _, other := range ops {
+		if other.Op == OpCreateNode && other.NodeID == string(node.ParentID) && other.Status != opStatusAccepted {
+			return true
+		}
+	}
+	return false
+}
+
+// pendingCreateIDs lists node ids reserved by pending create ops in staged proposals.
+func (idx *Index) pendingCreateIDs() map[string]bool {
+	out := map[string]bool{}
+	ids, err := idx.proposalIDs()
+	if err != nil {
+		return out
+	}
+	for _, pid := range ids {
+		summary, m, err := idx.inspect(pid)
+		if err != nil || summary.Unreadable {
+			continue
+		}
+		for _, op := range m.Operations {
+			if op.Op == OpCreateNode && op.Status == opStatusPending {
+				out[op.NodeID] = true
+			}
+		}
+	}
+	return out
+}
 
 func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 	if op.Op == OpCreateNode || op.Status != opStatusPending {
@@ -836,6 +891,8 @@ func (idx *Index) applyNodeFiles(proposalID string, op operation) error {
 		if node.ParentID != oldParent {
 			idx.invalidateLayoutLocked(oldParent)
 			idx.invalidateLayoutLocked(node.ParentID)
+			idx.invalidateAncestorVariantsLocked(oldParent)
+			idx.invalidateAncestorVariantsLocked(node.ParentID)
 		}
 		if node.RelationshipID != oldRel {
 			if oldRel != "" {
@@ -1161,12 +1218,13 @@ func (idx *Index) mustProposalPath(id string) string {
 }
 
 func (idx *Index) allocateDuring(base string, extra map[NodeID]*Node) NodeID {
-	if !idx.idTaken(base, extra) {
+	reserved := idx.pendingCreateIDs()
+	if !idx.idTaken(base, extra) && !reserved[base] {
 		return NodeID(base)
 	}
 	for n := 2; ; n++ {
 		candidate := fmt.Sprintf("%s-%d", base, n)
-		if !idx.idTaken(candidate, extra) {
+		if !idx.idTaken(candidate, extra) && !reserved[candidate] {
 			return NodeID(candidate)
 		}
 	}

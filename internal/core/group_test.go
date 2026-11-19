@@ -201,3 +201,104 @@ func TestGuidanceInBrief(t *testing.T) {
 		t.Fatalf("brief missing guidance: %v", err)
 	}
 }
+
+func TestStageGroupSameNameGetsDistinctIDs(t *testing.T) {
+	idx, dir := groupFixture(t)
+	p1, err := idx.StageGroup(GroupInput{NodeIDs: []NodeID{"api", "worker"}, Name: "Group"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2, err := idx.StageGroup(GroupInput{NodeIDs: []NodeID{"api", "worker"}, Name: "Group"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d1, _ := idx.ProposalDiff(p1)
+	d2, _ := idx.ProposalDiff(p2)
+	if d1.Operations[0].NodeID != "group" || d2.Operations[0].NodeID != "group-2" {
+		t.Fatalf("ids %q %q", d1.Operations[0].NodeID, d2.Operations[0].NodeID)
+	}
+	if d2.Operations[1].Proposed.ParentID != "group-2" {
+		t.Fatalf("update parent %q", d2.Operations[1].Proposed.ParentID)
+	}
+	if res, err := idx.AcceptAll(p1); err != nil || len(res.Applied) != 3 {
+		t.Fatalf("accept p1 %+v %v", res, err)
+	}
+	// p2's updates are stale after p1 moved the nodes; its own container still gets created.
+	if res, err := idx.AcceptAll(p2); err != nil || len(res.Applied) != 1 || len(res.Failed) != 0 {
+		t.Fatalf("accept p2 %+v %v", res, err)
+	}
+	got := reopen(t, dir)
+	if got.Nodes["group"] == nil || got.Nodes["group-2"] == nil || got.Nodes["api"].ParentID != "group" {
+		t.Fatalf("model %+v", got.Nodes["api"])
+	}
+}
+
+func TestAcceptUpdateWithoutCreateDoesNotReparent(t *testing.T) {
+	idx, _ := groupFixture(t)
+	pid, err := idx.StageGroup(GroupInput{NodeIDs: []NodeID{"api", "worker"}, Name: "Backend"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.AcceptOperation(pid, 1, false); !errors.Is(err, ErrStale) {
+		t.Fatalf("want ErrStale, got %v", err)
+	}
+	// Create rejected: accept-all must skip the updates instead of moving nodes.
+	if err := idx.RejectOperation(pid, 0); err != nil {
+		t.Fatal(err)
+	}
+	res, err := idx.AcceptAll(pid)
+	if err != nil || len(res.Applied) != 0 || len(res.Skipped) != 2 {
+		t.Fatalf("accept %+v %v", res, err)
+	}
+	if idx.Nodes["api"].ParentID != "platform" {
+		t.Fatalf("api moved to %q", idx.Nodes["api"].ParentID)
+	}
+}
+
+func TestStageGroupMissingParentDoesNotPanic(t *testing.T) {
+	idx, _ := groupFixture(t)
+	idx.Nodes["api"].ParentID = "ghost"
+	idx.Nodes["worker"].ParentID = "ghost"
+	if _, err := idx.StageGroup(GroupInput{NodeIDs: []NodeID{"api", "worker"}, Name: "Orphans"}); err != nil &&
+		!errors.Is(err, ErrBadOperation) && !errors.Is(err, ErrMissingParent) {
+		t.Fatalf("unexpected %v", err)
+	}
+	if _, err := idx.StageGroup(GroupInput{NodeIDs: []NodeID{"api", "db"}, Name: "Mixed"}); !errors.Is(err, ErrBadOperation) {
+		t.Fatalf("want ErrBadOperation, got %v", err)
+	}
+}
+
+func TestStageReparentToRootRejectedInsideRelationship(t *testing.T) {
+	idx, _ := groupFixture(t)
+	idx.Nodes["handlers"].RelationshipID = "api-worker"
+	idx.Nodes["handlers"].ParentID = ""
+	if _, err := idx.StageReparent("handlers", ""); !errors.Is(err, ErrBadOperation) {
+		t.Fatalf("want ErrBadOperation, got %v", err)
+	}
+}
+
+func TestReparentInvalidatesAncestorHashedLayouts(t *testing.T) {
+	idx, _ := groupFixture(t)
+	for _, key := range []string{RootLayoutKey + "~abc", "platform~abc", "platform", "api~abc"} {
+		if err := idx.PutLayout(key, Layout{Positions: []Position{{ID: "x"}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pid, err := idx.StageReparent("handlers", "worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res, err := idx.AcceptAll(pid); err != nil || len(res.Applied) != 1 {
+		t.Fatalf("accept %+v %v", res, err)
+	}
+	has := func(key string) bool {
+		l, err := idx.Layout(key)
+		return err == nil && len(l.Positions) > 0
+	}
+	if has(RootLayoutKey+"~abc") || has("platform~abc") || has("api~abc") {
+		t.Fatal("ancestor hashed layouts survived")
+	}
+	if !has("platform") {
+		t.Fatal("ancestor base layout was dropped")
+	}
+}

@@ -51,10 +51,17 @@ func (idx *Index) StageGroup(in GroupInput) (string, error) {
 		}
 	}
 	for _, id := range in.NodeIDs {
-		for anc := idx.Nodes[id].ParentID; anc != ""; anc = idx.Nodes[anc].ParentID {
+		visited := map[NodeID]bool{}
+		for anc := idx.Nodes[id].ParentID; anc != "" && !visited[anc]; {
 			if seen[anc] {
 				return "", fmt.Errorf("%w: %s is an ancestor of %s; select only one of them", ErrBadOperation, anc, id)
 			}
+			visited[anc] = true
+			p := idx.Nodes[anc]
+			if p == nil {
+				break
+			}
+			anc = p.ParentID
 		}
 	}
 	first := idx.Nodes[in.NodeIDs[0]]
@@ -149,6 +156,9 @@ func (idx *Index) StageReparent(id, newParent NodeID) (string, error) {
 	n, ok := idx.Nodes[id]
 	if !ok {
 		return "", fmt.Errorf("%w: %q", ErrNotFound, id)
+	}
+	if newParent == "" && n.RelationshipID != "" {
+		return "", fmt.Errorf("%w: %s lives inside a relationship and cannot be moved to the root", ErrBadOperation, id)
 	}
 	if n.ParentID == newParent && n.RelationshipID == "" {
 		return "", fmt.Errorf("%w: %s is already under %q", ErrBadOperation, id, newParent)
