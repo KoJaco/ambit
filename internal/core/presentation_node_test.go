@@ -33,7 +33,7 @@ func TestPresentationPersistAndChildCount(t *testing.T) {
 	if got.Icon != "server" || got.Color != "blue" {
 		t.Fatalf("presentation %+v", got)
 	}
-	lvl, err := idx.Level("")
+	lvl, err := idx.Level("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestPresentationPersistAndChildCount(t *testing.T) {
 	if platformView == nil || platformView.ChildCount != 1 {
 		t.Fatalf("platform child_count want 1, got %+v", platformView)
 	}
-	inner, err := idx.Level(platform)
+	inner, err := idx.Level(platform, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestPresentationPersistAndChildCount(t *testing.T) {
 			t.Fatal("leaf should not appear on platform level")
 		}
 	}
-	leafLvl, err := idx.Level(child)
+	leafLvl, err := idx.Level(child, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

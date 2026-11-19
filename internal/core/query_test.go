@@ -50,7 +50,7 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	root, err := idx.Level("")
+	root, err := idx.Level("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,7 +60,8 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 	if ids := viewIDs(root.Children); !sameIDs(ids, []NodeID{platform, billing}) {
 		t.Fatalf("root children %v", ids)
 	}
-	if len(root.Relationships) != 0 {
+	// orders->billing and billing->orders roll up onto platform<->billing.
+	if len(root.Relationships) != 2 || !root.Relationships[0].Aggregated || !root.Relationships[1].Aggregated {
 		t.Fatalf("root relationships %#v", root.Relationships)
 	}
 	for _, c := range root.Children {
@@ -69,7 +70,7 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 		}
 	}
 
-	lvl, err := idx.Level(platform)
+	lvl, err := idx.Level(platform, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +93,6 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 	}
 	wantCross := map[string]bool{
 		string(orders) + ">out>" + string(billing):   false,
-		string(payments) + ">out>" + string(capture): false,
 		string(orders) + ">in>" + string(billing):    false,
 	}
 	for _, c := range lvl.Crossings {
@@ -102,13 +102,19 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 		}
 		wantCross[key] = true
 	}
+	// payments->capture is internal to the payments node, so it is hidden and counted.
+	for _, c := range lvl.Children {
+		if c.ID == payments && c.InternalRelCount != 1 {
+			t.Fatalf("payments internal count %d", c.InternalRelCount)
+		}
+	}
 	for key, seen := range wantCross {
 		if !seen {
 			t.Fatalf("missing crossing %s in %#v", key, lvl.Crossings)
 		}
 	}
 
-	nested, err := idx.Level(payments)
+	nested, err := idx.Level(payments, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +125,7 @@ func TestLevelIsOneDrillDown(t *testing.T) {
 		t.Fatalf("nested relationships %#v", nested.Relationships)
 	}
 
-	if _, err := idx.Level("missing-node"); err == nil {
+	if _, err := idx.Level("missing-node", nil); err == nil {
 		t.Fatal("expected not found")
 	}
 }

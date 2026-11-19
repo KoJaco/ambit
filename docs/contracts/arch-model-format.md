@@ -231,6 +231,17 @@ Committed, non-secret, project-level configuration. Deliberately minimal in v1. 
 there is an established place for settings to land rather than having to be introduced
 later.
 
+Recognised keys (all optional; unknown keys are preserved on write):
+
+- `group_max` — positive integer, default `8`. A node with this many children or fewer may
+  default to an expanded group on the canvas.
+- `level_budget` — positive integer, default `24`. Visible node count on a level above which
+  groups default to collapsed summaries.
+
+Both are view defaults only (decision 0010). A missing key uses the default. A value that is
+not a positive integer falls back to the default and produces a warning, not a load error.
+The effective values are returned as `view_defaults` on level reads.
+
 There is **no LLM or model provider configuration**, and no API key field anywhere in the
 format. ambit does not call a model provider. See
 [ADR-0002](../adr/0002-agent-interface-and-review-gate.md).

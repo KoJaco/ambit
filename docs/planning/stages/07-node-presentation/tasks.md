@@ -74,7 +74,7 @@ Lift/embed compression is replaced by flat-first groups and group/ungroup propos
 
 ## 07.9 Core anchor roll-up (0010 slice a)
 
-- [ ]
+- [x]
 
 **Touches:** `internal/core/query.go`, `query_relationship.go`, `internal/httpapi/read.go`,
 config parsing, [`local-http-api.md`](../../../contracts/local-http-api.md),

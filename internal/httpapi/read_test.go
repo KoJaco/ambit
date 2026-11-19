@@ -89,7 +89,7 @@ func TestLevelResponseOmitsTheRestOfTheGraph(t *testing.T) {
 	if !ids[string(platform)] || !ids[string(billing)] || len(root.Children) != 2 {
 		t.Fatalf("root children %#v", root.Children)
 	}
-	if len(root.Relationships) != 0 {
+	if len(root.Relationships) != 1 || !root.Relationships[0].Aggregated || root.Relationships[0].Members[0] != "settles" {
 		t.Fatalf("root edges %#v", root.Relationships)
 	}
 }
@@ -200,4 +200,56 @@ func newModel(t *testing.T) (*core.Index, string) {
 		t.Fatal(err)
 	}
 	return idx, dir
+}
+
+func TestLevelExpandParam(t *testing.T) {
+	idx, _ := newModel(t)
+	group, err := idx.Create(core.CreateInput{Name: "Group", Type: "boundary"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	one, err := idx.Create(core.CreateInput{Name: "One", Type: "service", ParentID: group})
+	if err != nil {
+		t.Fatal(err)
+	}
+	two, err := idx.Create(core.CreateInput{Name: "Two", Type: "store", ParentID: group})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.SetRelationship(core.SetRelationshipInput{From: one, To: two, Label: "reads", Kind: core.KindData}); err != nil {
+		t.Fatal(err)
+	}
+
+	decode := func(path string) levelJSON {
+		var lvl levelJSON
+		if err := json.Unmarshal([]byte(getJSON(t, idx, path)), &lvl); err != nil {
+			t.Fatal(err)
+		}
+		return lvl
+	}
+	collapsed := decode("/levels")
+	if len(collapsed.Children) != 1 || collapsed.Children[0].Expanded || collapsed.Children[0].InternalRelCount != 1 ||
+		collapsed.Children[0].ChildCount != 2 || len(collapsed.Children[0].TypeMix) != 2 {
+		t.Fatalf("collapsed %#v", collapsed.Children)
+	}
+	if collapsed.ViewDefaults.GroupMax != 8 || collapsed.ViewDefaults.LevelBudget != 24 {
+		t.Fatalf("defaults %#v", collapsed.ViewDefaults)
+	}
+	for _, q := range []string{"?expand=" + string(group), "?expand=,%20" + string(group) + "%20,,nope"} {
+		open := decode("/levels" + q)
+		if len(open.Children) != 3 || !open.Children[0].Expanded {
+			t.Fatalf("%s: %#v", q, open.Children)
+		}
+		if open.Children[1].GroupID != string(group) || open.Children[2].GroupID != string(group) {
+			t.Fatalf("%s: members %#v", q, open.Children)
+		}
+		if len(open.Relationships) != 1 || open.Relationships[0].Aggregated || open.Relationships[0].Label != "reads" {
+			t.Fatalf("%s: edges %#v", q, open.Relationships)
+		}
+	}
+	// Non-root level with an unrelated expand id is unchanged.
+	inner := decode("/levels/" + string(group) + "?expand=nope")
+	if len(inner.Children) != 2 || inner.ViewDefaults.GroupMax != 8 {
+		t.Fatalf("inner %#v", inner)
+	}
 }

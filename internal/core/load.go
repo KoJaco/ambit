@@ -29,6 +29,9 @@ type Index struct {
 	ActiveEdges   []Relationship
 	Diagnostics   []Diagnostic
 	Assignment    *Assignment
+	// GroupMax and LevelBudget are the effective view defaults from config.json.
+	GroupMax    int
+	LevelBudget int
 
 	indexUnknown      map[string]jsonRaw
 	configUnknown     map[string]jsonRaw
@@ -166,7 +169,25 @@ func (idx *Index) readConfig() error {
 	if len(obj) > 0 {
 		idx.configUnknown = obj
 	}
+	// The typed keys stay in configUnknown so the file round-trips unchanged.
+	idx.GroupMax = idx.configPositiveInt(obj, "group_max", DefaultGroupMax)
+	idx.LevelBudget = idx.configPositiveInt(obj, "level_budget", DefaultLevelBudget)
 	return nil
+}
+
+// configPositiveInt reads a positive integer config value. Missing is the
+// default silently. Anything else invalid is the default plus a warning.
+func (idx *Index) configPositiveInt(obj map[string]jsonRaw, key string, def int) int {
+	raw, ok := obj[key]
+	if !ok {
+		return def
+	}
+	var v int
+	if err := json.Unmarshal(raw, &v); err != nil || v <= 0 {
+		idx.warn("config.json", fmt.Sprintf("%s must be a positive integer; using default %d", key, def))
+		return def
+	}
+	return v
 }
 
 func (idx *Index) readLocal() error {
@@ -446,6 +467,8 @@ func (idx *Index) reload() error {
 	idx.Assignment = next.Assignment
 	idx.indexUnknown = next.indexUnknown
 	idx.configUnknown = next.configUnknown
+	idx.GroupMax = next.GroupMax
+	idx.LevelBudget = next.LevelBudget
 	idx.localUnknown = next.localUnknown
 	idx.assignmentUnknown = next.assignmentUnknown
 	return nil

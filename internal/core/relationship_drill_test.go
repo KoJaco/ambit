@@ -61,7 +61,7 @@ func TestRelationshipDrillReleaseGate(t *testing.T) {
 	if len(inner.Members) != 1 || inner.Members[0].Name != "Step" {
 		t.Fatalf("inner members %#v", inner.Members)
 	}
-	root, err := reopened.Level("")
+	root, err := reopened.Level("", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

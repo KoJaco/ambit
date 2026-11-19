@@ -61,13 +61,46 @@ hard refresh.
 ### Graph reads
 
 - **Get a drill-down level** — `GET /levels/{nodeId}` returns the direct children of that
-  node plus the relationships among those children, plus the node itself for breadcrumb
-  context. `GET /levels` is the root: nodes with no `parent_id`, and `node` is null.
+  node plus the relationships among them, plus the node itself for breadcrumb context.
+  `GET /levels` is the root: nodes with no `parent_id`, and `node` is null.
 
-  A relationship with one endpoint outside that child set is absent from `relationships`.
-  It is listed in `crossings` as `node_id`, `direction` (`out` or `in`), `label`, `kind`,
-  `relationship_id`, `drillable`, and `other_id`. `other_id` is an id string. The response
-  does not include that node, and the client must not invent one.
+  Optional `?expand=a,b` (comma-separated node ids; whitespace and empty entries ignored)
+  asks for those groups to be shown open. The client sends the set it read from its layout
+  cache. An id is honored only if it exists, is already visible on the level (a child of the
+  level or a member of an expanded group), has children, and is at most 2 levels below the
+  level. Anything else is ignored silently, and order and duplicates do not matter. The
+  members of an expanded group are added to `children` as a flat list, directly after their
+  group, so the client nests them by `group_id`. See
+  [decision 0010](../decisions/0010-flat-first-groups-and-summary-nodes.md).
+
+  Node summary fields (in `node` and `children`): `id`, `name`, `type`, `status`,
+  `protected`, plus optional `icon`, `color`, `renderer`, and `schema` (presentation, see
+  decision 0009; omitted when unset). `child_count` is the number of direct children
+  (always present). `group_id` is the parent id when the node is a member of an expanded
+  group. `expanded` is true on a node shown as an open group. `internal_rel_count` is the
+  number of active relationships hidden inside a collapsed node that has children.
+  `type_mix` is the node's direct children as `[{"type","count"}]`, sorted by count
+  descending then type name (omitted for leaves).
+
+  **Roll-up.** Let V be the visible nodes on the level. Each relationship endpoint resolves
+  to its anchor: the nearest ancestor-or-self in V. For each active relationship:
+
+  - Both anchors exist and differ: an entry in `relationships` between the anchors. When an
+    endpoint was rolled up, the relationships for the same anchor pair merge into one edge
+    with `aggregated: true`, `id` of the form `agg:{from}>{to}`, `members` (relationship ids,
+    sorted), `kinds` (deduped, sorted), `label` `"N relationships"` (`"1 relationship"` for
+    one), and `kind` set only when all members share one. `drillable` is true only when
+    there is exactly one member and it is drillable. Edges between nodes that are both
+    directly visible are not aggregated and keep their own `id`, `label` and `kind`.
+  - Both anchors are the same node: hidden, and counted in that node's `internal_rel_count`.
+  - Exactly one anchor exists: a crossing. `node_id` is the anchor in V, `direction` is
+    `out` or `in`, and `other_id` is the real endpoint id (an id only). Crossings carry
+    `label`, `kind`, `relationship_id` and `drillable`. The response does not include the
+    other node, and the client must not invent one.
+
+  `view_defaults` (`{"group_max": 8, "level_budget": 24}`) carries the effective settings
+  from `config.json` so the client can pick default expanded groups. Edge `aggregated`,
+  `members` and `kinds` are omitted on non-aggregated edges.
 
 - **Get a relationship interior** — `GET /levels/relationships/{id}` returns member nodes,
   relationships among them, crossings, endpoint `context`, and warnings. Unknown id or an
