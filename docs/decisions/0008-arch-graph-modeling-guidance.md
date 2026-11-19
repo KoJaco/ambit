@@ -20,6 +20,11 @@ and a Cursor rule for `.arch` edits. Did **not** add the full graph checklist to
 - **Implementation** agents continue to receive scope, protected paths, siblings, and
   `check_scope` via `get_context` only (`internal/core/brief.go`).
 
+- **Amendment (decision 0010):** authoring tool descriptions and the `get_context` brief
+  each carry one shared line: "Prefer shallow models. Use a container node to group related
+  nodes. Nest more than two levels only for genuinely separate subsystems." It is a single
+  sentence, not the graph checklist, so the brief stays focused on file boundaries.
+
 ## Rationale
 
 - Harnesses read MCP tool text more often than long contract docs; duplicating a short

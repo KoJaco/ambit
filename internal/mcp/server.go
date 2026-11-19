@@ -47,7 +47,7 @@ type toolEnv struct {
 func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "seed_model", Description: seedModelDescription}, env.handleSeedModel)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "create_node", Description: createNodeDescription}, env.handleCreateNode)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node", Description: "Propose changes to a node (staged, not applied)."}, env.handleUpdateNode)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node", Description: updateNodeDescription}, env.handleUpdateNode)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "delete_node", Description: "Propose deleting a node (staged, not applied)."}, env.handleDeleteNode)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_relationship", Description: setRelationshipDescription}, env.handleSetRelationship)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_context", Description: "Return the imperative task brief for a node."}, env.handleGetContext)

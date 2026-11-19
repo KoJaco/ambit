@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+// ShallowModelGuidance is the one-line modeling rule shared by the brief and the MCP
+// authoring tool descriptions (decision 0010).
+const ShallowModelGuidance = "Prefer shallow models. Use a container node to group related nodes. Nest more than two levels only for genuinely separate subsystems."
+
 // Brief returns an imperative task description for an assigned agent working on id.
 func (idx *Index) Brief(id NodeID) (string, error) {
 	idx.mu.Lock()
@@ -61,6 +65,8 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	}
 
 	fmt.Fprintf(&b, "\nCall the check_scope tool with node_id %q periodically while you work, and again before you finish.\n", id)
+
+	fmt.Fprintf(&b, "\nIf you propose changes to the architecture model: %s\n", ShallowModelGuidance)
 
 	if len(n.Spec) > 0 {
 		fmt.Fprintf(&b, "\nSpecification for your node:\n%s\n", strings.TrimSpace(n.Spec))

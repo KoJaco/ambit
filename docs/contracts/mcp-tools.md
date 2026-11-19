@@ -66,7 +66,13 @@ proposed.
 external actors, entry→module patterns). That guidance is **not** injected into
 `get_context` for implementation agents — see
 [decision 0008](../decisions/0008-arch-graph-modeling-guidance.md). MCP tool descriptions
-for `seed_model`, `create_node`, and `set_relationship` summarise the same rules.
+for `seed_model`, `create_node`, `update_node`, and `set_relationship` summarise the same rules
+and end with one shared line: *"Prefer shallow models. Use a container node to group related
+nodes. Nest more than two levels only for genuinely separate subsystems."* (decision 0010;
+`core.ShallowModelGuidance`). The `get_context` brief carries the same line as a single closing
+sentence, the one exception to the "no graph doctrine in the brief" rule. The tool surface is
+unchanged: group and ungroup are canvas operations that stage ordinary create/update/delete
+proposals.
 
 #### `seed_model(transcript, parent_id?, nodes, relationships?)`
 

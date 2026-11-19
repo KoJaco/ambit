@@ -147,3 +147,70 @@ func TestAcceptAllReportsSkips(t *testing.T) {
 		t.Fatal("orders was not created")
 	}
 }
+
+func TestGroupUngroupReparentHTTPRoundTrip(t *testing.T) {
+	idx, _ := newModel(t)
+	for _, c := range []core.CreateInput{
+		{Name: "Platform", Type: "boundary"},
+		{Name: "API", Type: "service", ParentID: "platform"},
+		{Name: "Worker", Type: "service", ParentID: "platform"},
+	} {
+		if _, err := idx.Create(c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rec := doJSON(t, idx, http.MethodPost, "/proposals/group", map[string]any{
+		"node_ids": []string{"api", "worker"}, "name": "Backend",
+	})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("group %d %s", rec.Code, rec.Body.String())
+	}
+	var diff core.ProposalDiff
+	if err := json.Unmarshal(rec.Body.Bytes(), &diff); err != nil || len(diff.Operations) != 3 || diff.Source != "group_nodes" {
+		t.Fatalf("diff %v %+v", err, diff)
+	}
+	if _, ok := idx.Nodes["backend"]; ok {
+		t.Fatal("silent write")
+	}
+	if got := doJSON(t, idx, http.MethodGet, "/proposals", nil); !strings.Contains(got.Body.String(), diff.ID) {
+		t.Fatalf("not listed: %s", got.Body.String())
+	}
+	if acc := doJSON(t, idx, http.MethodPost, "/proposals/"+diff.ID+"/accept", map[string]any{}); acc.Code != http.StatusOK {
+		t.Fatalf("accept %d %s", acc.Code, acc.Body.String())
+	}
+	if idx.Nodes["api"].ParentID != "backend" {
+		t.Fatalf("parent %q", idx.Nodes["api"].ParentID)
+	}
+
+	bad := doJSON(t, idx, http.MethodPost, "/proposals/group", map[string]any{"node_ids": []string{"api"}, "name": "X"})
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("one node %d", bad.Code)
+	}
+	missing := doJSON(t, idx, http.MethodPost, "/proposals/group", map[string]any{"node_ids": []string{"api", "zz"}, "name": "X"})
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("unknown %d", missing.Code)
+	}
+
+	rec = doJSON(t, idx, http.MethodPost, "/proposals/reparent", map[string]any{"node_id": "api", "new_parent_id": "platform"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("reparent %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &diff); err != nil || len(diff.Operations) != 1 {
+		t.Fatalf("%v %+v", err, diff)
+	}
+	doJSON(t, idx, http.MethodPost, "/proposals/"+diff.ID+"/reject", nil)
+
+	rec = doJSON(t, idx, http.MethodPost, "/proposals/ungroup", map[string]any{"node_id": "backend", "delete_container": true})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("ungroup %d %s", rec.Code, rec.Body.String())
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &diff); err != nil || len(diff.Operations) != 3 {
+		t.Fatalf("%v %+v", err, diff)
+	}
+	if acc := doJSON(t, idx, http.MethodPost, "/proposals/"+diff.ID+"/accept", map[string]any{}); acc.Code != http.StatusOK {
+		t.Fatalf("accept %d %s", acc.Code, acc.Body.String())
+	}
+	if _, ok := idx.Nodes["backend"]; ok || idx.Nodes["api"].ParentID != "platform" {
+		t.Fatal("ungroup not applied")
+	}
+}

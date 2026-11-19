@@ -172,6 +172,27 @@ file so the client recomputes. A field edit does not.
   endpoints. Accept-all **skips stale operations** and reports which were skipped; it must
   never sweep a stale operation through.
 - **Delete a proposal** — discards it wholesale.
+- **Stage a group / ungroup / reparent proposal** — canvas structure edits never write
+  silently; each stages exactly one proposal (multi-operation, reviewed like any other) and
+  answers `201` with the same body as `GET /proposals/{id}`. Nothing in `.arch/nodes/`
+  changes until the operations are accepted.
+  - `POST /proposals/group` `{ "node_ids": ["a","b"], "name": "Backend", "type"?: "container",
+    "icon"?: "…", "color"?: "…" }`. Source `group_nodes`. Operations: `create_node` for the
+    container (id derived from the name like `create_node`, so a collision gets `-2`; parent
+    is the selection's shared parent or root; status `draft`; no renderer), then one
+    `update_node` (`fields: ["parent_id"]`) per selected node. Errors: `400` fewer than 2
+    nodes, duplicates, different parents, an ancestor/descendant pair, a node inside a
+    relationship; `404` unknown id; `409` empty name; invalid icon/color is `400`.
+  - `POST /proposals/ungroup` `{ "node_id": "container", "delete_container"?: false }`.
+    Source `ungroup_node`. Operations: one `update_node` per direct child moving it to the
+    container's parent (or root, or the container's relationship), then, only when
+    `delete_container` is true, `delete_node` for the container. Default keeps the container
+    as a leaf. `400` if the container has no children, or if `delete_container` is set while
+    relationships are attached (deleting a node drops its relationships; keep the container
+    or remove them first). Relationships reference node ids and are never rewritten.
+  - `POST /proposals/reparent` `{ "node_id": "x", "new_parent_id": "y" }` (`""` = root).
+    Source `reparent_node`. A single `update_node` (`parent_id`). `400` if already there,
+    `409` on a cycle or unknown parent, `404` unknown node. Used when a node is dragged out of a group.
 
 ### Events (SSE)
 

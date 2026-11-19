@@ -250,3 +250,74 @@ type patchJSON struct {
 	Renderer       *string              `json:"renderer"`
 	Schema         *[]core.SchemaColumn `json:"schema"`
 }
+
+func postGroupProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeIDs []string `json:"node_ids"`
+			Name    string   `json:"name"`
+			Type    string   `json:"type"`
+			Icon    string   `json:"icon"`
+			Color   string   `json:"color"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		ids := make([]core.NodeID, len(body.NodeIDs))
+		for i, id := range body.NodeIDs {
+			ids[i] = core.NodeID(id)
+		}
+		pid, err := idx.StageGroup(core.GroupInput{
+			NodeIDs: ids, Name: body.Name, Type: body.Type, Icon: body.Icon, Color: body.Color,
+		})
+		writeStagedProposal(w, idx, pid, err)
+	}
+}
+
+func postUngroupProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeID          string `json:"node_id"`
+			DeleteContainer bool   `json:"delete_container"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		pid, err := idx.StageUngroup(core.UngroupInput{
+			NodeID: core.NodeID(body.NodeID), DeleteContainer: body.DeleteContainer,
+		})
+		writeStagedProposal(w, idx, pid, err)
+	}
+}
+
+func postReparentProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeID      string `json:"node_id"`
+			NewParentID string `json:"new_parent_id"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		pid, err := idx.StageReparent(core.NodeID(body.NodeID), core.NodeID(body.NewParentID))
+		writeStagedProposal(w, idx, pid, err)
+	}
+}
+
+// writeStagedProposal answers a staging call with 201 and the proposal diff, the same
+// body GET /proposals/{id} returns.
+func writeStagedProposal(w http.ResponseWriter, idx *core.Index, pid string, err error) {
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	diff, err := idx.ProposalDiff(pid)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, diff)
+}

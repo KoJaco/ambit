@@ -27,6 +27,11 @@ const (
 
 	// SourceSeedModel is the proposal source used when many operations arrive together.
 	SourceSeedModel = "seed_model"
+	// SourceGroupNodes, SourceUngroupNode and SourceReparentNode mark proposals staged
+	// from the canvas (group selection, ungroup, drag out of a group).
+	SourceGroupNodes   = "group_nodes"
+	SourceUngroupNode  = "ungroup_node"
+	SourceReparentNode = "reparent_node"
 
 	opStatusPending  = "pending"
 	opStatusAccepted = "accepted"
@@ -205,6 +210,11 @@ func contentHash(jsonBytes, mdBytes []byte) string {
 func (idx *Index) Stage(in StageInput) (string, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.stageLocked(in)
+}
+
+// stageLocked is Stage for callers that already hold idx.mu.
+func (idx *Index) stageLocked(in StageInput) (string, error) {
 	if !validProposalSource(in.Source) {
 		return "", fmt.Errorf("%w: source %q", ErrBadOperation, in.Source)
 	}
@@ -1186,7 +1196,7 @@ func newProposalID(now time.Time) (string, error) {
 
 func validProposalSource(source string) bool {
 	switch source {
-	case SourceSeedModel, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship:
+	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship:
 		return true
 	default:
 		return false
