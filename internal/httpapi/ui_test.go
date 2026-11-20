@@ -58,7 +58,7 @@ func TestUIAssets(t *testing.T) {
 func TestUIFallbackNeverShadowsAPI(t *testing.T) {
 	idx, _ := newModel(t)
 	h := Handler(idx, Options{UI: testUI()})
-	for _, p := range []string{"/nodes/zzz", "/nodes", "/relationships", "/assignment", "/levels/zzz", "/proposals/zzz/x/y", "/nodes/"} {
+	for _, p := range []string{"/nodes/zzz", "/nodes", "/relationships", "/assignment/x", "/levels/zzz", "/proposals/zzz/x/y", "/nodes/"} {
 		rec := do(t, h, http.MethodGet, p)
 		if rec.Code != 404 || !strings.HasPrefix(rec.Header().Get("Content-Type"), "application/json") ||
 			!strings.Contains(rec.Body.String(), `"error"`) || strings.Contains(rec.Body.String(), "<!doctype") {

@@ -40,7 +40,7 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			writeAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusCreated, nodeBody(n))
+		writeJSON(w, http.StatusCreated, nodeBody(n, assignedID(idx)))
 	}
 }
 
@@ -81,7 +81,7 @@ func patchNode(idx *core.Index) http.HandlerFunc {
 			writeAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, nodeBody(n))
+		writeJSON(w, http.StatusOK, nodeBody(n, assignedID(idx)))
 	}
 }
 
@@ -176,7 +176,7 @@ func deleteAssignment(idx *core.Index) http.HandlerFunc {
 	}
 }
 
-func nodeBody(n core.NodeView) nodeJSON {
+func nodeBody(n core.NodeView, assigned core.NodeID) nodeJSON {
 	impl := n.Implementation
 	if impl == nil {
 		impl = []string{}
@@ -200,6 +200,7 @@ func nodeBody(n core.NodeView) nodeJSON {
 		Color:          n.Color,
 		Renderer:       n.Renderer,
 		Schema:         n.Schema,
+		Assigned:       assigned != "" && n.ID == assigned,
 	}
 }
 

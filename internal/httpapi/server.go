@@ -34,6 +34,7 @@ func apiRoutes(idx *core.Index, h *hub) []route {
 		{"DELETE /nodes/{id}", deleteNode(idx)},
 		{"PUT /relationships", putRelationship(idx)},
 		{"DELETE /relationships/{id}", deleteRelationship(idx)},
+		{"GET /assignment", getAssignment(idx)},
 		{"PUT /assignment", putAssignment(idx)},
 		{"DELETE /assignment", deleteAssignment(idx)},
 		{"GET /layout/{key}", getLayout(idx)},

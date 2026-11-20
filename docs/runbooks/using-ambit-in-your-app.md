@@ -92,8 +92,11 @@ API-only binary; without the bundle, `GET /` returns a message naming `make buil
 2. Create a root node, then add child nodes under it (sidebar).
 3. Group related nodes (flat-first canvas, [decision 0010](../decisions/0010-flat-first-groups-and-summary-nodes.md)).
    Grouping is staged as a proposal; accept it in the review panel.
-4. Assign a node to an agent: the API is `PUT /assignment` with `{"node_id": "<id>"}` (this
-   is stored in `.arch/local.json`). I did not verify a dedicated UI control for this.
+4. Assign a node to an agent: select the node, then in the inspector's "Agent assignment"
+   section press "Assign agent to this node" (an "Agent" chip marks it on the canvas). It is
+   stored in `.arch/local.json` and does not change the node's status. "Clear assignment"
+   removes it. The same is available as `PUT`/`DELETE /assignment`; the UI also reflects
+   assignments changed outside it.
 5. In the harness, the agent calls `get_context` for its brief, `check_scope` before
    writing, and `update_node_status` when done. Run `ambit check` before committing.
 6. Review agent proposals in the UI and accept or reject each operation.

@@ -42,3 +42,35 @@ func TestWatchRebuild(t *testing.T) {
 		t.Fatalf("name %q", idx.Nodes[id].Name)
 	}
 }
+
+func TestWatchLocalJSONIsModelChange(t *testing.T) {
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := idx.Create(CreateInput{Name: "Alpha", Type: "service"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	got := make(chan WatchNotice, 4)
+	if err := idx.WatchNotices(ctx, func(n WatchNotice) { got <- n }); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SetAssignment(id, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case n := <-got:
+		if !n.ModelChanged || len(n.NodeIDs) != 0 {
+			t.Fatalf("notice %+v", n)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no notice for local.json change")
+	}
+}

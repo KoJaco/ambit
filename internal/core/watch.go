@@ -150,6 +150,9 @@ func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
 			indexChanged = true
 			continue
 		}
+		if base == "local.json" {
+			continue
+		}
 		name := strings.TrimSuffix(base, filepath.Ext(base))
 		if name != "" {
 			ids[NodeID(name)] = struct{}{}
@@ -326,7 +329,7 @@ func (idx *Index) relevantWatch(path string) bool {
 		return true
 	}
 	arch := filepath.Clean(idx.arch())
-	if base == "index.json" && filepath.Clean(filepath.Dir(path)) == arch {
+	if (base == "index.json" || base == "local.json") && filepath.Clean(filepath.Dir(path)) == arch {
 		return true
 	}
 	nodes := filepath.Join(arch, "nodes")

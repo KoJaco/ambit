@@ -106,6 +106,7 @@ function nodeData(
         type: child.type,
         status: child.status,
         protected: child.protected,
+        assigned: child.assigned,
         crossings: crossingMarks(child.id, crossings),
         icon: child.icon,
         color: child.color,
@@ -144,6 +145,7 @@ type SummaryLike = {
     expanded?: boolean;
     internal_rel_count?: number;
     type_mix?: { type: string; count: number }[];
+    assigned?: boolean;
 };
 
 // Footprint per child; collapsed groups are drawn as stacked cards and reserve the sheet offset.
@@ -239,6 +241,7 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
         left.type !== right.type ||
         left.status !== right.status ||
         left.protected !== right.protected ||
+        left.assigned !== right.assigned ||
         left.icon !== right.icon ||
         left.color !== right.color ||
         left.renderer !== right.renderer ||

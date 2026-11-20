@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { ChevronUp, Ungroup } from "lucide-react";
 import { nodeDotClass, nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../../node-presentation";
 import type { ArchNode } from "../NodeCard";
+import { AgentChip } from "../agent-chip";
 import { Tooltip } from "../tooltip";
 
 export function GroupFrame({ data, selected }: NodeProps<ArchNode>) {
@@ -78,6 +79,7 @@ export function ContainerNode({ id, data, selected }: NodeProps<ArchNode>) {
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={data.name}>
                     {data.name}
                 </span>
+                {data.assigned ? <AgentChip /> : null}
                 {data.onUngroup ? (
                     <Tooltip label="Ungroup">
                         <button
