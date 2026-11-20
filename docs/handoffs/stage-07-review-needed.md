@@ -137,10 +137,8 @@ _None._ (Nothing needed a two-attempt skip.)
 
 ## Commits
 
-- `802829c` tooling · `2c0afac` stage 07 baseline · `bc122db` decision 0010 + slicing ·
-  `6cb9055` Paper theme · `5acef69` core roll-up · `9c53a73` group/ungroup backend ·
-  `77493d5` group/summary rendering · `e1e6da0` group/ungroup UI · `0d41bae` review fixes ·
-  (final) stage 07 close-out docs
+Stage 07 and 08 shipped as two PRs; see `git log` on `main` (the commit hashes recorded earlier in this
+file were rewritten before the first push).
 
 ## Not done (outside this run)
 
