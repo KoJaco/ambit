@@ -1,9 +1,89 @@
+import {
+    expandedKey,
+    sanitizeGroupSizes,
+    sanitizeViewModes,
+    type GroupSizes,
+    type ViewDefaults,
+    type ViewModes,
+} from "./level-view";
+
 export const rootLayoutKey = "_root";
 
-export function layoutCacheKey(opts: { nodeId?: string; relationshipId?: string }): string {
+// The expanded-set hash is appended only when a group is open, so flat levels keep their old key.
+// The separator cannot appear in a node id (ids are lowercase slugs).
+export function layoutCacheKey(opts: {
+    nodeId?: string;
+    relationshipId?: string;
+    expanded?: Iterable<string>;
+}): string {
     if (opts.relationshipId) return `_rel_${opts.relationshipId}`;
-    return opts.nodeId ? opts.nodeId : rootLayoutKey;
+    const base = opts.nodeId ? opts.nodeId : rootLayoutKey;
+    const hash = expandedKey(opts.expanded ?? []);
+    return hash ? `${base}~${hash}` : base;
 }
+
+// View modes (group or summary per node) are per level, not per expanded set, so they use the base key.
+const viewModesStoragePrefix = "ambit:view-modes:";
+
+export function loadViewModes(baseKey: string): ViewModes {
+    try {
+        const raw = window.localStorage.getItem(viewModesStoragePrefix + baseKey);
+        return raw ? sanitizeViewModes(JSON.parse(raw)) : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveViewModes(baseKey: string, modes: ViewModes): void {
+    try {
+        window.localStorage.setItem(viewModesStoragePrefix + baseKey, JSON.stringify(modes));
+    } catch {
+        // Private mode or quota: view modes are a convenience, the level still renders.
+    }
+}
+
+// Sizes the architect gave open groups by resizing. The typed server layout carries positions only,
+// so they live here, keyed by the layout cache key (level plus expanded-set hash).
+const groupSizesStoragePrefix = "ambit:group-sizes:";
+
+export function loadGroupSizes(cacheKey: string): GroupSizes {
+    try {
+        const raw = window.localStorage.getItem(groupSizesStoragePrefix + cacheKey);
+        return raw ? sanitizeGroupSizes(JSON.parse(raw)) : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveGroupSizes(cacheKey: string, sizes: GroupSizes): void {
+    try {
+        window.localStorage.setItem(groupSizesStoragePrefix + cacheKey, JSON.stringify(sizes));
+    } catch {
+        // Without it the group simply returns to its automatic size.
+    }
+}
+
+// Membership signature of a cached layout (see layoutSignature). The server Layout schema is
+// typed and cannot carry it, so it lives next to the view modes, keyed by the cache key.
+const layoutSigStoragePrefix = "ambit:layout-sig:";
+
+export function loadLayoutSig(cacheKey: string): string | null {
+    try {
+        return window.localStorage.getItem(layoutSigStoragePrefix + cacheKey);
+    } catch {
+        return null;
+    }
+}
+
+export function saveLayoutSig(cacheKey: string, sig: string): void {
+    try {
+        window.localStorage.setItem(layoutSigStoragePrefix + cacheKey, sig);
+    } catch {
+        // Without it the layout is simply recomputed next time.
+    }
+}
+
+export type SchemaColumn = { title: string; type: string };
 
 export type Summary = {
     id: string;
@@ -11,7 +91,18 @@ export type Summary = {
     type: string;
     status: string;
     protected: boolean;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
+    child_count?: number;
+    group_id?: string;
+    expanded?: boolean;
+    internal_rel_count?: number;
+    type_mix?: TypeMixEntry[];
 };
+
+export type TypeMixEntry = { type: string; count: number };
 
 export type Crossing = {
     node_id: string;
@@ -30,7 +121,16 @@ export type Relationship = {
     label: string;
     kind: string;
     drillable?: boolean;
+    aggregated?: boolean;
+    members?: string[];
+    kinds?: string[];
 };
+
+// Aggregated edges carry a synthetic id; only a single-member one can be drilled, via that member.
+export function relationshipDrillId(rel: Relationship): string | undefined {
+    if (!rel.drillable) return undefined;
+    return rel.aggregated ? rel.members?.[0] : rel.id;
+}
 
 export type Warning = {
     severity: string;
@@ -44,6 +144,7 @@ export type Level = {
     relationships: Relationship[];
     crossings: Crossing[];
     warnings: Warning[];
+    view_defaults?: ViewDefaults;
 };
 
 export type RelationshipLevel = {
@@ -66,6 +167,10 @@ export type NodeDetail = {
     scope: string[];
     protected: boolean;
     markdown: string;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
 };
 
 export type NodePatch = {
@@ -77,6 +182,10 @@ export type NodePatch = {
     scope?: string[];
     protected?: boolean;
     markdown?: string;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
 };
 
 export type Position = { id: string; x: number; y: number };
@@ -100,9 +209,10 @@ async function send<T>(path: string, init?: RequestInit): Promise<T> {
     return res.json() as Promise<T>;
 }
 
-export function getLevel(nodeId?: string, signal?: AbortSignal): Promise<Level> {
-    const path = nodeId ? `/levels/${encodeURIComponent(nodeId)}` : "/levels";
-    return send<Level>(path, { signal });
+export function getLevel(nodeId?: string, signal?: AbortSignal, expand: string[] = []): Promise<Level> {
+    const base = nodeId ? `/levels/${encodeURIComponent(nodeId)}` : "/levels";
+    const query = expand.length > 0 ? `?expand=${expand.map(encodeURIComponent).join(",")}` : "";
+    return send<Level>(base + query, { signal });
 }
 
 export function getNode(id: string, signal?: AbortSignal): Promise<NodeDetail> {
@@ -123,6 +233,10 @@ export function createNode(input: {
     parent_id?: string;
     relationship_id?: string;
     markdown?: string;
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
 }): Promise<NodeDetail> {
     return send<NodeDetail>("/nodes", {
         method: "POST",
@@ -210,6 +324,8 @@ export type NodeSnapshot = {
     scope: string[];
     protected: boolean;
     markdown: string;
+    icon?: string;
+    color?: string;
 };
 
 export type RelSnapshot = {
@@ -286,6 +402,37 @@ export function rejectAll(id: string): Promise<void> {
 
 export function deleteProposal(id: string): Promise<void> {
     return send(`/proposals/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export type StageGroupInput = {
+    node_ids: string[];
+    name: string;
+    type?: string;
+    icon?: string;
+    color?: string;
+};
+
+function stage(path: string, body: unknown): Promise<ProposalDiff> {
+    return send<ProposalDiff>(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+    });
+}
+
+// Structure edits from the canvas never write the model: each stages a reviewed proposal (201).
+// Failures (400/404/409) reject with the server's `{error}` message, see `send`.
+export function stageGroup(input: StageGroupInput): Promise<ProposalDiff> {
+    return stage("/proposals/group", input);
+}
+
+export function stageUngroup(nodeId: string, deleteContainer = false): Promise<ProposalDiff> {
+    return stage("/proposals/ungroup", { node_id: nodeId, delete_container: deleteContainer });
+}
+
+// newParentId "" moves the node to the root.
+export function stageReparent(nodeId: string, newParentId: string): Promise<ProposalDiff> {
+    return stage("/proposals/reparent", { node_id: nodeId, new_parent_id: newParentId });
 }
 
 export type EventHandlers = {

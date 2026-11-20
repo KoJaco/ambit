@@ -53,6 +53,14 @@ func decodeString(raw jsonRaw) (string, error) {
 	return s, nil
 }
 
+func decodeSchema(raw jsonRaw) ([]SchemaColumn, error) {
+	var cols []SchemaColumn
+	if err := json.Unmarshal(raw, &cols); err != nil {
+		return nil, err
+	}
+	return cols, nil
+}
+
 func decodeStringSlice(raw jsonRaw) ([]string, error) {
 	if isNull(raw) {
 		return nil, nil
@@ -224,6 +232,34 @@ func decodeNode(data []byte) (*Node, error) {
 		}
 		n.Protected = p
 	}
+	if raw, ok := take(obj, "icon"); ok && !isNull(raw) {
+		icon, err := decodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("icon: %w", err)
+		}
+		n.Icon = icon
+	}
+	if raw, ok := take(obj, "color"); ok && !isNull(raw) {
+		color, err := decodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("color: %w", err)
+		}
+		n.Color = color
+	}
+	if raw, ok := take(obj, "renderer"); ok && !isNull(raw) {
+		renderer, err := decodeString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("renderer: %w", err)
+		}
+		n.Renderer = renderer
+	}
+	if raw, ok := take(obj, "schema"); ok && !isNull(raw) {
+		schema, err := decodeSchema(raw)
+		if err != nil {
+			return nil, fmt.Errorf("schema: %w", err)
+		}
+		n.Schema = schema
+	}
 	if len(obj) > 0 {
 		n.Unknown = obj
 	}
@@ -275,10 +311,30 @@ func encodeNode(n *Node) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if n.Icon != "" {
+		if err = put("icon", n.Icon); err != nil {
+			return nil, err
+		}
+	}
+	if n.Color != "" {
+		if err = put("color", n.Color); err != nil {
+			return nil, err
+		}
+	}
+	if n.Renderer != "" {
+		if err = put("renderer", n.Renderer); err != nil {
+			return nil, err
+		}
+	}
+	if len(n.Schema) > 0 {
+		if err = put("schema", n.Schema); err != nil {
+			return nil, err
+		}
+	}
 	if err = put("status", string(n.Status)); err != nil {
 		return nil, err
 	}
-	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "status"}
+	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "icon", "color", "renderer", "schema", "status"}
 	return encodeObject(order, vals, n.Unknown)
 }
 

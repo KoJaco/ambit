@@ -45,6 +45,61 @@ and by extension the HTTP API, MCP server, and `ambit check`.
 - **Canonical** — committed to git, a source of truth. As opposed to **derived**, which is
   gitignored and rebuildable.
 
+## Modeling guidance (for architects and authoring harnesses)
+
+Normative for humans and for MCP **authoring** tools (`seed_model`, `create_node`,
+`set_relationship`, etc.). **Not** part of the default `get_context` brief for coding agents
+implementing product code — see [decision 0008](../decisions/0008-arch-graph-modeling-guidance.md).
+
+### Two mechanisms — do not merge them
+
+| Mechanism | Use for | Stored as |
+| --- | --- | --- |
+| **`parent_id`** | Containment, module trees, drill-down boundaries | Hierarchy in `index.json` + node files |
+| **Relationships** | Runtime or logical flow between peers at a level (calls, delegates, hosts, stages, HTTP) | `index.json` `relationships` |
+
+A sibling pair with no relationship edge is valid when hierarchy already tells the story
+(e.g. two API modules under one service). Add a relationship when you would explain **how
+data or control moves** at that drill-down level.
+
+### Reachability and orphans
+
+- Every node listed in `index.json` should be **reachable from the product root** (typically
+  `platform`) via `parent_id`, or be an intentional root listed in `index.json`.
+- Orphans and dangling references are integrity warnings — fix them; do not rely on silent
+  repair.
+
+### Boundaries and external actors
+
+- Model **in-repo** components under the platform boundary with `implementation` globs where
+  they have code.
+- Model **environment actors** (browser, coding harness) with `type: external` (or `note`)
+  under the platform when inbound flow should appear on the canvas.
+- Prefer **one directed edge per channel** (e.g. harness → agent interface for stdio MCP;
+  browser → local HTTP API). Return paths and file-based convergence do not require symmetric
+  “out” nodes unless you need a separate channel on the diagram.
+
+### Common patterns
+
+- **Thin entry, fat module:** e.g. CLI/MCP entry node → `hosts` → tool or server module
+  (`ambit-mcp-entry` → `mcp-tool-surface`).
+- **Service delegate:** subsystem service → `delegates to` → `ambit-core` (and tool surface →
+  core when drilling inside agent interface).
+- **Cross-level edges:** allowed; the canvas shows a boundary-crossing indicator on the node
+  present at the current level (see [frontend.md](../architecture/frontend.md)).
+- **Busy levels:** add a child `type: note` (e.g. `*-data-flow`) summarising edges; keep
+  `index.json` as the source of truth for relationships.
+
+### What not to do
+
+- Do not use relationships for parent/child containment — use `parent_id`.
+- Do not require every node to have a relationship; require **intentional** edges for flows
+  you care to review.
+- Do not put layout coordinates in canonical files (see invariants below).
+
+Reference graph in this repo: `.arch/nodes/canvas-data-flow.md`,
+`.arch/nodes/agent-interface-data-flow.md`, and children under `platform`.
+
 ## Contract Shape (Conceptual)
 
 ### Directory layout
@@ -91,6 +146,41 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   or narrower than, the node's own files.
 - `protected` — boolean, default `false`. When `true`, no agent may modify files matching
   this node's `implementation`, regardless of assignment.
+- `icon` — closed registry id for canvas glyph (see below). Absent means the UI draws a
+  colour dot in the header slot. Unknown ids on disk still load; the canvas falls back to a
+  generic circle. HTTP and MCP reject **new** unknown ids on write.
+- `color` — closed palette token overriding the UI default derived from `type`. Absent means
+  the architect canvas uses the type map below. MCP does not set `color` in v1.
+- `renderer` — closed canvas renderer id. Absent or `card` draws the standard node card.
+  `schema` draws a database-schema frame; `placeholder` draws a dashed stub; `group` draws a
+  labeled frame around that node only (it does not contain children). Unknown ids on disk
+  still load and the canvas falls back to `card`. HTTP rejects **new** unknown ids. MCP does
+  not set `renderer` in v1.
+- `schema` — optional list of `{ "title", "type" }` rows, drawn when `renderer` is `schema`.
+  At most 32 rows; each title and type is at most 64 characters. Empty or absent draws the
+  schema header only. MCP does not set `schema` in v1.
+
+**Renderer ids (normative):** `card`, `schema`, `placeholder`, `group`.
+
+Relationship `kind` selects the edge drawing on the canvas (not stored as a separate style):
+`sync` is a button label, `async` is an animated path, `data` shows the label and endpoint
+names. Any other kind uses the default labeled edge. Edges stay node-to-node.
+
+**Icon ids (normative):** `box`, `hexagon`, `layers`, `component`, `package`, `server`, `cpu`,
+`cloud`, `globe`, `workflow`, `database`, `hard-drive`, `archive`, `table`, `file-text`,
+`scroll-text`, `book-open`, `sticky-note`, `users`, `shield`, `lock`, `git-branch`, `share-2`,
+`network`.
+
+**Colour tokens (normative):** `neutral`, `slate`, `blue`, `teal`, `green`, `amber`, `violet`,
+`rose`.
+
+**Type → default colour (non-stored, UI only):** case-insensitive exact match on the whole
+`type` string: `service` → `blue`; `module` → `teal`; `component` → `violet`; `package` →
+`slate`; `note`, `doc`, `adr` → `amber`; `database`, `cache`, `queue` → `green`; `saas`,
+`external` → `rose`; otherwise `neutral`.
+
+Legacy `shape` keys on disk are preserved in the unknown-field bag on round-trip and are not
+used by the UI.
 
 #### Reserved, not implemented in v1
 
@@ -140,6 +230,17 @@ may also set `relationship_id` for interior membership (mutually exclusive with
 Committed, non-secret, project-level configuration. Deliberately minimal in v1. It exists so
 there is an established place for settings to land rather than having to be introduced
 later.
+
+Recognised keys (all optional; unknown keys are preserved on write):
+
+- `group_max` — positive integer, default `8`. A node with this many children or fewer may
+  default to an expanded group on the canvas.
+- `level_budget` — positive integer, default `24`. Visible node count on a level above which
+  groups default to collapsed summaries.
+
+Both are view defaults only (decision 0010). A missing key uses the default. A value that is
+not a positive integer falls back to the default and produces a warning, not a load error.
+The effective values are returned as `view_defaults` on level reads.
 
 There is **no LLM or model provider configuration**, and no API key field anywhere in the
 format. ambit does not call a model provider. See

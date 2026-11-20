@@ -61,13 +61,46 @@ hard refresh.
 ### Graph reads
 
 - **Get a drill-down level** — `GET /levels/{nodeId}` returns the direct children of that
-  node plus the relationships among those children, plus the node itself for breadcrumb
-  context. `GET /levels` is the root: nodes with no `parent_id`, and `node` is null.
+  node plus the relationships among them, plus the node itself for breadcrumb context.
+  `GET /levels` is the root: nodes with no `parent_id`, and `node` is null.
 
-  A relationship with one endpoint outside that child set is absent from `relationships`.
-  It is listed in `crossings` as `node_id`, `direction` (`out` or `in`), `label`, `kind`,
-  `relationship_id`, `drillable`, and `other_id`. `other_id` is an id string. The response
-  does not include that node, and the client must not invent one.
+  Optional `?expand=a,b` (comma-separated node ids; whitespace and empty entries ignored)
+  asks for those groups to be shown open. The client sends the set it read from its layout
+  cache. An id is honored only if it exists, is already visible on the level (a child of the
+  level or a member of an expanded group), has children, and is at most 2 levels below the
+  level. Anything else is ignored silently, and order and duplicates do not matter. The
+  members of an expanded group are added to `children` as a flat list, directly after their
+  group, so the client nests them by `group_id`. See
+  [decision 0010](../decisions/0010-flat-first-groups-and-summary-nodes.md).
+
+  Node summary fields (in `node` and `children`): `id`, `name`, `type`, `status`,
+  `protected`, plus optional `icon`, `color`, `renderer`, and `schema` (presentation, see
+  decision 0009; omitted when unset). `child_count` is the number of direct children
+  (always present). `group_id` is the parent id when the node is a member of an expanded
+  group. `expanded` is true on a node shown as an open group. `internal_rel_count` is the
+  number of active relationships hidden inside a collapsed node that has children.
+  `type_mix` is the node's direct children as `[{"type","count"}]`, sorted by count
+  descending then type name (omitted for leaves).
+
+  **Roll-up.** Let V be the visible nodes on the level. Each relationship endpoint resolves
+  to its anchor: the nearest ancestor-or-self in V. For each active relationship:
+
+  - Both anchors exist and differ: an entry in `relationships` between the anchors. When an
+    endpoint was rolled up, the relationships for the same anchor pair merge into one edge
+    with `aggregated: true`, `id` of the form `agg:{from}>{to}`, `members` (relationship ids,
+    sorted), `kinds` (deduped, sorted), `label` `"N relationships"` (`"1 relationship"` for
+    one), and `kind` set only when all members share one. `drillable` is true only when
+    there is exactly one member and it is drillable. Edges between nodes that are both
+    directly visible are not aggregated and keep their own `id`, `label` and `kind`.
+  - Both anchors are the same node: hidden, and counted in that node's `internal_rel_count`.
+  - Exactly one anchor exists: a crossing. `node_id` is the anchor in V, `direction` is
+    `out` or `in`, and `other_id` is the real endpoint id (an id only). Crossings carry
+    `label`, `kind`, `relationship_id` and `drillable`. The response does not include the
+    other node, and the client must not invent one.
+
+  `view_defaults` (`{"group_max": 8, "level_budget": 24}`) carries the effective settings
+  from `config.json` so the client can pick default expanded groups. Edge `aggregated`,
+  `members` and `kinds` are omitted on non-aggregated edges.
 
 - **Get a relationship interior** — `GET /levels/relationships/{id}` returns member nodes,
   relationships among them, crossings, endpoint `context`, and warnings. Unknown id or an
@@ -119,11 +152,24 @@ the rule. There is no HTTP-specific validator.
   `.arch/.cache/layout/<key>.json`.
 
 `{key}` for `/node/:nodeId` is that node id. `/` has no node id; its key is `_root`.
+When groups are open on a level (`?expand=`), the client appends `~<hash>` to that key, where
+`<hash>` is the 8-hex-digit FNV-1a hash of the sorted expanded ids (nothing is appended when no
+group is open). Each expanded set therefore has its own file, and positions of group members
+are relative to their group. The `~` suffix is the client's convention; the server treats the
+key as opaque.
+
+Create, delete, and reparent remove the base key and every `<key>~*` variant file for that
+level (exact prefix match `<key>~` inside the layout directory only). The client still uses a
+cached layout only when it has a position for every visible node and no others, as a safety net.
+
+The stored `Layout` is typed (`positions`, `ports`, `attachments`) and has no field for view
+modes, so the group/summary view modes are not stored here. The client keeps them in browser
+`localStorage` per base level key.
 `_root` cannot collide with a node id, because ids match `^[a-z0-9]+(-[a-z0-9]+)*$`.
 
 Layout writes touch only `.arch/.cache/layout/`. They never write to the canonical model,
 which has no coordinates by design. Create, delete, and reparent delete that level's cache
-file so the client recomputes. A field edit does not.
+file and its `~<hash>` variants so the client recomputes. A field edit does not.
 
 ### Proposals
 
@@ -139,6 +185,27 @@ file so the client recomputes. A field edit does not.
   endpoints. Accept-all **skips stale operations** and reports which were skipped; it must
   never sweep a stale operation through.
 - **Delete a proposal** — discards it wholesale.
+- **Stage a group / ungroup / reparent proposal** — canvas structure edits never write
+  silently; each stages exactly one proposal (multi-operation, reviewed like any other) and
+  answers `201` with the same body as `GET /proposals/{id}`. Nothing in `.arch/nodes/`
+  changes until the operations are accepted.
+  - `POST /proposals/group` `{ "node_ids": ["a","b"], "name": "Backend", "type"?: "container",
+    "icon"?: "…", "color"?: "…" }`. Source `group_nodes`. Operations: `create_node` for the
+    container (id derived from the name like `create_node`, so a collision gets `-2`; parent
+    is the selection's shared parent or root; status `draft`; no renderer), then one
+    `update_node` (`fields: ["parent_id"]`) per selected node. Errors: `400` fewer than 2
+    nodes, duplicates, different parents, an ancestor/descendant pair, a node inside a
+    relationship; `404` unknown id; `409` empty name; invalid icon/color is `400`.
+  - `POST /proposals/ungroup` `{ "node_id": "container", "delete_container"?: false }`.
+    Source `ungroup_node`. Operations: one `update_node` per direct child moving it to the
+    container's parent (or root, or the container's relationship), then, only when
+    `delete_container` is true, `delete_node` for the container. Default keeps the container
+    as a leaf. `400` if the container has no children, or if `delete_container` is set while
+    relationships are attached (deleting a node drops its relationships; keep the container
+    or remove them first). Relationships reference node ids and are never rewritten.
+  - `POST /proposals/reparent` `{ "node_id": "x", "new_parent_id": "y" }` (`""` = root).
+    Source `reparent_node`. A single `update_node` (`parent_id`). `400` if already there,
+    `409` on a cycle or unknown parent, `404` unknown node. Used when a node is dragged out of a group.
 
 ### Events (SSE)
 

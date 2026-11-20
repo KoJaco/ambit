@@ -44,12 +44,11 @@ shapes are agent-friendly; colour is architect-first unless we later extend MCP.
 
 ## Follow-ups
 
-- [ ] Choose hex vs token names for colour storage.
-- [ ] Whether MCP `update_node` may set colour after dogfooding.
-- [ ] Initial shape set (e.g. `standard`, `hex`, `cylinder`, `cloud`, `document`) — slice at
-  implementation time; keep sparse.
-- [ ] Whether “suggested relations” includes suggested **relationship** `kind`/labels when an
-  edge connects two shaped nodes, or only shape↔type/icon hints (start with shape↔type/icon only).
+- [x] Colour storage: closed palette tokens on `color` (see [`arch-model-format.md`](../contracts/arch-model-format.md)).
+- [x] MCP `create_node` / `update_node` accept `icon` and `shape` only; colour stays architect-first.
+- [x] Initial shape set: `standard`, `hex`, `cylinder`, `cloud`, `document` (no `person`).
+- [x] Suggested relations: shape↔type/icon hints only in v1; no auto edge labels.
+- [ ] Whether MCP `update_node` may set colour after further dogfooding.
 
 ## References
 

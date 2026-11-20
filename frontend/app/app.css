@@ -9,135 +9,133 @@
         "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+/* Paper theme: warm, soft, minimal. Separation by spacing and tint, not borders or shadows. */
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.2101 0.0318 264.6645);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.2101 0.0318 264.6645);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.2101 0.0318 264.6645);
-    --primary: oklch(0.6716 0.1368 48.513);
-    --primary-foreground: oklch(1 0 0);
-    --secondary: oklch(0.536 0.0398 196.028);
-    --secondary-foreground: oklch(1 0 0);
-    --muted: oklch(0.967 0.0029 264.5419);
-    --muted-foreground: oklch(0.551 0.0234 264.3637);
-    --accent: oklch(0.9491 0 0);
-    --accent-foreground: oklch(0.2101 0.0318 264.6645);
-    --destructive: oklch(0.6368 0.2078 25.3313);
-    --destructive-foreground: oklch(0.9851 0 0);
-    --border: oklch(0.9276 0.0058 264.5313);
-    --input: oklch(0.9276 0.0058 264.5313);
-    --ring: oklch(0.6716 0.1368 48.513);
-    --chart-1: oklch(0.594 0.0443 196.0233);
-    --chart-2: oklch(0.7214 0.1337 49.9802);
-    --chart-3: oklch(0.8721 0.0864 68.5474);
-    --chart-4: oklch(0.6268 0 0);
-    --chart-5: oklch(0.683 0 0);
-    --sidebar: oklch(0.967 0.0029 264.5419);
-    --sidebar-foreground: oklch(0.2101 0.0318 264.6645);
-    --sidebar-primary: oklch(0.6716 0.1368 48.513);
-    --sidebar-primary-foreground: oklch(1 0 0);
-    --sidebar-accent: oklch(1 0 0);
-    --sidebar-accent-foreground: oklch(0.2101 0.0318 264.6645);
-    --sidebar-border: oklch(0.9276 0.0058 264.5313);
-    --sidebar-ring: oklch(0.6716 0.1368 48.513);
-    --font-sans: Geist Mono, ui-monospace, monospace;
-    --font-serif: serif;
-    --font-mono: JetBrains Mono, monospace;
-    --radius: 0.75rem;
+    --background: #f7f5f0;
+    --foreground: #26241f;
+    --card: #ffffff;
+    --card-foreground: #26241f;
+    --popover: #ffffff;
+    --popover-foreground: #26241f;
+    --primary: #3d6fd9;
+    --primary-foreground: #ffffff;
+    --secondary: #efece4;
+    --secondary-foreground: #26241f;
+    --muted: #efece4;
+    --muted-foreground: #6b675e;
+    --accent: #f4f2ec;
+    --accent-foreground: #26241f;
+    --destructive: #c2412d;
+    --destructive-foreground: #ffffff;
+    --border: #e7e3da;
+    --input: #e7e3da;
+    --ring: #3d6fd9;
+    --chart-1: #3d6fd9;
+    --chart-2: #25705f;
+    --chart-3: #8a5a12;
+    --chart-4: #6342a8;
+    --chart-5: #a13d2f;
+    --sidebar: #ffffff;
+    --sidebar-foreground: #26241f;
+    --sidebar-primary: #3d6fd9;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #f4f2ec;
+    --sidebar-accent-foreground: #26241f;
+    --sidebar-border: #e7e3da;
+    --sidebar-ring: #3d6fd9;
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --radius: 0.875rem;
     --shadow-x: 0px;
-    --shadow-y: 1px;
-    --shadow-blur: 4px;
+    --shadow-y: 4px;
+    --shadow-blur: 12px;
     --shadow-spread: 0px;
-    --shadow-opacity: 0.05;
-    --shadow-color: #000000;
-    --shadow-2xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
-    --shadow-xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
-    --shadow-sm:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 1px 2px -1px hsl(0 0% 0% / 0.05);
-    --shadow:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 1px 2px -1px hsl(0 0% 0% / 0.05);
-    --shadow-md:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 2px 4px -1px hsl(0 0% 0% / 0.05);
-    --shadow-lg:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 4px 6px -1px hsl(0 0% 0% / 0.05);
-    --shadow-xl:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 8px 10px -1px hsl(0 0% 0% / 0.05);
-    --shadow-2xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.13);
-    --tracking-normal: 0rem;
+    --shadow-opacity: 0.06;
+    --shadow-color: #26241f;
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow: 0 4px 12px rgb(38 36 31 / 0.06);
+    --shadow-md: 0 4px 12px rgb(38 36 31 / 0.06);
+    --shadow-lg: 0 6px 18px rgb(38 36 31 / 0.08);
+    --shadow-xl: 0 8px 24px rgb(38 36 31 / 0.09);
+    --shadow-2xl: 0 12px 32px rgb(38 36 31 / 0.12);
+    --tracking-normal: 0em;
     --spacing: 0.25rem;
+    /* Canvas */
+    --group: #efece4;
+    --group-2: #e7e3d9;
+    /* Edge contrast (WCAG ratio): 4.07 on canvas #f7f5f0, 3.76 on --group, 3.46 on --group-2. */
+    --edge: #7f7767;
+    --canvas-dot: #e9e5dc;
+    --sheet-1: #fdfcfa;
+    --sheet-2: #fbfaf7;
+    --selection-ring: rgb(61 111 217 / 0.12);
 }
 
 .dark {
-    --background: oklch(0.1797 0.0043 308.1928);
-    --foreground: oklch(0.8109 0 0);
-    --card: oklch(0.1822 0 0);
-    --card-foreground: oklch(0.8109 0 0);
-    --popover: oklch(0.1797 0.0043 308.1928);
-    --popover-foreground: oklch(0.8109 0 0);
-    --primary: oklch(0.7214 0.1337 49.9802);
-    --primary-foreground: oklch(0.1797 0.0043 308.1928);
-    --secondary: oklch(0.594 0.0443 196.0233);
-    --secondary-foreground: oklch(0.1797 0.0043 308.1928);
-    --muted: oklch(0.252 0 0);
-    --muted-foreground: oklch(0.6268 0 0);
-    --accent: oklch(0.3211 0 0);
-    --accent-foreground: oklch(0.8109 0 0);
-    --destructive: oklch(0.594 0.0443 196.0233);
-    --destructive-foreground: oklch(0.1797 0.0043 308.1928);
-    --border: oklch(0.252 0 0);
-    --input: oklch(0.252 0 0);
-    --ring: oklch(0.7214 0.1337 49.9802);
-    --chart-1: oklch(0.594 0.0443 196.0233);
-    --chart-2: oklch(0.7214 0.1337 49.9802);
-    --chart-3: oklch(0.8721 0.0864 68.5474);
-    --chart-4: oklch(0.6268 0 0);
-    --chart-5: oklch(0.683 0 0);
-    --sidebar: oklch(0.1822 0 0);
-    --sidebar-foreground: oklch(0.8109 0 0);
-    --sidebar-primary: oklch(0.7214 0.1337 49.9802);
-    --sidebar-primary-foreground: oklch(0.1797 0.0043 308.1928);
-    --sidebar-accent: oklch(0.3211 0 0);
-    --sidebar-accent-foreground: oklch(0.8109 0 0);
-    --sidebar-border: oklch(0.252 0 0);
-    --sidebar-ring: oklch(0.7214 0.1337 49.9802);
-    --font-sans: Geist Mono, ui-monospace, monospace;
-    --font-serif: serif;
-    --font-mono: JetBrains Mono, monospace;
-    --radius: 0.75rem;
+    --background: #1b1a17;
+    --foreground: #ece9e2;
+    --card: #24221e;
+    --card-foreground: #ece9e2;
+    --popover: #24221e;
+    --popover-foreground: #ece9e2;
+    --primary: #8fa8ff;
+    --primary-foreground: #1b1a17;
+    --secondary: #2c2a25;
+    --secondary-foreground: #ece9e2;
+    --muted: #2c2a25;
+    --muted-foreground: #a8a296;
+    --accent: #2c2a25;
+    --accent-foreground: #ece9e2;
+    --destructive: #e07a66;
+    --destructive-foreground: #1b1a17;
+    --border: #34312b;
+    --input: #34312b;
+    --ring: #8fa8ff;
+    --chart-1: #8fa8ff;
+    --chart-2: #7fd1bf;
+    --chart-3: #e8b66b;
+    --chart-4: #c4adff;
+    --chart-5: #f0a597;
+    --sidebar: #201f1b;
+    --sidebar-foreground: #ece9e2;
+    --sidebar-primary: #8fa8ff;
+    --sidebar-primary-foreground: #1b1a17;
+    --sidebar-accent: #2c2a25;
+    --sidebar-accent-foreground: #ece9e2;
+    --sidebar-border: #34312b;
+    --sidebar-ring: #8fa8ff;
+    --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-serif: 'Instrument Serif', ui-serif, Georgia, serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+    --radius: 0.875rem;
     --shadow-x: 0px;
-    --shadow-y: 1px;
-    --shadow-blur: 4px;
+    --shadow-y: 4px;
+    --shadow-blur: 12px;
     --shadow-spread: 0px;
-    --shadow-opacity: 0.05;
+    --shadow-opacity: 0.3;
     --shadow-color: #000000;
-    --shadow-2xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
-    --shadow-xs: 0px 1px 4px 0px hsl(0 0% 0% / 0.03);
-    --shadow-sm:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 1px 2px -1px hsl(0 0% 0% / 0.05);
-    --shadow:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 1px 2px -1px hsl(0 0% 0% / 0.05);
-    --shadow-md:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 2px 4px -1px hsl(0 0% 0% / 0.05);
-    --shadow-lg:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 4px 6px -1px hsl(0 0% 0% / 0.05);
-    --shadow-xl:
-        0px 1px 4px 0px hsl(0 0% 0% / 0.05),
-        0px 8px 10px -1px hsl(0 0% 0% / 0.05);
-    --shadow-2xl: 0px 1px 4px 0px hsl(0 0% 0% / 0.13);
+    --shadow-2xs: none;
+    --shadow-xs: none;
+    --shadow-sm: none;
+    --shadow: 0 4px 12px rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 12px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 6px 18px rgb(0 0 0 / 0.35);
+    --shadow-xl: 0 8px 24px rgb(0 0 0 / 0.4);
+    --shadow-2xl: 0 12px 32px rgb(0 0 0 / 0.5);
+    --group: #23211d;
+    --group-2: #2b2924;
+    /* Edge contrast: 4.31 on canvas #1b1a17, 3.98 on --group, 3.60 on --group-2. */
+    --edge: #847e71;
+    --canvas-dot: #26241f;
+    --sheet-1: #22201c;
+    --sheet-2: #201e1a;
+    --selection-ring: rgb(143 168 255 / 0.18);
 }
 
-@theme inline {
+  @theme inline {
     --color-background: var(--background);
     --color-foreground: var(--foreground);
     --color-card: var(--card);
@@ -170,16 +168,16 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
-
+  
     --font-sans: var(--font-sans);
     --font-mono: var(--font-mono);
     --font-serif: var(--font-serif);
-
+  
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
     --radius-xl: calc(var(--radius) + 4px);
-
+  
     --shadow-2xs: var(--shadow-2xs);
     --shadow-xs: var(--shadow-xs);
     --shadow-sm: var(--shadow-sm);
@@ -188,14 +186,7 @@
     --shadow-lg: var(--shadow-lg);
     --shadow-xl: var(--shadow-xl);
     --shadow-2xl: var(--shadow-2xl);
-
-    --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
-    --tracking-tight: calc(var(--tracking-normal) - 0.025em);
-    --tracking-normal: var(--tracking-normal);
-    --tracking-wide: calc(var(--tracking-normal) + 0.025em);
-    --tracking-wider: calc(var(--tracking-normal) + 0.05em);
-    --tracking-widest: calc(var(--tracking-normal) + 0.1em);
-}
+  }
 
 html,
 body {
@@ -234,4 +225,172 @@ body {
 
 .reveal-wipe {
     animation: reveal-wipe 1000ms ease-out both;
+}
+
+/* Node tone palette: --node-X is the strong foreground, --node-X-bg its tint. */
+:root {
+    --node-neutral: #5a564d;
+    --node-neutral-bg: #efece4;
+    --node-slate: #475166;
+    --node-slate-bg: #e8ebf0;
+    --node-blue: #2f5bb8;
+    --node-blue-bg: #e6edfb;
+    --node-teal: #25705f;
+    --node-teal-bg: #e2f3ef;
+    --node-green: #3a6b2c;
+    --node-green-bg: #e4f1e0;
+    --node-amber: #8a5a12;
+    --node-amber-bg: #fbf0dc;
+    --node-violet: #6342a8;
+    --node-violet-bg: #efe8fb;
+    --node-rose: #a13d2f;
+    --node-rose-bg: #fbe7e4;
+}
+
+.dark {
+    --node-neutral: #c4beb2;
+    --node-neutral-bg: #2c2a25;
+    --node-slate: #b4bccb;
+    --node-slate-bg: #2a2e36;
+    --node-blue: #a9bcff;
+    --node-blue-bg: #253151;
+    --node-teal: #7fd1bf;
+    --node-teal-bg: #1f3832;
+    --node-green: #9ad48a;
+    --node-green-bg: #263a22;
+    --node-amber: #e8b66b;
+    --node-amber-bg: #3d3020;
+    --node-violet: #c4adff;
+    --node-violet-bg: #322a4a;
+    --node-rose: #f0a597;
+    --node-rose-bg: #3f2522;
+}
+
+/* Icon tile: tinted background, strong foreground stroke. Dot: solid fill only. */
+.node-glyph {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+}
+.node-glyph-lg {
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 0.75rem;
+}
+
+.node-glyph-neutral { background-color: var(--node-neutral-bg); color: var(--node-neutral); }
+.node-glyph-slate { background-color: var(--node-slate-bg); color: var(--node-slate); }
+.node-glyph-blue { background-color: var(--node-blue-bg); color: var(--node-blue); }
+.node-glyph-teal { background-color: var(--node-teal-bg); color: var(--node-teal); }
+.node-glyph-green { background-color: var(--node-green-bg); color: var(--node-green); }
+.node-glyph-amber { background-color: var(--node-amber-bg); color: var(--node-amber); }
+.node-glyph-violet { background-color: var(--node-violet-bg); color: var(--node-violet); }
+.node-glyph-rose { background-color: var(--node-rose-bg); color: var(--node-rose); }
+
+.node-dot {
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+}
+.node-dot-neutral { background-color: var(--node-neutral); }
+.node-dot-slate { background-color: var(--node-slate); }
+.node-dot-blue { background-color: var(--node-blue); }
+.node-dot-teal { background-color: var(--node-teal); }
+.node-dot-green { background-color: var(--node-green); }
+.node-dot-amber { background-color: var(--node-amber); }
+.node-dot-violet { background-color: var(--node-violet); }
+.node-dot-rose { background-color: var(--node-rose); }
+
+.node-swatch {
+    flex-shrink: 0;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 9999px;
+    border: 1px solid color-mix(in oklch, var(--foreground) 12%, transparent);
+}
+.node-swatch-neutral { background-color: var(--node-neutral); }
+.node-swatch-slate { background-color: var(--node-slate); }
+.node-swatch-blue { background-color: var(--node-blue); }
+.node-swatch-teal { background-color: var(--node-teal); }
+.node-swatch-green { background-color: var(--node-green); }
+.node-swatch-amber { background-color: var(--node-amber); }
+.node-swatch-violet { background-color: var(--node-violet); }
+.node-swatch-rose { background-color: var(--node-rose); }
+
+/* React Flow. xyflow's stylesheet is imported by FlowCanvas after this file and its rules have the
+   same specificity as ours, so plain overrides of its selectors lose on source order. Its documented
+   --xy-* variables (the non-"-default" names) are read first by those rules, so we set them instead. */
+:root {
+    --xy-edge-stroke: var(--edge);
+    --xy-edge-stroke-width: 1.5;
+    --xy-edge-stroke-selected: var(--primary);
+    --xy-handle-background-color: var(--edge);
+    --xy-handle-border-color: var(--card);
+    --xy-background-color: var(--background);
+    --xy-background-pattern-dots-color: var(--canvas-dot);
+    --xy-node-color: var(--foreground);
+    --xy-node-background-color: var(--card);
+    --xy-node-border: 1px solid var(--border);
+    --xy-selection-background-color: var(--selection-ring);
+    --xy-selection-border: 1px dotted var(--primary);
+    --xy-minimap-background-color: var(--card);
+    --xy-minimap-mask-background-color: color-mix(in srgb, var(--background) 60%, transparent);
+    --xy-minimap-node-background-color: var(--group);
+    --xy-controls-button-background-color: var(--card);
+    --xy-controls-button-background-color-hover: var(--accent);
+    --xy-controls-button-color: var(--foreground);
+    --xy-controls-button-border-color: var(--border);
+    --xy-edge-label-background-color: var(--card);
+    --xy-edge-label-color: var(--foreground);
+    --xy-resize-background-color: var(--primary);
+}
+.react-flow__arrowhead polyline {
+    stroke: var(--edge) !important;
+    fill: var(--edge) !important;
+}
+/* No variable exists for handle size or visibility, so raise specificity. */
+.react-flow .react-flow__handle {
+    width: 8px;
+    height: 8px;
+    border-width: 1.5px;
+    opacity: 0;
+    transition: opacity 120ms ease;
+}
+.react-flow__node:hover .react-flow__handle,
+.react-flow__node.selected .react-flow__handle {
+    opacity: 1;
+}
+
+/* Group resize handles: small primary dots with a 24px hit area; lines are thin and quiet. */
+.react-flow .react-flow__resize-control.handle.paper-resize-handle {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--card);
+    border-radius: 9999px;
+    background-color: var(--primary);
+}
+.react-flow .react-flow__resize-control.handle.paper-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+}
+.react-flow .react-flow__resize-control.line.paper-resize-line {
+    opacity: 0.5;
+}
+.react-flow .react-flow__resize-control.line.paper-resize-line::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+}
+
+/* Resize controls show only while the group is selected, hovered or holds focus. */
+.react-flow__node:not(.selected):not(:hover):not(:focus-within) .paper-resize-handle,
+.react-flow__node:not(.selected):not(:hover):not(:focus-within) .paper-resize-line {
+    opacity: 0;
+    pointer-events: none;
 }

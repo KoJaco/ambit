@@ -56,10 +56,50 @@ A relationship whose other endpoint sits outside the current level is rendered a
 boundary-crossing indicator on the node that is present, not as an edge to a node that is
 not on screen.
 
+### Level view: groups, summaries, expanded set
+
+Decision [0010](../decisions/0010-flat-first-groups-and-summary-nodes.md). A node with
+children is drawn on its parent's level in one of two modes: an open **group** (a React Flow
+container whose members carry `parentId` and `extent: "parent"`) or a collapsed **summary**
+card (`N · 3 service, 2 store`, with an expand toggle and an "internal" relationship count).
+Leaves render as before, and `renderer: group` on a leaf keeps the static frame.
+
+- The client sends the **expanded set** as `?expand=a,b` and renders the flat `children` list
+  it gets back (members follow their group and carry `group_id`). Roll-up, aggregated edges,
+  `type_mix` and `internal_rel_count` are all computed by the server; the client never derives
+  them.
+- `app/level-view.ts` (pure) chooses which ids to request. Architect-set modes always win.
+  Otherwise a node opens when `child_count <= group_max` and the projected visible count stays
+  `<= level_budget` (both from `view_defaults`), at most two deep. The client learns about
+  depth-2 candidates from a response, so a level load is at most three requests.
+- Toggling a group saves the mode and freezes every other openable node as currently shown, so
+  defaults can never collapse something after the architect has made a choice. Going over
+  budget only shows a non-blocking `role="status"` hint naming the largest open groups.
+- View modes are view state, not model state. They are stored in browser `localStorage` per
+  level key (the layout-cache server schema is typed and has no field for them); they never
+  reach the model or the agents.
+- An aggregated edge ("N relationships") opens a keyboard-reachable member list on click. A
+  single-member aggregated edge drills like any other.
+- Dragging a member inside its group saves its position (relative to the group). Dragging it
+  out of the group never changes anything: it snaps back and says reparenting goes through a
+  proposal (`requestReparent` in `FlowCanvas.tsx` is the hook for that proposal).
+
 ### Layout
 
-elkjs, computed in the browser, **per drill-down level** — a node's direct children plus the
-relationships among them. Never the whole graph flattened.
+elkjs, computed in the browser, **per drill-down level** — a node's direct children (plus the
+members of open groups) and the relationships among them. Never the whole graph flattened.
+
+With open groups the layout is an ELK compound graph (`elk.hierarchyHandling:
+INCLUDE_CHILDREN`): groups are ELK parents with header padding and members are nested
+children. Member positions are relative to their group, as React Flow subflows expect;
+container sizes are recomputed from member positions when a cached layout is restored. A level
+with nothing open uses the flat layout unchanged.
+
+The layout cache key is the level key plus `~<hash>` of the sorted expanded set, so closing
+and reopening a group restores the earlier arrangement. With nothing open the key is
+unchanged. The server only deletes the base key on create/delete/reparent, so a hashed cache
+is trusted only when it covers exactly the nodes on screen; otherwise the level is laid out
+again.
 
 elk rather than dagre because elk supports hierarchical and compound nodes natively, which
 maps directly onto a structure where a node at one level *is* a nested graph at the next.
@@ -172,7 +212,8 @@ proposed state.
 - **Client-side graph algorithms beyond layout.** Traversal, filtering, and integrity
   checking belong in Go.
 - **Offline-first browser storage.** The Go process is always local and always the source of
-  truth; caching the model in the browser would create a second one.
+  truth; caching the model in the browser would create a second one. The only browser storage
+  is per-level group/summary view modes (presentation preference, no model data).
 - **Component or end-to-end test coverage in v1.** Vitest covers pure logic only — proposal
   diffing, scope glob matching, layout cache keying — while the UI shape is still moving.
   See [decision note 0004](../decisions/0004-testing-strategy.md).

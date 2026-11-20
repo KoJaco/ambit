@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { Check, X } from "lucide-react";
+import { Tooltip } from "./tooltip";
 
 export function ReviewOpActions({
     canAccept,
@@ -19,6 +20,7 @@ export function ReviewOpActions({
     return (
         <div className={clsx("flex gap-1", className)}>
             {canAccept ? (
+                <Tooltip label={needsConfirm ? "Apply over newer edit" : "Accept"}>
                 <button
                     type="button"
                     className={clsx(
@@ -29,7 +31,6 @@ export function ReviewOpActions({
                     )}
                     disabled={busy}
                     aria-label={needsConfirm ? "Apply over newer edit" : "Accept"}
-                    title={needsConfirm ? "Apply over newer edit" : "Accept"}
                     onClick={(event) => {
                         event.stopPropagation();
                         onAccept();
@@ -37,13 +38,14 @@ export function ReviewOpActions({
                 >
                     <Check className="size-4" aria-hidden />
                 </button>
+                </Tooltip>
             ) : null}
+            <Tooltip label="Reject">
             <button
                 type="button"
                 className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10"
                 disabled={busy}
                 aria-label="Reject"
-                title="Reject"
                 onClick={(event) => {
                     event.stopPropagation();
                     onReject();
@@ -51,6 +53,7 @@ export function ReviewOpActions({
             >
                 <X className="size-4" aria-hidden />
             </button>
+            </Tooltip>
         </div>
     );
 }

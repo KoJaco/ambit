@@ -45,11 +45,11 @@ type toolEnv struct {
 }
 
 func registerTools(srv *sdkmcp.Server, env *toolEnv) {
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "seed_model", Description: "Propose a model from a harness-generated graph (staged, not applied)."}, env.handleSeedModel)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "create_node", Description: "Propose one new node (staged, not applied)."}, env.handleCreateNode)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node", Description: "Propose changes to a node (staged, not applied)."}, env.handleUpdateNode)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "seed_model", Description: seedModelDescription}, env.handleSeedModel)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "create_node", Description: createNodeDescription}, env.handleCreateNode)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node", Description: updateNodeDescription}, env.handleUpdateNode)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "delete_node", Description: "Propose deleting a node (staged, not applied)."}, env.handleDeleteNode)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_relationship", Description: "Propose creating or updating a relationship (staged, not applied)."}, env.handleSetRelationship)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_relationship", Description: setRelationshipDescription}, env.handleSetRelationship)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_context", Description: "Return the imperative task brief for a node."}, env.handleGetContext)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_scope", Description: "Check whether files are in scope for a node."}, env.handleCheckScope)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node_status", Description: "Set a node status directly on the canonical model."}, env.handleUpdateNodeStatus)

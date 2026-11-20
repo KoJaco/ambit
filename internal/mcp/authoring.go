@@ -25,6 +25,7 @@ type seedNodeIn struct {
 	Scope          []string `json:"scope,omitempty"`
 	Protected      bool     `json:"protected,omitempty"`
 	Spec           string   `json:"spec,omitempty"`
+	Icon           string   `json:"icon,omitempty"`
 }
 
 type seedRelIn struct {
@@ -60,6 +61,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 				Implementation: n.Implementation,
 				Scope:          n.Scope,
 				Protected:      n.Protected,
+				Icon:           n.Icon,
 			},
 		})
 	}
@@ -97,6 +99,7 @@ type createNodeIn struct {
 	Scope          []string `json:"scope,omitempty"`
 	Protected      bool     `json:"protected,omitempty"`
 	Spec           string   `json:"spec,omitempty"`
+	Icon           string   `json:"icon,omitempty"`
 }
 
 func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in createNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -117,6 +120,7 @@ func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolReques
 				Implementation: in.Implementation,
 				Scope:          in.Scope,
 				Protected:      in.Protected,
+				Icon:           in.Icon,
 			},
 		}},
 	})
@@ -135,6 +139,7 @@ type updateNodeIn struct {
 	Scope          *[]string `json:"scope,omitempty"`
 	Protected      *bool     `json:"protected,omitempty"`
 	Spec           *string   `json:"spec,omitempty"`
+	Icon           *string   `json:"icon,omitempty"`
 }
 
 func (e *toolEnv) handleUpdateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in updateNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -151,6 +156,7 @@ func (e *toolEnv) handleUpdateNode(ctx context.Context, _ *sdkmcp.CallToolReques
 		Implementation: in.Implementation,
 		Scope:          in.Scope,
 		Protected:      in.Protected,
+		Icon:           in.Icon,
 	}
 	if in.ParentID != nil {
 		p := core.NodeID(*in.ParentID)

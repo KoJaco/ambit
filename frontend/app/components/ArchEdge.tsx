@@ -1,50 +1,25 @@
-import { type KeyboardEvent, type MouseEvent } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
-import type { Relationship } from "../api";
+import { relationshipDrillId } from "../api";
+import { AggregatedPill } from "./flow/aggregated-members";
+import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, useEdgeGeometry } from "./flow/edge-shared";
 
-type ArchEdgeData = {
-    drillable?: boolean;
-    rel?: Relationship;
-    fromNodeId?: string;
-    labelIndex?: number;
-    labelCount?: number;
-};
-
-export function ArchEdge({
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    markerEnd,
-    data,
-}: EdgeProps) {
+export function ArchEdge(props: EdgeProps) {
+    const { id, markerEnd } = props;
     const navigate = useNavigate();
-    const edgeData = data as ArchEdgeData | undefined;
+    const [popoverOpen, setPopoverOpen] = useState(false);
+    const { data: edgeData, edgePath, labelX, labelY } = useEdgeGeometry(props);
     const rel = edgeData?.rel;
     const label = rel?.label ?? "";
-    const drillable = Boolean(rel?.drillable);
-
-    const [edgePath, labelX, labelY] = getBezierPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-    });
-
-    const labelIndex = edgeData?.labelIndex ?? 0;
-    const labelCount = edgeData?.labelCount ?? 1;
-    const labelOffsetY = (labelIndex - (labelCount - 1) / 2) * 36;
+    const drillId = rel ? relationshipDrillId(rel) : undefined;
+    const drillable = Boolean(drillId);
+    const multi = Boolean(rel?.aggregated && !rel.drillable && (rel.members?.length ?? 0) > 0);
 
     function openRelationship(event: MouseEvent) {
-        if (!drillable || !rel?.id) return;
+        if (!drillId) return;
         event.stopPropagation();
-        navigate(`/relationship/${rel.id}`, { state: { fromNodeId: edgeData?.fromNodeId } });
+        navigate(`/relationship/${drillId}`, { state: { fromNodeId: edgeData?.fromNodeId } });
     }
 
     return (
@@ -53,12 +28,8 @@ export function ArchEdge({
             {label ? (
                 <EdgeLabelRenderer>
                     <div
-                        className={`absolute max-w-[11rem] ${
-                            drillable ? "pointer-events-auto cursor-pointer" : "pointer-events-none"
-                        }`}
-                        style={{
-                            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY + labelOffsetY}px)`,
-                        }}
+                        className={`nodrag nopan pointer-events-auto absolute max-w-[11rem] ${drillable || multi ? "cursor-pointer" : ""}`}
+                        style={edgeLabelStyle(labelX, labelY, popoverOpen)}
                         onClick={openRelationship}
                         onDoubleClick={openRelationship}
                         role={drillable ? "link" : undefined}
@@ -68,8 +39,8 @@ export function ArchEdge({
                                 ? (event: KeyboardEvent) => {
                                       if (event.key === "Enter" || event.key === " ") {
                                           event.preventDefault();
-                                          if (rel?.id) {
-                                              navigate(`/relationship/${rel.id}`, {
+                                          if (drillId) {
+                                              navigate(`/relationship/${drillId}`, {
                                                   state: { fromNodeId: edgeData?.fromNodeId },
                                               });
                                           }
@@ -78,13 +49,23 @@ export function ArchEdge({
                                 : undefined
                         }
                     >
-                        <span
-                            className={`block max-w-[11rem] break-words rounded px-1.5 py-1 text-center text-xs leading-normal bg-foreground text-background shadow-sm ring-1 ring-foreground/25 ${
-                                drillable ? "hover:ring-primary/50" : ""
-                            }`}
-                        >
-                            {label}
-                        </span>
+                        {multi && rel ? (
+                            <AggregatedPill
+                                rel={rel}
+                                label={label}
+                                fromNodeId={edgeData?.fromNodeId}
+                                onOpenChange={setPopoverOpen}
+                            />
+                        ) : (
+                            <span
+                                title={rel?.aggregated && rel.kinds?.length ? `Kinds: ${rel.kinds.join(", ")}` : undefined}
+                                className={`block max-w-[11rem] break-words text-center leading-normal ${edgePillClass} ${
+                                    drillable ? edgePillDrillableClass : ""
+                                }`}
+                            >
+                                {label}
+                            </span>
+                        )}
                     </div>
                 </EdgeLabelRenderer>
             ) : null}

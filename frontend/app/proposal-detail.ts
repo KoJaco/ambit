@@ -109,6 +109,12 @@ function nodeSnapshotBlocks(title: string, node: NodeSnapshot): DetailBlock[] {
         { kind: "heading", text: title },
         { kind: "pair", label: "name", before: "—", after: node.name },
         { kind: "pair", label: "type", before: "—", after: node.type },
+        ...(node.icon
+            ? [{ kind: "pair" as const, label: "icon", before: "—", after: node.icon }]
+            : []),
+        ...(node.color
+            ? [{ kind: "pair" as const, label: "color", before: "—", after: node.color }]
+            : []),
         { kind: "pair", label: "status", before: "—", after: node.status },
         {
             kind: "pair",
@@ -183,6 +189,10 @@ function fieldText(node: NodeSnapshot | null, field: string): string {
             return node.scope.join(", ") || "(empty)";
         case "protected":
             return node.protected ? "protected" : "not protected";
+        case "icon":
+            return node.icon || "(default)";
+        case "color":
+            return node.color || "(from type)";
         default:
             return field;
     }

@@ -79,6 +79,10 @@ export default function Home() {
                             setSelectedId(null);
                             if (edge) setFrontPanel("inspector");
                         }}
+                        onProposalStaged={() => {
+                            setProposalRefreshKey((value) => value + 1);
+                            setFrontPanel("review");
+                        }}
                         onRequestRecenterRef={(fn) => {
                             recenterRef.current = fn;
                         }}

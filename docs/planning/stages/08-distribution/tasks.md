@@ -1,4 +1,4 @@
-# Stage 07 tasks
+# Stage 08 tasks
 
 Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 

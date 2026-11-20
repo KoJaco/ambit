@@ -135,14 +135,17 @@ Done. [Stage](stages/00-foundation/README.md).
 [Stage](stages/07-node-presentation/README.md). Planned after stage 06; see
 [product-iteration-notes.md](product-iteration-notes.md).
 
-- [ ] **07.1** Closed icon registry; optional `icon` on nodes; MCP docs list allowed ids.
-- [ ] **07.2** Closed shape registry; `standard` default; optional `shape`; suggested pairings in docs only.
-- [ ] **07.3** Default node colour from `type`; free-form types get a neutral default.
-- [ ] **07.4** Inspector colour (and shape) picker; optional canonical fields.
-- [ ] **07.5** MCP optional `icon` / `shape` on create/update; colour architect-first unless opened.
-- [ ] **07.6** Contract/docs slice and slice log.
-- [ ] **07.7** Drill affordance: level summaries expose has-children; NodeCard shows hint.
-- [ ] **07.8** Lift/embed hierarchy compression (optional; see decision 0007 — not a gate unless pulled in).
+- [x] **07.1** Closed icon registry; optional `icon` on nodes; MCP docs list allowed ids.
+- [x] **07.2** Closed shape registry; `standard` default; optional `shape`; suggested pairings in docs only.
+- [x] **07.3** Default node colour from `type`; free-form types get a neutral default.
+- [x] **07.4** Inspector colour (and shape) picker; optional canonical fields.
+- [x] **07.5** MCP optional `icon` / `shape` on create/update; colour architect-first unless opened.
+- [x] **07.6** Contract/docs slice and slice log.
+- [x] **07.7** Drill affordance: level summaries expose has-children; NodeCard shows hint.
+- [x] **07.8** ~~Lift/embed~~ superseded by 07.9-07.11 (decision 0010).
+- [x] **07.9** Core anchor roll-up: `Level(parent, expanded)`, aggregated edges, `expand` param, config thresholds.
+- [x] **07.10** Group/summary rendering, compound ELK layout, view mode in layout cache.
+- [x] **07.11** Group/ungroup as reviewed proposals; shallow-model agent guidance.
 
 ## Stage 08 — Distribution
 

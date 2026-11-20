@@ -272,3 +272,14 @@ func TestGetContextObligations(t *testing.T) {
 		t.Fatalf("brief %q", out.Brief)
 	}
 }
+
+func TestAuthoringDescriptionsCarryShallowGuidance(t *testing.T) {
+	for name, d := range map[string]string{
+		"seed_model": seedModelDescription, "create_node": createNodeDescription,
+		"update_node": updateNodeDescription, "set_relationship": setRelationshipDescription,
+	} {
+		if !strings.Contains(d, core.ShallowModelGuidance) {
+			t.Errorf("%s description lacks guidance", name)
+		}
+	}
+}

@@ -27,6 +27,11 @@ const (
 
 	// SourceSeedModel is the proposal source used when many operations arrive together.
 	SourceSeedModel = "seed_model"
+	// SourceGroupNodes, SourceUngroupNode and SourceReparentNode mark proposals staged
+	// from the canvas (group selection, ungroup, drag out of a group).
+	SourceGroupNodes   = "group_nodes"
+	SourceUngroupNode  = "ungroup_node"
+	SourceReparentNode = "reparent_node"
 
 	opStatusPending  = "pending"
 	opStatusAccepted = "accepted"
@@ -112,16 +117,20 @@ type OpDiff struct {
 
 // NodeSnapshot is the node body a diff row renders.
 type NodeSnapshot struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Type           string   `json:"type"`
-	Status         string   `json:"status"`
-	ParentID       string   `json:"parent_id,omitempty"`
-	RelationshipID string   `json:"relationship_id,omitempty"`
-	Implementation []string `json:"implementation"`
-	Scope          []string `json:"scope"`
-	Protected      bool     `json:"protected"`
-	Markdown       string   `json:"markdown"`
+	ID             string         `json:"id"`
+	Name           string         `json:"name"`
+	Type           string         `json:"type"`
+	Status         string         `json:"status"`
+	ParentID       string         `json:"parent_id,omitempty"`
+	RelationshipID string         `json:"relationship_id,omitempty"`
+	Implementation []string       `json:"implementation"`
+	Scope          []string       `json:"scope"`
+	Protected      bool           `json:"protected"`
+	Markdown       string         `json:"markdown"`
+	Icon           string         `json:"icon,omitempty"`
+	Color          string         `json:"color,omitempty"`
+	Renderer       string         `json:"renderer,omitempty"`
+	Schema         []SchemaColumn `json:"schema,omitempty"`
 }
 
 // RelSnapshot is one directed edge.
@@ -201,6 +210,11 @@ func contentHash(jsonBytes, mdBytes []byte) string {
 func (idx *Index) Stage(in StageInput) (string, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.stageLocked(in)
+}
+
+// stageLocked is Stage for callers that already hold idx.mu.
+func (idx *Index) stageLocked(in StageInput) (string, error) {
 	if !validProposalSource(in.Source) {
 		return "", fmt.Errorf("%w: source %q", ErrBadOperation, in.Source)
 	}
@@ -337,6 +351,13 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 		Scope:          cloneStrings(in.Create.Scope),
 		Protected:      in.Create.Protected,
 		Spec:           in.Create.Spec,
+		Icon:           strings.TrimSpace(in.Create.Icon),
+		Color:          strings.TrimSpace(in.Create.Color),
+		Renderer:       strings.TrimSpace(in.Create.Renderer),
+		Schema:         normalizeSchema(in.Create.Schema),
+	}
+	if err := validateCreatePresentation(node.Icon, node.Color, node.Renderer, node.Schema); err != nil {
+		return operation{}, nil, err
 	}
 	body, err := materialise(node)
 	if err != nil {
@@ -551,6 +572,9 @@ func (idx *Index) AcceptOperation(id string, index int, confirmStale bool) error
 	if err := idx.rejectIfStale(m.Operations, op, confirmStale); err != nil {
 		return err
 	}
+	if idx.createDependencyUnmet(id, m.Operations, op) {
+		return fmt.Errorf("%w: %s %s moves under a container whose create_node in this proposal is not accepted", ErrStale, op.Op, op.NodeID)
+	}
 	if err := idx.applyOp(id, op); err != nil {
 		return err
 	}
@@ -595,6 +619,12 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 		if stale {
 			result.Skipped = append(result.Skipped, SkippedOp{
 				Index: i, Op: op.Op, NodeID: op.NodeID, Reason: reason,
+			})
+			continue
+		}
+		if idx.createDependencyUnmet(id, m.Operations, op) {
+			result.Skipped = append(result.Skipped, SkippedOp{
+				Index: i, Op: op.Op, NodeID: op.NodeID, Reason: staleCreateNotAccepted,
 			})
 			continue
 		}
@@ -671,7 +701,53 @@ func (idx *Index) rejectIfStale(ops []operation, op operation, confirm bool) err
 const (
 	staleMissing  = "node is missing"
 	staleMismatch = "base_hash mismatch"
+
+	staleCreateNotAccepted = "container create_node was not accepted"
 )
+
+// createDependencyUnmet reports whether an update op proposes a parent that is the node id of
+// a create op in the same proposal which has not been accepted. Applying it would reparent the
+// node under a same-id container from elsewhere (or one that never got created).
+func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op operation) bool {
+	if op.Op != OpUpdateNode {
+		return false
+	}
+	jsonBytes, _, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", op.NodeID))
+	if err != nil {
+		return false
+	}
+	node, err := decodeNode(jsonBytes)
+	if err != nil || node.ParentID == "" {
+		return false
+	}
+	for _, other := range ops {
+		if other.Op == OpCreateNode && other.NodeID == string(node.ParentID) && other.Status != opStatusAccepted {
+			return true
+		}
+	}
+	return false
+}
+
+// pendingCreateIDs lists node ids reserved by pending create ops in staged proposals.
+func (idx *Index) pendingCreateIDs() map[string]bool {
+	out := map[string]bool{}
+	ids, err := idx.proposalIDs()
+	if err != nil {
+		return out
+	}
+	for _, pid := range ids {
+		summary, m, err := idx.inspect(pid)
+		if err != nil || summary.Unreadable {
+			continue
+		}
+		for _, op := range m.Operations {
+			if op.Op == OpCreateNode && op.Status == opStatusPending {
+				out[op.NodeID] = true
+			}
+		}
+	}
+	return out
+}
 
 func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 	if op.Op == OpCreateNode || op.Status != opStatusPending {
@@ -815,6 +891,8 @@ func (idx *Index) applyNodeFiles(proposalID string, op operation) error {
 		if node.ParentID != oldParent {
 			idx.invalidateLayoutLocked(oldParent)
 			idx.invalidateLayoutLocked(node.ParentID)
+			idx.invalidateAncestorVariantsLocked(oldParent)
+			idx.invalidateAncestorVariantsLocked(node.ParentID)
 		}
 		if node.RelationshipID != oldRel {
 			if oldRel != "" {
@@ -1140,12 +1218,13 @@ func (idx *Index) mustProposalPath(id string) string {
 }
 
 func (idx *Index) allocateDuring(base string, extra map[NodeID]*Node) NodeID {
-	if !idx.idTaken(base, extra) {
+	reserved := idx.pendingCreateIDs()
+	if !idx.idTaken(base, extra) && !reserved[base] {
 		return NodeID(base)
 	}
 	for n := 2; ; n++ {
 		candidate := fmt.Sprintf("%s-%d", base, n)
-		if !idx.idTaken(candidate, extra) {
+		if !idx.idTaken(candidate, extra) && !reserved[candidate] {
 			return NodeID(candidate)
 		}
 	}
@@ -1175,7 +1254,7 @@ func newProposalID(now time.Time) (string, error) {
 
 func validProposalSource(source string) bool {
 	switch source {
-	case SourceSeedModel, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship:
+	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship:
 		return true
 	default:
 		return false
@@ -1274,6 +1353,30 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 	if in.Protected != nil {
 		n.Protected = *in.Protected
 		fields = append(fields, "protected")
+	}
+	if in.Icon != nil {
+		if err := applyIconPatch(n, in.Icon); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "icon")
+	}
+	if in.Color != nil {
+		if err := applyColorPatch(n, in.Color); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "color")
+	}
+	if in.Renderer != nil {
+		if err := applyRendererPatch(n, in.Renderer); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "renderer")
+	}
+	if in.Schema != nil {
+		if err := applySchemaPatch(n, in.Schema); err != nil {
+			return nil, err
+		}
+		fields = append(fields, "schema")
 	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("%w: update_node %s changes no fields", ErrBadOperation, n.ID)
@@ -1416,6 +1519,10 @@ func snapshotNode(n *Node) *NodeSnapshot {
 		Scope:          scope,
 		Protected:      n.Protected,
 		Markdown:       n.Spec,
+		Icon:           n.Icon,
+		Color:          n.Color,
+		Renderer:       n.Renderer,
+		Schema:         append([]SchemaColumn(nil), n.Schema...),
 	}
 }
 

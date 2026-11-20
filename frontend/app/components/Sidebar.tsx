@@ -1,8 +1,20 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
-import { createNode as postNode, getLevel, getRelationshipLevel, type Summary } from "../api";
+import { createNode as postNode, getLevel, getRelationshipLevel, type SchemaColumn, type Summary } from "../api";
+import {
+    PresentationControls,
+    type PresentationSubview,
+} from "./node-inspector-presentation";
+import { Tooltip } from "./tooltip";
 import styles from "./Sidebar.module.css";
+
+type CreatePresentation = {
+    icon?: string;
+    color?: string;
+    renderer?: string;
+    schema?: SchemaColumn[];
+};
 
 export function Sidebar({
     nodeId,
@@ -21,6 +33,8 @@ export function Sidebar({
     const [current, setCurrent] = useState<Summary | null>(null);
     const [name, setName] = useState("");
     const [type, setType] = useState("");
+    const [presentation, setPresentation] = useState<CreatePresentation>({});
+    const [presentationSubview, setPresentationSubview] = useState<PresentationSubview>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -66,37 +80,61 @@ export function Sidebar({
         return () => ac.abort();
     }, [nodeId, relationshipId, refreshKey]);
 
+    function resetCreateForm() {
+        setName("");
+        setType("");
+        setPresentation({});
+        setPresentationSubview(null);
+    }
+
     async function createNode() {
         setError(null);
+        const body: Parameters<typeof postNode>[0] = { name, type };
+        if (relationshipId) {
+            body.relationship_id = relationshipId;
+        } else {
+            body.parent_id = nodeId ?? "";
+        }
+        if (presentation.icon !== undefined) {
+            body.icon = presentation.icon;
+        }
+        if (presentation.color !== undefined) {
+            body.color = presentation.color;
+        }
+        if (presentation.renderer !== undefined) {
+            body.renderer = presentation.renderer;
+        }
+        if (presentation.schema !== undefined) {
+            body.schema = presentation.schema.filter((row) => row.title.trim() !== "" && row.type.trim() !== "");
+        }
         try {
-            if (relationshipId) {
-                await postNode({ name, type, relationship_id: relationshipId });
-            } else {
-                await postNode({ name, type, parent_id: nodeId ?? "" });
-            }
+            await postNode(body);
         } catch (err) {
             setError(err instanceof Error ? err.message : "create failed");
             return;
         }
-        setName("");
-        setType("");
+        resetCreateForm();
         onMutated();
     }
 
     return (
         <aside
             className={clsx(
-                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-foreground/25 bg-card/95 shadow-sm backdrop-blur",
+                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-md",
                 collapsed ? "w-10" : "max-h-full min-h-[25vh] w-64"
             )}
         >
-            <button
-                type="button"
-                className="ml-2 my-2 w-fit rounded-full border border-foreground/20 bg-primary/10 text-primary px-2 py-1 text-xs"
-                onClick={() => setCollapsed((value) => !value)}
-            >
-                {collapsed ? ">" : "<"}
-            </button>
+            <Tooltip label={collapsed ? "Expand sidebar" : "Collapse sidebar"} prefer="bottom">
+                <button
+                    type="button"
+                    aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                    aria-expanded={!collapsed}
+                    className="ml-2 my-2 w-fit rounded-full border border-border bg-primary/10 text-primary px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    onClick={() => setCollapsed((value) => !value)}
+                >
+                    <span aria-hidden>{collapsed ? ">" : "<"}</span>
+                </button>
+            </Tooltip>
             {collapsed ? null : (
                 <div className={clsx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4 text-sm", styles.sidebarScroll)}>
                     <section>
@@ -112,29 +150,64 @@ export function Sidebar({
                         </section>
                     ) : null}
                     <form
-                        className="mt-auto flex flex-col gap-2"
+                        className="mt-auto flex min-h-0 flex-col gap-2"
                         onSubmit={(event) => {
                             event.preventDefault();
                             void createNode();
                         }}
                     >
-                        <h2 className="text-xs uppercase tracking-wide text-foreground/60">New node</h2>
-                        <input
-                            className="rounded border border-foreground/20 bg-background px-2 py-1"
-                            placeholder="Name"
-                            value={name}
-                            onChange={(event) => setName(event.target.value)}
-                        />
-                        <input
-                            className="rounded border border-foreground/20 bg-background px-2 py-1"
-                            placeholder="Type"
-                            value={type}
-                            onChange={(event) => setType(event.target.value)}
-                        />
-                        {error ? <p className="text-xs text-red-600">{error}</p> : null}
-                        <button type="submit" className="rounded bg-primary text-primary-foreground px-2 py-1">
-                            Create
-                        </button>
+                        {presentationSubview ? (
+                            <div className="flex min-h-0 flex-1 flex-col">
+                                <PresentationControls
+                                    subview={presentationSubview}
+                                    onSubview={setPresentationSubview}
+                                    backLabel="New node"
+                                    icon={presentation.icon}
+                                    color={presentation.color}
+                                    type={type}
+                                    renderer={presentation.renderer}
+                                    schema={presentation.schema}
+                                    onPickIcon={(id) => setPresentation((prev) => ({ ...prev, icon: id }))}
+                                    onPickColor={(token) => setPresentation((prev) => ({ ...prev, color: token }))}
+                                    onPickRenderer={(id) => setPresentation((prev) => ({ ...prev, renderer: id }))}
+                                    onChangeSchema={(rows) => setPresentation((prev) => ({ ...prev, schema: rows }))}
+                                />
+                            </div>
+                        ) : (
+                            <div className="border p-1.5 rounded-md space-y-1.5">
+                                <h2 className="text-xs uppercase tracking-wide text-foreground/60">New node</h2>
+                                <input
+                                    className="rounded border border-border bg-accent px-2 w-full py-1"
+                                    placeholder="Name"
+                                    value={name}
+                                    onChange={(event) => setName(event.target.value)}
+                                />
+                                <input
+                                    className="rounded border border-border w-full bg-accent px-2 py-1"
+                                    placeholder="Type"
+                                    value={type}
+                                    onChange={(event) => setType(event.target.value)}
+                                />
+                                <PresentationControls
+                                    subview={null}
+                                    onSubview={setPresentationSubview}
+                                    backLabel="New node"
+                                    icon={presentation.icon}
+                                    color={presentation.color}
+                                    type={type}
+                                    renderer={presentation.renderer}
+                                    schema={presentation.schema}
+                                    onPickIcon={() => { }}
+                                    onPickColor={() => { }}
+                                    onPickRenderer={() => { }}
+                                    onChangeSchema={() => { }}
+                                />
+                                {error ? <p className="text-xs text-red-600">{error}</p> : null}
+                                <button type="submit" className="rounded bg-primary text-primary-foreground px-2 py-1 w-full">
+                                    Create
+                                </button>
+                            </div>
+                        )}
                     </form>
                 </div>
             )}
@@ -150,7 +223,7 @@ function NodeLinks({ items, currentId }: { items: Summary[]; currentId?: string 
                 <li key={item.id}>
                     <Link
                         to={`/node/${item.id}`}
-                        className={clsx("block rounded px-1 py-0.5", item.id === currentId && "bg-foreground/10")}
+                        className={clsx("block rounded px-1 py-0.5", item.id === currentId && "bg-accent")}
                     >
                         {item.name}
                         <span className="ml-2 text-xs text-foreground/50">{item.type}</span>

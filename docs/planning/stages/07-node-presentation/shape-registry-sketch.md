@@ -18,8 +18,6 @@ Aliases in docs only: `normal` → treat as `standard` on read if we allow both;
 | `cylinder` | Data store | `type`: database, cache, queue; `icon`: database |
 | `cloud` | External or hosted boundary | `type`: service, saas, external |
 | `document` | Spec-heavy / note | `type`: note, doc, adr |
-| `person` | Human / role (rare) | `type`: actor, team |
-
 ## Suggested relations
 
 **Normative:** none — suggestions are for picker UI and MCP tool descriptions only.

@@ -39,6 +39,10 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 			return "", fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelationshipID)
 		}
 	}
+	schema := normalizeSchema(in.Schema)
+	if err := validateCreatePresentation(in.Icon, in.Color, in.Renderer, schema); err != nil {
+		return "", err
+	}
 	base, err := slugify(in.Name)
 	if err != nil {
 		return "", err
@@ -55,6 +59,10 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 		Scope:          cloneStrings(in.Scope),
 		Protected:      in.Protected,
 		Spec:           in.Spec,
+		Icon:           strings.TrimSpace(in.Icon),
+		Color:          strings.TrimSpace(in.Color),
+		Renderer:       strings.TrimSpace(in.Renderer),
+		Schema:         schema,
 	}
 	if err := idx.writeNode(node); err != nil {
 		_ = idx.removeNodeFiles(id)
@@ -152,6 +160,18 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 	}
 	if in.Spec != nil {
 		next.Spec = *in.Spec
+	}
+	if err := applyIconPatch(&next, in.Icon); err != nil {
+		return err
+	}
+	if err := applyColorPatch(&next, in.Color); err != nil {
+		return err
+	}
+	if err := applyRendererPatch(&next, in.Renderer); err != nil {
+		return err
+	}
+	if err := applySchemaPatch(&next, in.Schema); err != nil {
+		return err
 	}
 	if err := idx.writeNode(&next); err != nil {
 		return err

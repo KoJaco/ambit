@@ -26,6 +26,10 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			Scope:          body.Scope,
 			Protected:      body.Protected,
 			Status:         core.Status(body.Status),
+			Icon:           body.Icon,
+			Color:          body.Color,
+			Renderer:       body.Renderer,
+			Schema:         body.Schema,
 		})
 		if err != nil {
 			writeAPIError(w, err)
@@ -64,6 +68,10 @@ func patchNode(idx *core.Index) http.HandlerFunc {
 			parent := core.NodeID(*body.ParentID)
 			in.Parent = &parent
 		}
+		in.Icon = body.Icon
+		in.Color = body.Color
+		in.Renderer = body.Renderer
+		in.Schema = body.Schema
 		if err := idx.Update(id, in); err != nil {
 			writeAPIError(w, err)
 			return
@@ -188,6 +196,10 @@ func nodeBody(n core.NodeView) nodeJSON {
 		Scope:          scope,
 		Protected:      n.Protected,
 		Markdown:       n.Spec,
+		Icon:           n.Icon,
+		Color:          n.Color,
+		Renderer:       n.Renderer,
+		Schema:         n.Schema,
 	}
 }
 
@@ -209,24 +221,103 @@ func writeBadRequest(w http.ResponseWriter, err error) {
 }
 
 type createJSON struct {
-	Name           string   `json:"name"`
-	Type           string   `json:"type"`
-	Status         string   `json:"status"`
-	ParentID       string   `json:"parent_id"`
-	RelationshipID string   `json:"relationship_id"`
-	Implementation []string `json:"implementation"`
-	Scope          []string `json:"scope"`
-	Protected      bool     `json:"protected"`
-	Markdown       string   `json:"markdown"`
+	Name           string              `json:"name"`
+	Type           string              `json:"type"`
+	Status         string              `json:"status"`
+	ParentID       string              `json:"parent_id"`
+	RelationshipID string              `json:"relationship_id"`
+	Implementation []string            `json:"implementation"`
+	Scope          []string            `json:"scope"`
+	Protected      bool                `json:"protected"`
+	Markdown       string              `json:"markdown"`
+	Icon           string              `json:"icon"`
+	Color          string              `json:"color"`
+	Renderer       string              `json:"renderer"`
+	Schema         []core.SchemaColumn `json:"schema"`
 }
 
 type patchJSON struct {
-	Name           *string   `json:"name"`
-	Type           *string   `json:"type"`
-	Status         *string   `json:"status"`
-	ParentID       *string   `json:"parent_id"`
-	Implementation *[]string `json:"implementation"`
-	Scope          *[]string `json:"scope"`
-	Protected      *bool     `json:"protected"`
-	Markdown       *string   `json:"markdown"`
+	Name           *string              `json:"name"`
+	Type           *string              `json:"type"`
+	Status         *string              `json:"status"`
+	ParentID       *string              `json:"parent_id"`
+	Implementation *[]string            `json:"implementation"`
+	Scope          *[]string            `json:"scope"`
+	Protected      *bool                `json:"protected"`
+	Markdown       *string              `json:"markdown"`
+	Icon           *string              `json:"icon"`
+	Color          *string              `json:"color"`
+	Renderer       *string              `json:"renderer"`
+	Schema         *[]core.SchemaColumn `json:"schema"`
+}
+
+func postGroupProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeIDs []string `json:"node_ids"`
+			Name    string   `json:"name"`
+			Type    string   `json:"type"`
+			Icon    string   `json:"icon"`
+			Color   string   `json:"color"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		ids := make([]core.NodeID, len(body.NodeIDs))
+		for i, id := range body.NodeIDs {
+			ids[i] = core.NodeID(id)
+		}
+		pid, err := idx.StageGroup(core.GroupInput{
+			NodeIDs: ids, Name: body.Name, Type: body.Type, Icon: body.Icon, Color: body.Color,
+		})
+		writeStagedProposal(w, idx, pid, err)
+	}
+}
+
+func postUngroupProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeID          string `json:"node_id"`
+			DeleteContainer bool   `json:"delete_container"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		pid, err := idx.StageUngroup(core.UngroupInput{
+			NodeID: core.NodeID(body.NodeID), DeleteContainer: body.DeleteContainer,
+		})
+		writeStagedProposal(w, idx, pid, err)
+	}
+}
+
+func postReparentProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeID      string `json:"node_id"`
+			NewParentID string `json:"new_parent_id"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		pid, err := idx.StageReparent(core.NodeID(body.NodeID), core.NodeID(body.NewParentID))
+		writeStagedProposal(w, idx, pid, err)
+	}
+}
+
+// writeStagedProposal answers a staging call with 201 and the proposal diff, the same
+// body GET /proposals/{id} returns.
+func writeStagedProposal(w http.ResponseWriter, idx *core.Index, pid string, err error) {
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	diff, err := idx.ProposalDiff(pid)
+	if err != nil {
+		writeAPIError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, diff)
 }

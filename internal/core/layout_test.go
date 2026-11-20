@@ -114,3 +114,37 @@ func coreCreate(t *testing.T, idx *Index, name string) NodeID {
 	}
 	return id
 }
+
+func TestInvalidateLayoutRemovesHashedVariantsOnly(t *testing.T) {
+	idx, dir := newModel(t)
+	layoutDir := filepath.Join(dir, ".arch", ".cache", "layout")
+	keys := []string{RootLayoutKey, RootLayoutKey + "~abc", RootLayoutKey + "~def", "_rootx", "_rootx~abc", "other~abc"}
+	for _, key := range keys {
+		if err := idx.PutLayout(key, Layout{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A file next to the layout dir must never be touched.
+	outside := filepath.Join(dir, ".arch", ".cache", RootLayoutKey+"~abc.json")
+	if err := os.WriteFile(outside, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx.mu.Lock()
+	idx.invalidateLayoutLocked("")
+	idx.mu.Unlock()
+	gone := []string{RootLayoutKey, RootLayoutKey + "~abc", RootLayoutKey + "~def"}
+	kept := []string{"_rootx", "_rootx~abc", "other~abc"}
+	for _, key := range gone {
+		if _, err := os.Stat(filepath.Join(layoutDir, key+".json")); !os.IsNotExist(err) {
+			t.Fatalf("%s should be removed: %v", key, err)
+		}
+	}
+	for _, key := range kept {
+		if _, err := os.Stat(filepath.Join(layoutDir, key+".json")); err != nil {
+			t.Fatalf("%s should remain: %v", key, err)
+		}
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("file outside layout dir removed: %v", err)
+	}
+}

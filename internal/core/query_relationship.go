@@ -59,7 +59,9 @@ func (idx *Index) RelationshipLevel(relID RelID) (RelationshipLevel, error) {
 			continue
 		}
 		set[id] = true
-		lvl.Members = append(lvl.Members, snapshot(n))
+		view := snapshot(n)
+		view.ChildCount = len(idx.Children[id])
+		lvl.Members = append(lvl.Members, view)
 	}
 
 	lvl.Relationships = []EdgeView{}

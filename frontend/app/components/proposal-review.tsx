@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useState } from "react";
+import { Tooltip } from "./tooltip";
 import clsx from "clsx";
 import { ChevronLeft, ListChecks, XCircle } from "lucide-react";
 import {
@@ -168,12 +169,12 @@ export function ProposalReview({
                                             </button>
                                         ) : (
                                             <div className="flex gap-1">
+                                                <Tooltip label="Accept all">
                                                 <button
                                                     type="button"
                                                     className="inline-flex size-7 items-center justify-center rounded-md text-emerald-600 hover:bg-foreground/10"
                                                     disabled={busy}
                                                     aria-label="Accept all"
-                                                    title="Accept all"
                                                     onClick={() =>
                                                         void run(async () => {
                                                             const result = await acceptAll(proposal.proposal_id);
@@ -187,12 +188,13 @@ export function ProposalReview({
                                                 >
                                                     <ListChecks className="size-4" aria-hidden />
                                                 </button>
+                                                </Tooltip>
+                                                <Tooltip label="Reject all">
                                                 <button
                                                     type="button"
                                                     className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10"
                                                     disabled={busy}
                                                     aria-label="Reject all"
-                                                    title="Reject all"
                                                     onClick={() =>
                                                         void run(async () => {
                                                             await rejectAll(proposal.proposal_id);
@@ -202,6 +204,7 @@ export function ProposalReview({
                                                 >
                                                     <XCircle className="size-4" aria-hidden />
                                                 </button>
+                                                </Tooltip>
                                             </div>
                                         )}
                                     </header>
