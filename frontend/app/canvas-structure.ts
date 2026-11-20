@@ -75,3 +75,9 @@ export function stageErrorMessage(err: unknown): string {
     if (err instanceof Error && err.message) return err.message;
     return "Could not stage the proposal";
 }
+
+// Only summary cards and leaves drill on double-click. An expanded group already shows its
+// children on this level, so opening it would repeat the same picture (decision 0010).
+export function drillsOnDoubleClick(nodeType: string | undefined): boolean {
+    return nodeType !== "container";
+}

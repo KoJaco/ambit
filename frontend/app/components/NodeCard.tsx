@@ -1,6 +1,7 @@
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
 import { ChevronDown, ChevronRight, Lock, Ungroup } from "lucide-react";
+import { Link } from "react-router";
 import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
 import { summaryText } from "../level-view";
@@ -185,9 +186,15 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                                 </button>
                             </Tooltip>
                         ) : null}
-                        <span className="flex items-center font-medium" aria-hidden title="Double-click to open">
-                            Open <ChevronRight className="size-3" />
-                        </span>
+                        <Link
+                            to={`/node/${id}`}
+                            aria-label={`Open ${data.name}`}
+                            className="nodrag nopan flex h-6 items-center rounded-md px-1.5 font-medium hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                            onClick={(event) => event.stopPropagation()}
+                            onDoubleClick={(event) => event.stopPropagation()}
+                        >
+                            Open <ChevronRight className="size-3" aria-hidden />
+                        </Link>
                     </div>
                 ) : null}
                 <Handle type="source" position={Position.Right} />

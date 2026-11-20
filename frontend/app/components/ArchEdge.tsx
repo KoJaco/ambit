@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import { relationshipDrillId } from "../api";
@@ -8,6 +8,7 @@ import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, useEdgeGeometry 
 export function ArchEdge(props: EdgeProps) {
     const { id, markerEnd } = props;
     const navigate = useNavigate();
+    const [popoverOpen, setPopoverOpen] = useState(false);
     const { data: edgeData, edgePath, labelX, labelY } = useEdgeGeometry(props);
     const rel = edgeData?.rel;
     const label = rel?.label ?? "";
@@ -28,7 +29,7 @@ export function ArchEdge(props: EdgeProps) {
                 <EdgeLabelRenderer>
                     <div
                         className={`nodrag nopan pointer-events-auto absolute max-w-[11rem] ${drillable || multi ? "cursor-pointer" : ""}`}
-                        style={edgeLabelStyle(labelX, labelY)}
+                        style={edgeLabelStyle(labelX, labelY, popoverOpen)}
                         onClick={openRelationship}
                         onDoubleClick={openRelationship}
                         role={drillable ? "link" : undefined}
@@ -49,7 +50,12 @@ export function ArchEdge(props: EdgeProps) {
                         }
                     >
                         {multi && rel ? (
-                            <AggregatedPill rel={rel} label={label} fromNodeId={edgeData?.fromNodeId} />
+                            <AggregatedPill
+                                rel={rel}
+                                label={label}
+                                fromNodeId={edgeData?.fromNodeId}
+                                onOpenChange={setPopoverOpen}
+                            />
                         ) : (
                             <span
                                 title={rel?.aggregated && rel.kinds?.length ? `Kinds: ${rel.kinds.join(", ")}` : undefined}

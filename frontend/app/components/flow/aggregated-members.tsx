@@ -12,12 +12,19 @@ export function AggregatedPill({
     rel,
     label,
     fromNodeId,
+    onOpenChange,
 }: {
     rel: Relationship;
     label: string;
     fromNodeId?: string;
+    // Lets the label wrapper raise itself above neighbouring pills while the popover is open.
+    onOpenChange?: (open: boolean) => void;
 }) {
     const [open, setOpen] = useState(false);
+    useEffect(() => {
+        onOpenChange?.(open);
+        return () => onOpenChange?.(false);
+    }, [open, onOpenChange]);
     const [drillable, setDrillable] = useState<Record<string, boolean>>({});
     const rootRef = useRef<HTMLDivElement>(null);
     const members = rel.members ?? [];

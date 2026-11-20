@@ -1,7 +1,6 @@
 import { Handle, NodeResizeControl, Position, ResizeControlVariant, type NodeProps } from "@xyflow/react";
 import clsx from "clsx";
 import { ChevronUp, Ungroup } from "lucide-react";
-import { Link } from "react-router";
 import { nodeDotClass, nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../../node-presentation";
 import type { ArchNode } from "../NodeCard";
 import { Tooltip } from "../tooltip";
@@ -79,15 +78,6 @@ export function ContainerNode({ id, data, selected }: NodeProps<ArchNode>) {
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={data.name}>
                     {data.name}
                 </span>
-                <Link
-                    to={`/node/${id}`}
-                    aria-label={`Open ${data.name}`}
-                    className="nodrag nopan flex h-6 items-center rounded-md px-2 text-xs font-medium text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                    onClick={(event) => event.stopPropagation()}
-                    onDoubleClick={(event) => event.stopPropagation()}
-                >
-                    Open
-                </Link>
                 {data.onUngroup ? (
                     <Tooltip label="Ungroup">
                         <button

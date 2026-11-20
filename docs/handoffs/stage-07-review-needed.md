@@ -109,6 +109,13 @@ Open from that pass:
   labels to a count until hover.
 - **Right rail covers the canvas**: fit-view pads only the left sidebar, so with Review/Inspector
   open the graph sits under it (the AWS Collapse button was unreachable).
+- **Drill rule (decided with you):** Open exists only on summary cards. Expanded groups have no Open
+  link and ignore double-click; collapse to a summary card first, then Open. Your last sentence
+  about "untoggle example boundary ... then drill down" read as the opposite of this rule, so
+  I treated it as a slip; tell me if not.
+- Aggregated popover z-order fixed (wrapper raised to 20000 while open).
+- **Console noise:** opening an aggregated popover probes each member and logs up to N 404s
+  (`/levels/relationships/<id>`). Proper fix: the server returns a per-member `drillable` flag.
 - Obstacle avoidance only for forward edges; backward U paths can still cross nodes.
 - Resize handles have no aria-label (xyflow limitation); mouse-only.
 

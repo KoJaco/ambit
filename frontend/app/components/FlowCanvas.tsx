@@ -35,6 +35,7 @@ import {
 } from "../api";
 import {
     containerAt,
+    drillsOnDoubleClick,
     outsideReparentTarget,
     defaultGroupName,
     groupableSelection,
@@ -594,7 +595,10 @@ export default function FlowCanvas({
         });
     }, [activeLevel, nodeId]);
 
+    // Drilling is only for summary cards. An expanded group already shows its children
+    // on this level, so opening it would repeat the same picture (decision 0010).
     const onNodeDoubleClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        if (!drillsOnDoubleClick(node.type)) return;
         navigate(`/node/${node.id}`);
     };
     const onNodeClick: NodeMouseHandler<ArchNode> = (_event, node) => {

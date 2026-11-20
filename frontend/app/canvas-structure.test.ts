@@ -7,6 +7,7 @@ import {
     groupButtonLabel,
     resolveGroupName,
     stageErrorMessage,
+    drillsOnDoubleClick,
 } from "./canvas-structure";
 
 describe("defaultGroupName", () => {
@@ -75,5 +76,16 @@ describe("outsideReparentTarget", () => {
     });
     it("prefers the container under the pointer", () => {
         expect(outsideReparentTarget("other", "x")).toBe("other");
+    });
+});
+
+describe("drillsOnDoubleClick", () => {
+    it("does not drill into an expanded group", () => {
+        expect(drillsOnDoubleClick("container")).toBe(false);
+    });
+    it("drills from summary cards and other node types", () => {
+        expect(drillsOnDoubleClick("card")).toBe(true);
+        expect(drillsOnDoubleClick("schema")).toBe(true);
+        expect(drillsOnDoubleClick(undefined)).toBe(true);
     });
 });
