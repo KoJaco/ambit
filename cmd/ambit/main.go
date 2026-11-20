@@ -8,9 +8,12 @@ import (
 	"strings"
 
 	"github.com/KoJaco/ambit/internal/core"
-	"github.com/KoJaco/ambit/internal/mcp"
 	"github.com/KoJaco/ambit/internal/httpapi"
+	"github.com/KoJaco/ambit/internal/mcp"
 )
+
+// version is overridden at build time: -ldflags "-X main.version=1.2.3".
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -18,6 +21,12 @@ func main() {
 		os.Exit(1)
 	}
 	switch os.Args[1] {
+	case "version":
+		if len(os.Args) != 2 {
+			usage(os.Stderr)
+			os.Exit(1)
+		}
+		fmt.Printf("ambit %s\n", version)
 	case "init":
 		if len(os.Args) > 3 {
 			usage(os.Stderr)
@@ -112,5 +121,5 @@ func parseStartArgs(args []string) (string, error) {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
+	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
 }

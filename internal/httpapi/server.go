@@ -3,45 +3,67 @@ package httpapi
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"time"
 
 	"github.com/KoJaco/ambit/internal/core"
+	"github.com/KoJaco/ambit/internal/webui"
 )
 
-// Handler is the localhost API. Read and write routes are registered as they land.
-func Handler(idx *core.Index) http.Handler {
-	return routes(idx, nil)
+// Handler is the localhost API plus, when opts.UI is set, the embedded UI.
+func Handler(idx *core.Index, opts ...Options) http.Handler {
+	return routes(idx, nil, opts...)
 }
 
-func routes(idx *core.Index, h *hub) http.Handler {
+type route struct {
+	pattern string
+	handler http.HandlerFunc
+}
+
+// apiRoutes is the single table of registered API routes.
+func apiRoutes(idx *core.Index, h *hub) []route {
+	return []route{
+		{"GET /levels", getRootLevel(idx)},
+		{"GET /levels/relationships/{id}", getRelationshipLevel(idx)},
+		{"GET /levels/{nodeId}", getChildLevel(idx)},
+		{"GET /nodes/{id}", getNode(idx)},
+		{"POST /nodes", postNode(idx)},
+		{"PATCH /nodes/{id}", patchNode(idx)},
+		{"DELETE /nodes/{id}", deleteNode(idx)},
+		{"PUT /relationships", putRelationship(idx)},
+		{"DELETE /relationships/{id}", deleteRelationship(idx)},
+		{"PUT /assignment", putAssignment(idx)},
+		{"DELETE /assignment", deleteAssignment(idx)},
+		{"GET /layout/{key}", getLayout(idx)},
+		{"PUT /layout/{key}", putLayout(idx)},
+		{"GET /integrity", getIntegrity(idx)},
+		{"GET /proposals", getProposals(idx)},
+		{"GET /proposals/{id}", getProposal(idx)},
+		{"POST /proposals/group", postGroupProposal(idx)},
+		{"POST /proposals/ungroup", postUngroupProposal(idx)},
+		{"POST /proposals/reparent", postReparentProposal(idx)},
+		{"POST /proposals/{id}/operations/{index}/accept", postAcceptOperation(idx)},
+		{"POST /proposals/{id}/operations/{index}/reject", postRejectOperation(idx)},
+		{"POST /proposals/{id}/accept", postAcceptAll(idx)},
+		{"POST /proposals/{id}/reject", postRejectAll(idx)},
+		{"DELETE /proposals/{id}", deleteProposal(idx)},
+		{"GET /events", getEvents(h)},
+	}
+}
+
+func routes(idx *core.Index, h *hub, opts ...Options) http.Handler {
+	var o Options
+	if len(opts) > 0 {
+		o = opts[0]
+	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /levels", getRootLevel(idx))
-	mux.HandleFunc("GET /levels/relationships/{id}", getRelationshipLevel(idx))
-	mux.HandleFunc("GET /levels/{nodeId}", getChildLevel(idx))
-	mux.HandleFunc("GET /nodes/{id}", getNode(idx))
-	mux.HandleFunc("POST /nodes", postNode(idx))
-	mux.HandleFunc("PATCH /nodes/{id}", patchNode(idx))
-	mux.HandleFunc("DELETE /nodes/{id}", deleteNode(idx))
-	mux.HandleFunc("PUT /relationships", putRelationship(idx))
-	mux.HandleFunc("DELETE /relationships/{id}", deleteRelationship(idx))
-	mux.HandleFunc("PUT /assignment", putAssignment(idx))
-	mux.HandleFunc("DELETE /assignment", deleteAssignment(idx))
-	mux.HandleFunc("GET /layout/{key}", getLayout(idx))
-	mux.HandleFunc("PUT /layout/{key}", putLayout(idx))
-	mux.HandleFunc("GET /integrity", getIntegrity(idx))
-	mux.HandleFunc("GET /proposals", getProposals(idx))
-	mux.HandleFunc("GET /proposals/{id}", getProposal(idx))
-	mux.HandleFunc("POST /proposals/group", postGroupProposal(idx))
-	mux.HandleFunc("POST /proposals/ungroup", postUngroupProposal(idx))
-	mux.HandleFunc("POST /proposals/reparent", postReparentProposal(idx))
-	mux.HandleFunc("POST /proposals/{id}/operations/{index}/accept", postAcceptOperation(idx))
-	mux.HandleFunc("POST /proposals/{id}/operations/{index}/reject", postRejectOperation(idx))
-	mux.HandleFunc("POST /proposals/{id}/accept", postAcceptAll(idx))
-	mux.HandleFunc("POST /proposals/{id}/reject", postRejectAll(idx))
-	mux.HandleFunc("DELETE /proposals/{id}", deleteProposal(idx))
-	mux.HandleFunc("GET /events", getEvents(h))
+	for _, r := range apiRoutes(idx, h) {
+		mux.HandleFunc(r.pattern, r.handler)
+	}
+	// Fallback for everything else: UI files, SPA shell, or JSON 404 under API prefixes.
+	mux.HandleFunc("GET /", uiFallback(o.UI))
 	return mux
 }
 
@@ -63,8 +85,15 @@ func ListenAndServe(addr string, idx *core.Index) error {
 		return err
 	}
 	fmt.Printf("listening on %s\n", ln.Addr().String())
+	var ui fs.FS
+	if webui.Available() {
+		ui = webui.FS()
+		fmt.Println("ui: embedded")
+	} else {
+		fmt.Println("ui: not built (run make build)")
+	}
 	srv := &http.Server{
-		Handler:           routes(idx, h),
+		Handler:           routes(idx, h, Options{UI: ui}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	return srv.Serve(ln)
