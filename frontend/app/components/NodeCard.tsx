@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, Lock, Ungroup } from "lucide-react";
 import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
 import { summaryText } from "../level-view";
+import { Tooltip } from "./tooltip";
 import {
     nodeDotClass,
     nodeGlyphClass,
@@ -35,6 +36,13 @@ export type ArchNodeData = {
     typeMix?: TypeMixEntry[];
     internalRelCount?: number;
     expanded?: boolean;
+    // Container tint level, 1 for a top-level open group, 2 for one nested inside it.
+    depth?: number;
+    // Smallest size a container may be resized to (its members plus padding).
+    minWidth?: number;
+    minHeight?: number;
+    // Called once when the architect finishes resizing an open group.
+    onResizeGroup?: (id: string, size: { width: number; height: number }) => void;
     // Stable callback from the canvas; toggles group/summary for one node.
     onToggleMode?: (id: string) => void;
     // Opens the ungroup form for a group (summary card or container header).
@@ -136,7 +144,7 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                 ) : null}
                 {stacked ? (
                     <div className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
-                        <span className="min-w-0 flex-1 truncate tabular-nums" title="Direct children">
+                        <span className="min-w-0 flex-1 line-clamp-2 break-words tabular-nums" title="Direct children">
                             {summaryText(childCount, data.typeMix)}
                             {data.internalRelCount ? (
                                 <span className="ml-1.5" title="Relationships hidden inside this node">
@@ -145,35 +153,37 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                             ) : null}
                         </span>
                         {data.onToggleMode ? (
-                            <button
-                                type="button"
-                                aria-label={`Expand ${data.name}`}
-                                aria-expanded={false}
-                                title="Expand"
-                                className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    data.onToggleMode?.(id);
-                                }}
-                                onDoubleClick={(event) => event.stopPropagation()}
-                            >
-                                <ChevronDown className="size-4" aria-hidden />
-                            </button>
+                            <Tooltip label="Expand">
+                                <button
+                                    type="button"
+                                    aria-label={`Expand ${data.name}`}
+                                    aria-expanded={false}
+                                    className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        data.onToggleMode?.(id);
+                                    }}
+                                    onDoubleClick={(event) => event.stopPropagation()}
+                                >
+                                    <ChevronDown className="size-4" aria-hidden />
+                                </button>
+                            </Tooltip>
                         ) : null}
                         {data.onUngroup ? (
-                            <button
-                                type="button"
-                                aria-label={`Ungroup ${data.name}`}
-                                title="Ungroup"
-                                className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    data.onUngroup?.(id);
-                                }}
-                                onDoubleClick={(event) => event.stopPropagation()}
-                            >
-                                <Ungroup className="size-4" aria-hidden />
-                            </button>
+                            <Tooltip label="Ungroup">
+                                <button
+                                    type="button"
+                                    aria-label={`Ungroup ${data.name}`}
+                                    className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        data.onUngroup?.(id);
+                                    }}
+                                    onDoubleClick={(event) => event.stopPropagation()}
+                                >
+                                    <Ungroup className="size-4" aria-hidden />
+                                </button>
+                            </Tooltip>
                         ) : null}
                         <span className="flex items-center font-medium" aria-hidden title="Double-click to open">
                             Open <ChevronRight className="size-3" />

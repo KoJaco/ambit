@@ -65,7 +65,9 @@
     --spacing: 0.25rem;
     /* Canvas */
     --group: #efece4;
-    --edge: #c9c3b6;
+    --group-2: #e7e3d9;
+    /* Edge contrast (WCAG ratio): 4.07 on canvas #f7f5f0, 3.76 on --group, 3.46 on --group-2. */
+    --edge: #7f7767;
     --canvas-dot: #e9e5dc;
     --sheet-1: #fdfcfa;
     --sheet-2: #fbfaf7;
@@ -124,7 +126,9 @@
     --shadow-xl: 0 8px 24px rgb(0 0 0 / 0.4);
     --shadow-2xl: 0 12px 32px rgb(0 0 0 / 0.5);
     --group: #23211d;
-    --edge: #4a463f;
+    --group-2: #2b2924;
+    /* Edge contrast: 4.31 on canvas #1b1a17, 3.98 on --group, 3.60 on --group-2. */
+    --edge: #847e71;
     --canvas-dot: #26241f;
     --sheet-1: #22201c;
     --sheet-2: #201e1a;
@@ -318,29 +322,75 @@ body {
 .node-swatch-violet { background-color: var(--node-violet); }
 .node-swatch-rose { background-color: var(--node-rose); }
 
-/* React Flow: soft edges, handles shown on hover or selection */
-.react-flow__edge-path {
-    stroke: var(--edge);
-    stroke-width: 1.5;
-}
-.react-flow__edge.selected .react-flow__edge-path,
-.react-flow__edge:focus .react-flow__edge-path,
-.react-flow__edge:focus-visible .react-flow__edge-path {
-    stroke: var(--primary);
+/* React Flow. xyflow's stylesheet is imported by FlowCanvas after this file and its rules have the
+   same specificity as ours, so plain overrides of its selectors lose on source order. Its documented
+   --xy-* variables (the non-"-default" names) are read first by those rules, so we set them instead. */
+:root {
+    --xy-edge-stroke: var(--edge);
+    --xy-edge-stroke-width: 1.5;
+    --xy-edge-stroke-selected: var(--primary);
+    --xy-handle-background-color: var(--edge);
+    --xy-handle-border-color: var(--card);
+    --xy-background-color: var(--background);
+    --xy-background-pattern-dots-color: var(--canvas-dot);
+    --xy-node-color: var(--foreground);
+    --xy-node-background-color: var(--card);
+    --xy-node-border: 1px solid var(--border);
+    --xy-selection-background-color: var(--selection-ring);
+    --xy-selection-border: 1px dotted var(--primary);
+    --xy-minimap-background-color: var(--card);
+    --xy-minimap-mask-background-color: color-mix(in srgb, var(--background) 60%, transparent);
+    --xy-minimap-node-background-color: var(--group);
+    --xy-controls-button-background-color: var(--card);
+    --xy-controls-button-background-color-hover: var(--accent);
+    --xy-controls-button-color: var(--foreground);
+    --xy-controls-button-border-color: var(--border);
+    --xy-edge-label-background-color: var(--card);
+    --xy-edge-label-color: var(--foreground);
+    --xy-resize-background-color: var(--primary);
 }
 .react-flow__arrowhead polyline {
     stroke: var(--edge) !important;
     fill: var(--edge) !important;
 }
-.react-flow__handle {
+/* No variable exists for handle size or visibility, so raise specificity. */
+.react-flow .react-flow__handle {
     width: 8px;
     height: 8px;
-    border: 1.5px solid var(--card);
-    background: var(--edge);
+    border-width: 1.5px;
     opacity: 0;
     transition: opacity 120ms ease;
 }
 .react-flow__node:hover .react-flow__handle,
 .react-flow__node.selected .react-flow__handle {
     opacity: 1;
+}
+
+/* Group resize handles: small primary dots with a 24px hit area; lines are thin and quiet. */
+.react-flow .react-flow__resize-control.handle.paper-resize-handle {
+    width: 10px;
+    height: 10px;
+    border: 1.5px solid var(--card);
+    border-radius: 9999px;
+    background-color: var(--primary);
+}
+.react-flow .react-flow__resize-control.handle.paper-resize-handle::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+}
+.react-flow .react-flow__resize-control.line.paper-resize-line {
+    opacity: 0.5;
+}
+.react-flow .react-flow__resize-control.line.paper-resize-line::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+}
+
+/* Resize controls show only while the group is selected, hovered or holds focus. */
+.react-flow__node:not(.selected):not(:hover):not(:focus-within) .paper-resize-handle,
+.react-flow__node:not(.selected):not(:hover):not(:focus-within) .paper-resize-line {
+    opacity: 0;
+    pointer-events: none;
 }

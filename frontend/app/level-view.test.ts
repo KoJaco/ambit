@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
     canExpandChild,
+    groupTints,
+    sanitizeGroupSizes,
     expandedGroups,
     expandedKey,
     layoutSignature,
@@ -244,5 +246,33 @@ describe("canExpandChild", () => {
     });
     it("keeps collapse for open groups", () => {
         expect(canExpandChild(find("mid"), kids, false)).toBe(true);
+    });
+});
+
+describe("group sizes", () => {
+    it("sanitizes stored sizes", () => {
+        expect(
+            sanitizeGroupSizes({
+                a: { width: 400.4, height: 300 },
+                b: { width: -1, height: 10 },
+                c: { width: "1", height: 1 },
+                d: null,
+                e: { width: Infinity, height: 5 },
+            }),
+        ).toEqual({ a: { width: 400, height: 300 } });
+        expect(sanitizeGroupSizes("x")).toEqual({});
+        expect(sanitizeGroupSizes(null)).toEqual({});
+    });
+});
+
+describe("groupTints", () => {
+    it("tints by parent depth and caps at the deepest tint", () => {
+        const tints = groupTints([
+            { id: "a" },
+            { id: "b", group_id: "a" },
+            { id: "c", group_id: "b" },
+            { id: "d", group_id: "missing" },
+        ]);
+        expect(tints).toEqual({ a: 1, b: 2, c: 2, d: 1 });
     });
 });

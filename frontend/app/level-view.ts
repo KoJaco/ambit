@@ -31,6 +31,41 @@ export function sanitizeViewModes(value: unknown): ViewModes {
     return out;
 }
 
+export type GroupSize = { width: number; height: number };
+export type GroupSizes = Record<string, GroupSize>;
+
+// Largest container tint level (--group, --group-2). Deeper groups reuse the last one.
+export const maxGroupTint = 2;
+
+// Sizes stored by the architect after resizing a group. Anything that is not a finite size is dropped.
+export function sanitizeGroupSizes(value: unknown): GroupSizes {
+    const out: GroupSizes = {};
+    if (!value || typeof value !== "object") return out;
+    for (const [id, size] of Object.entries(value as Record<string, unknown>)) {
+        if (!size || typeof size !== "object") continue;
+        const { width, height } = size as Record<string, unknown>;
+        if (
+            typeof width === "number" &&
+            typeof height === "number" &&
+            Number.isFinite(width) &&
+            Number.isFinite(height) &&
+            width > 0 &&
+            height > 0
+        ) {
+            out[id] = { width: Math.round(width), height: Math.round(height) };
+        }
+    }
+    return out;
+}
+
+// Tint level (1-based, capped) of each node by its parent chain: 1 for top-level containers.
+export function groupTints(children: LevelChild[]): Record<string, number> {
+    const byId = new Map(children.map((child) => [child.id, child]));
+    const out: Record<string, number> = {};
+    for (const child of children) out[child.id] = Math.min(depthOf(child, byId), maxGroupTint);
+    return out;
+}
+
 function depthOf(child: LevelChild, byId: Map<string, LevelChild>): number {
     let depth = 1;
     let current = child;

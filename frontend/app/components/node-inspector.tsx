@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { Tooltip } from "./tooltip";
 import { getNode, updateNode, type NodeDetail } from "../api";
 import {
     nodeDotClass,
@@ -94,14 +95,16 @@ export default function NodeInspector({
     const markPresentation = () => setPresentationTouched(true);
 
     const closeButton = (
-        <button
-            type="button"
-            aria-label="Close inspector"
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-            onClick={onClose}
-        >
-            <X className="size-4" aria-hidden />
-        </button>
+        <Tooltip label="Close inspector">
+            <button
+                type="button"
+                aria-label="Close inspector"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                onClick={onClose}
+            >
+                <X className="size-4" aria-hidden />
+            </button>
+        </Tooltip>
     );
 
     return (

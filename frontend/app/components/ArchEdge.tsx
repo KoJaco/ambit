@@ -1,49 +1,19 @@
 import { type KeyboardEvent, type MouseEvent } from "react";
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, type EdgeProps } from "@xyflow/react";
+import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
-import { relationshipDrillId, type Relationship } from "../api";
+import { relationshipDrillId } from "../api";
 import { AggregatedPill } from "./flow/aggregated-members";
-import { edgePillClass, edgePillDrillableClass } from "./flow/edge-shared";
+import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, useEdgeGeometry } from "./flow/edge-shared";
 
-type ArchEdgeData = {
-    drillable?: boolean;
-    rel?: Relationship;
-    fromNodeId?: string;
-    labelIndex?: number;
-    labelCount?: number;
-};
-
-export function ArchEdge({
-    id,
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    markerEnd,
-    data,
-}: EdgeProps) {
+export function ArchEdge(props: EdgeProps) {
+    const { id, markerEnd } = props;
     const navigate = useNavigate();
-    const edgeData = data as ArchEdgeData | undefined;
+    const { data: edgeData, edgePath, labelX, labelY } = useEdgeGeometry(props);
     const rel = edgeData?.rel;
     const label = rel?.label ?? "";
     const drillId = rel ? relationshipDrillId(rel) : undefined;
     const drillable = Boolean(drillId);
     const multi = Boolean(rel?.aggregated && !rel.drillable && (rel.members?.length ?? 0) > 0);
-
-    const [edgePath, labelX, labelY] = getBezierPath({
-        sourceX,
-        sourceY,
-        sourcePosition,
-        targetX,
-        targetY,
-        targetPosition,
-    });
-
-    const labelIndex = edgeData?.labelIndex ?? 0;
-    const labelCount = edgeData?.labelCount ?? 1;
-    const labelOffsetY = (labelIndex - (labelCount - 1) / 2) * 36;
 
     function openRelationship(event: MouseEvent) {
         if (!drillId) return;
@@ -57,12 +27,8 @@ export function ArchEdge({
             {label ? (
                 <EdgeLabelRenderer>
                     <div
-                        className={`absolute max-w-[11rem] ${
-                            drillable || multi ? "pointer-events-auto cursor-pointer" : "pointer-events-none"
-                        }`}
-                        style={{
-                            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY + labelOffsetY}px)`,
-                        }}
+                        className={`nodrag nopan pointer-events-auto absolute max-w-[11rem] ${drillable || multi ? "cursor-pointer" : ""}`}
+                        style={edgeLabelStyle(labelX, labelY)}
                         onClick={openRelationship}
                         onDoubleClick={openRelationship}
                         role={drillable ? "link" : undefined}

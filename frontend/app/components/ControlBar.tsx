@@ -1,4 +1,5 @@
 import clsx from "clsx";
+import { Tooltip } from "./tooltip";
 import type { ControlBarTool } from "./types";
 import {
     HandGrabIcon,
@@ -81,14 +82,20 @@ function ControlBarButton({
         ? "bg-primary text-primary-foreground"
         : "bg-primary-foreground text-primary";
     return (
-        <button
-            aria-label={label}
-            title={displayTitle ?? label}
-            onClick={onClick}
-            className={clsx(baseClasses, variantClasses)}
-        >
-            <GetControlBarIcon tool={tool} />
-        </button>
+        <Tooltip label={displayTitle ?? label}>
+            <button
+                type="button"
+                aria-label={label}
+                onClick={onClick}
+                className={clsx(
+                    baseClasses,
+                    variantClasses,
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                )}
+            >
+                <GetControlBarIcon tool={tool} />
+            </button>
+        </Tooltip>
     );
 }
 

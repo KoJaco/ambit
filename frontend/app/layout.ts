@@ -158,6 +158,9 @@ export function computeGroupSizes(
     nodes: CompoundNode[],
     positions: Record<string, Point>,
     sizes: Record<string, NodeSize>,
+    // Sizes the architect set by resizing. A container never goes below what its members need,
+    // and a nested container's override counts toward its parent's minimum.
+    overrides: Record<string, NodeSize> = {},
 ): Record<string, NodeSize> {
     const members = new Map<string, string[]>();
     const known = new Set(nodes.map((node) => node.id));
@@ -173,7 +176,11 @@ export function computeGroupSizes(
         if (!result[id]) {
             const inner: Record<string, NodeSize> = {};
             for (const kid of kids) inner[kid] = size(kid);
-            result[id] = containerSize(kids, positions, inner);
+            const min = containerSize(kids, positions, inner);
+            const set = overrides[id];
+            result[id] = set
+                ? { width: Math.max(min.width, set.width), height: Math.max(min.height, set.height) }
+                : min;
         }
         return result[id];
     };

@@ -1,8 +1,8 @@
 import { BaseEdge, type EdgeProps } from "@xyflow/react";
-import { edgeGeometry } from "./edge-shared";
+import { useEdgeGeometry } from "./edge-shared";
 
 export function AnimatedEdge(props: EdgeProps) {
-    const { edgePath } = edgeGeometry(props);
+    const { edgePath } = useEdgeGeometry(props);
     return (
         <>
             <BaseEdge id={props.id} path={edgePath} markerEnd={props.markerEnd} interactionWidth={24} />

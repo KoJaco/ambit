@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Tooltip } from "./tooltip";
 import { ChevronLeft } from "lucide-react";
 import clsx from "clsx";
 import type { SchemaColumn } from "../api";
@@ -66,20 +67,22 @@ export function PresentationControls({
                             {group.ids.map((id) => {
                                 const Icon = resolveIconComponent(id);
                                 return (
-                                    <button
-                                        key={id}
-                                        type="button"
-                                        title={id}
-                                        className={clsx(
-                                            "flex items-center justify-center rounded border p-2",
-                                            icon === id
-                                                ? "border-primary bg-accent"
-                                                : "border-border",
-                                        )}
-                                        onClick={() => onPickIcon(id)}
-                                    >
-                                        <Icon className="size-4" aria-hidden />
-                                    </button>
+                                    <Tooltip key={id} label={id}>
+                                        <button
+                                            type="button"
+                                            aria-label={id}
+                                            aria-pressed={icon === id}
+                                            className={clsx(
+                                                "flex items-center justify-center rounded border p-2",
+                                                icon === id
+                                                    ? "border-primary bg-accent"
+                                                    : "border-border",
+                                            )}
+                                            onClick={() => onPickIcon(id)}
+                                        >
+                                            <Icon className="size-4" aria-hidden />
+                                        </button>
+                                    </Tooltip>
                                 );
                             })}
                         </div>

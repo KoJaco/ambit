@@ -17,8 +17,10 @@ import {
     getLevel,
     getRelationshipLevel,
     layoutCacheKey,
+    loadGroupSizes,
     loadLayoutSig,
     loadViewModes,
+    saveGroupSizes,
     saveLayoutSig,
     putLayout,
     relationshipDrillId,
@@ -42,11 +44,12 @@ import {
     type Rect,
 } from "../canvas-structure";
 import { StructurePanel, type StructureRequest } from "./structure-panel";
-import { canvasEdgeType, canvasNodeType, nodeLayoutSize } from "../canvas-presentation";
+import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
 import {
     canExpandChild,
     expandedGroups,
+    groupTints,
     layoutSignature,
     layoutUsable,
     fallbackViewDefaults,
@@ -142,13 +145,48 @@ type SummaryLike = {
     type_mix?: { type: string; count: number }[];
 };
 
+// Footprint per child; collapsed groups are drawn as stacked cards and reserve the sheet offset.
+function layoutSizes(kids: SummaryLike[]): Record<string, NodeSize> {
+    const sizes: Record<string, NodeSize> = {};
+    for (const child of kids) {
+        sizes[child.id] = nodeLayoutSize(
+            child.renderer,
+            child.schema?.length ?? 0,
+            isStackedCard(child.renderer, child.child_count, child.expanded),
+        );
+    }
+    return sizes;
+}
+
+// Container sizes: `mins` wrap the members; `applied` also honours sizes the architect set.
+function containerSizing(
+    compound: { id: string; parentId?: string }[],
+    positions: Record<string, Point>,
+    sizes: Record<string, NodeSize>,
+    cacheKey: string,
+) {
+    return {
+        mins: computeGroupSizes(compound, positions, sizes),
+        applied: computeGroupSizes(compound, positions, sizes, loadGroupSizes(cacheKey)),
+    };
+}
+
+// Left padding for fit-view so the sidebar overlay does not cover the first column.
+function fitPadding() {
+    const left = Math.round(Math.min(290, window.innerWidth * 0.3));
+    return { top: 0.2, right: 0.2, bottom: 0.2, left: `${left}px` as const };
+}
+
 function buildArchNodes(
     level: Level | RelationshipLevel,
     positions: Record<string, Point>,
-    groupSizes: Record<string, NodeSize>,
+    containers: { mins: Record<string, NodeSize>; applied: Record<string, NodeSize> },
     onToggleMode?: (id: string) => void,
     onUngroup?: (id: string) => void,
+    onResizeGroup?: (id: string, size: NodeSize) => void,
 ): ArchNode[] {
+    const groupSizes = containers.applied;
+    const tints = groupTints(level.children ?? []);
     const children = level.children ?? [];
     const present = new Set(children.map((child) => child.id));
     // Members must follow their group in the array; the server already orders them that way.
@@ -167,7 +205,17 @@ function buildArchNodes(
                 x: (index % 4) * 280,
                 y: Math.floor(index / 4) * 160,
             },
-            data: nodeData(child, level.crossings ?? [], toggleFor(child, level, onToggleMode), onUngroup),
+            data: {
+                ...nodeData(child, level.crossings ?? [], toggleFor(child, level, onToggleMode), onUngroup),
+                ...(type === "container"
+                    ? {
+                          depth: tints[child.id],
+                          minWidth: containers.mins[child.id]?.width,
+                          minHeight: containers.mins[child.id]?.height,
+                          onResizeGroup,
+                      }
+                    : {}),
+            },
         };
     });
 }
@@ -195,6 +243,7 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
         left.renderer !== right.renderer ||
         left.childCount !== right.childCount ||
         left.expanded !== right.expanded ||
+        left.depth !== right.depth ||
         left.internalRelCount !== right.internalRelCount ||
         (left.typeMix ?? []).map((entry) => `${entry.type}:${entry.count}`).join() !==
             (right.typeMix ?? []).map((entry) => `${entry.type}:${entry.count}`).join() ||
@@ -288,12 +337,12 @@ export default function FlowCanvas({
             zoomIn: () => void zoomIn(),
             zoomOut: () => void zoomOut(),
         });
-        onRequestRecenterRef?.(() => void fitView());
+        onRequestRecenterRef?.(() => void fitView({ padding: fitPadding() }));
     }, [fitView, onRequestRecenterRef, onRequestZoomRef, zoomIn, zoomOut]);
 
     useEffect(() => {
         if (fitToken === 0) return;
-        void fitView({ padding: 0.2 });
+        void fitView({ padding: fitPadding() });
     }, [fitToken, fitView]);
 
     useEffect(() => {
@@ -319,6 +368,18 @@ export default function FlowCanvas({
         },
         [baseKey],
     );
+
+    // Resizing a group only records its size here (localStorage, next to the view modes); the typed
+    // server layout carries positions only, and the top-left corner never moves.
+    const cacheKeyRef = useRef("");
+    const onResizeGroup = useCallback((id: string, size: NodeSize) => {
+        const key = cacheKeyRef.current;
+        if (!key) return;
+        saveGroupSizes(key, {
+            ...loadGroupSizes(key),
+            [id]: { width: Math.round(size.width), height: Math.round(size.height) },
+        });
+    }, []);
 
     // Structure edits only ever stage a proposal; the model changes when the architect accepts it,
     // and the model-changed event then reloads the level (refreshKey).
@@ -388,6 +449,7 @@ export default function FlowCanvas({
     );
     const expandedSig = expandedIds.join("\0");
     const cacheKey = layoutCacheKey({ nodeId, relationshipId, expanded: expandedIds });
+    cacheKeyRef.current = cacheKey;
 
     useEffect(() => {
         if (!activeLevel) return;
@@ -397,10 +459,7 @@ export default function FlowCanvas({
         const kids = activeLevel.children ?? [];
         const ids = kids.map((c) => c.id);
         const compound = kids.map((c) => ({ id: c.id, parentId: c.group_id }));
-        const sizes: Record<string, NodeSize> = {};
-        for (const child of kids) {
-            sizes[child.id] = nodeLayoutSize(child.renderer, child.schema?.length ?? 0);
-        }
+        const sizes = layoutSizes(kids);
         const edges = (activeLevel.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
         const nested = kids.some((c) => c.group_id);
         getLayout(cacheKey)
@@ -422,7 +481,7 @@ export default function FlowCanvas({
                     sig,
                 );
                 if (usable) {
-                    setNodes(buildArchNodes(activeLevel, stored, computeGroupSizes(compound, stored, sizes), onToggleMode, onUngroup));
+                    setNodes(buildArchNodes(activeLevel, stored, containerSizing(compound, stored, sizes, cacheKey), onToggleMode, onUngroup, onResizeGroup));
                     setFitToken((v) => v + 1);
                     return;
                 }
@@ -430,7 +489,7 @@ export default function FlowCanvas({
                     ? (await layoutCompound(compound, edges, sizes)).positions
                     : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
-                setNodes(buildArchNodes(activeLevel, laid, computeGroupSizes(compound, laid, sizes), onToggleMode, onUngroup));
+                setNodes(buildArchNodes(activeLevel, laid, containerSizing(compound, laid, sizes, cacheKey), onToggleMode, onUngroup, onResizeGroup));
                 setFitToken((v) => v + 1);
                 await putLayout(cacheKey, {
                     positions: ids.map((id) => ({ id, x: laid[id]?.x ?? 0, y: laid[id]?.y ?? 0 })),
@@ -446,7 +505,7 @@ export default function FlowCanvas({
         return () => {
             cancelled = true;
         };
-    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, expandedSig, activeLevel, relLevel, onToggleMode, onUngroup]);
+    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, expandedSig, activeLevel, relLevel, onToggleMode, onUngroup, onResizeGroup]);
 
     useEffect(() => {
         const ac = new AbortController();
@@ -494,7 +553,7 @@ export default function FlowCanvas({
                     return [];
                 }
                 changed = true;
-                return [{ ...node, type, data }];
+                return [{ ...node, type, data: { ...data, depth: node.data.depth, minWidth: node.data.minWidth, minHeight: node.data.minHeight, onResizeGroup: node.data.onResizeGroup } }];
             });
             return changed ? next : current;
         });

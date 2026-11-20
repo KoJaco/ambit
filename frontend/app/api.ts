@@ -1,4 +1,11 @@
-import { expandedKey, sanitizeViewModes, type ViewDefaults, type ViewModes } from "./level-view";
+import {
+    expandedKey,
+    sanitizeGroupSizes,
+    sanitizeViewModes,
+    type GroupSizes,
+    type ViewDefaults,
+    type ViewModes,
+} from "./level-view";
 
 export const rootLayoutKey = "_root";
 
@@ -32,6 +39,27 @@ export function saveViewModes(baseKey: string, modes: ViewModes): void {
         window.localStorage.setItem(viewModesStoragePrefix + baseKey, JSON.stringify(modes));
     } catch {
         // Private mode or quota: view modes are a convenience, the level still renders.
+    }
+}
+
+// Sizes the architect gave open groups by resizing. The typed server layout carries positions only,
+// so they live here, keyed by the layout cache key (level plus expanded-set hash).
+const groupSizesStoragePrefix = "ambit:group-sizes:";
+
+export function loadGroupSizes(cacheKey: string): GroupSizes {
+    try {
+        const raw = window.localStorage.getItem(groupSizesStoragePrefix + cacheKey);
+        return raw ? sanitizeGroupSizes(JSON.parse(raw)) : {};
+    } catch {
+        return {};
+    }
+}
+
+export function saveGroupSizes(cacheKey: string, sizes: GroupSizes): void {
+    try {
+        window.localStorage.setItem(groupSizesStoragePrefix + cacheKey, JSON.stringify(sizes));
+    } catch {
+        // Without it the group simply returns to its automatic size.
     }
 }
 
