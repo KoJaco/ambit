@@ -1,0 +1,10 @@
+{
+  "name": "ambit",
+  "version": "0.0.0-dev",
+  "description": "npx shim for the ambit CLI: downloads and checksum-verifies the release binary, then runs it.",
+  "bin": { "ambit": "bin/ambit.js" },
+  "files": ["bin", "lib", "checksums.json", "README.md"],
+  "engines": { "node": ">=18" },
+  "license": "UNLICENSED",
+  "scripts": { "test": "node --test" }
+}
