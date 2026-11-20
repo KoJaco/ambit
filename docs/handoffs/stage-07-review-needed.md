@@ -90,6 +90,28 @@ two same-name group proposals shared a container id; cached layouts reused after
 between open groups; `StageGroup` nil-deref on a dangling parent; no-op reparent to root inside
 a relationship; inert Expand button; focus loss after ungroup.
 
+## Browser pass (2026-11-20, Playwright against a copy of the self-model)
+
+Fixed in the follow-up commit: Paper edge/handle CSS lost the cascade to xyflow (edges were default
+grey 1px; now xyflow CSS variables, contrast-checked); cyclical/backward edges looped and cut
+through cards (side-aware routing, lanes, reciprocal offsets); labels hidden under node z-index;
+nested groups had identical fill (`--group-2`); stacked card overflowed its group; no tooltips on
+icon-only buttons (new `tooltip.tsx`, verified `role=tooltip` + `aria-describedby`); groups not
+resizable (right/bottom handles, min = content, sizes in localStorage).
+Verified visually: light and dark, nested tint, U-shaped backward edge into Existing App.
+**Not yet verified:** group resize by drag (handles were under the Review panel), inspector,
+group/ungroup forms, drag-out/in, keyboard focus order.
+
+Open from that pass:
+- **Edge labels crowd near short gaps** (Existing App -> Upload Service): pills are wider than
+  the gap, so they overlap each other and card text ("presigned upload" and "uses" doubled).
+  Ideas: larger ELK layer spacing when labelled, truncate pills with title, collapse colliding
+  labels to a count until hover.
+- **Right rail covers the canvas**: fit-view pads only the left sidebar, so with Review/Inspector
+  open the graph sits under it (the AWS Collapse button was unreachable).
+- Obstacle avoidance only for forward edges; backward U paths can still cross nodes.
+- Resize handles have no aria-label (xyflow limitation); mouse-only.
+
 ## Still open (reviewer nits, deliberately not fixed)
 
 - Multi-select drag only reparents the node under the pointer.
