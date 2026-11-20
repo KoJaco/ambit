@@ -1,4 +1,4 @@
-# Stage 07 test plan
+# Stage 08 test plan
 
 The gate is a shim test. Serving the embedded bundle is a Go test plus one manual refresh.
 Decision: [0004](../../../decisions/0004-testing-strategy.md).

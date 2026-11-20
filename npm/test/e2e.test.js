@@ -87,7 +87,9 @@ test('end-to-end: placeholder checksums refuse without any download', { skip: SK
   const dir = tmp();
   for (const d of ['bin', 'lib']) fs.cpSync(path.join(SRC, d), path.join(dir, d), { recursive: true });
   fs.copyFileSync(path.join(SRC, 'package.json'), path.join(dir, 'package.json'));
-  fs.copyFileSync(path.join(SRC, 'checksums.json'), path.join(dir, 'checksums.json'));
+  // Own placeholder (no artifacts) so this test also passes after the release script pins real checksums.
+  const { version } = JSON.parse(fs.readFileSync(path.join(SRC, 'package.json'), 'utf8'));
+  fs.writeFileSync(path.join(dir, 'checksums.json'), JSON.stringify({ version, algorithm: 'sha256', artifacts: {} }));
   await withServer({}, async (base, hits) => {
     const r = await run(dir, ['init'], { AMBIT_DOWNLOAD_BASE: base, AMBIT_CACHE_DIR: tmp() });
     assert.notStrictEqual(r.code, 0);

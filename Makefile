@@ -5,7 +5,7 @@ VERSION ?= dev
 PREFIX  ?= $(HOME)/.local
 WEBUI   := internal/webui/dist
 
-.PHONY: frontend webui build dev-build install test clean
+.PHONY: frontend webui build dev-build install test clean release
 
 frontend:
 	cd frontend && npm ci && npm run build
@@ -34,3 +34,8 @@ test:
 clean:
 	rm -rf bin
 	find $(WEBUI) -mindepth 1 -not -name .gitkeep -delete
+
+# Build release artifacts and pin checksums (does not publish). Usage: make release VERSION=0.1.0
+release:
+	@test "$(VERSION)" != dev || { echo "usage: make release VERSION=x.y.z" >&2; exit 2; }
+	scripts/release.sh $(VERSION)
