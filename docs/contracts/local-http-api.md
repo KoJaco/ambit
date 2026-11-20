@@ -140,8 +140,16 @@ with MCP, where the same operations are staged.
 A validation failure is 409 and the message is the core error, which names the node and
 the rule. There is no HTTP-specific validator.
 
+- `GET /assignment` — the active assignment, always 200. `{"node_id": "<id>",
+  "assigned_at": "<RFC3339>"}` when set, `{"node_id": null}` when none. If the stored node
+  no longer exists the assignment is returned as stored plus `"dangling": true` (never 404;
+  `ambit check` treats it as a warning too).
 - `PUT /assignment` — body `{ "node_id", "assigned_at"? }`. Calls `SetAssignment`. Stored
-  only in `local.json`. Does not change the node's `status`.
+  only in `local.json`. Does not change the node's `status`. An unknown node is 404.
+  Node summaries in `/levels*` and `GET /nodes/{id}` carry `"assigned": true` on the
+  assigned node only (omitted otherwise). It is a view field computed from `local.json`,
+  not stored in node files. A `local.json` change emits `model-changed` (with no node ids),
+  so clients refetch `GET /assignment`.
 - `DELETE /assignment` — calls `ClearAssignment`. Leaves every node file alone.
 
 ### Layout
@@ -214,7 +222,7 @@ A single one-way stream at `/events`, driven by `fsnotify` in the Go process.
 Event kinds, sent as SSE `event:` names. The client cannot send on this stream.
 Proposal events are not emitted yet.
 
-- `model-changed` — a node file or `index.json` changed on disk, whether from a UI write,
+- `model-changed` — a node file, `index.json`, or `local.json` changed on disk, whether from a UI write,
   an MCP status write, or the architect's editor. `data` is
   `{ "node_ids": ["…"], "relationship_ids": ["…"] }`.
 - `proposals-changed` — a proposal was staged, resolved, or deleted. Not emitted until the

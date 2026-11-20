@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
 import { summaryText } from "../level-view";
+import { AgentChip } from "./agent-chip";
 import { Tooltip } from "./tooltip";
 import {
     nodeDotClass,
@@ -28,6 +29,7 @@ export type ArchNodeData = {
     type: string;
     status: string;
     protected: boolean;
+    assigned?: boolean;
     crossings: CrossingMark[];
     icon?: string;
     color?: string;
@@ -105,6 +107,7 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                             <span className="truncate text-sm font-medium text-foreground" title={data.name}>
                                 {data.name}
                             </span>
+                            {data.assigned ? <AgentChip /> : null}
                             {data.protected ? (
                                 <Lock
                                     className="size-3 shrink-0 text-muted-foreground"

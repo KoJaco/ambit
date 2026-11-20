@@ -2,7 +2,7 @@
 
 ## Status
 
-Not started. Renumbered from stage 07 when [stage 07 — Node presentation](../07-node-presentation/README.md) was inserted.
+Built, pending review (2026-11-20). Renumbered from stage 07 when [stage 07 — Node presentation](../07-node-presentation/README.md) was inserted. Nothing is published; see [decision 0011](../../../decisions/0011-distribution-pinned-checksums.md) and the [release runbook](../../../runbooks/release.md).
 
 ## What this stage proves
 
@@ -11,7 +11,7 @@ API are one binary. The npx shim will not run a binary it has not checksummed.
 
 ## Build-plan steps
 
-Step 10. Ordering: [`v1-build-plan.md`](../../v1-build-plan.md).
+Step 11. Ordering: [`v1-build-plan.md`](../../v1-build-plan.md).
 
 ## Depends on
 
@@ -59,4 +59,5 @@ with this test failing or skipped.
 - Tests: [`test-plan.md`](test-plan.md)
 - Slice log: [`slice-log.md`](slice-log.md)
 - ADR: [0003](../../../adr/0003-runtime-and-distribution.md)
+- Decision: [0011](../../../decisions/0011-distribution-pinned-checksums.md)
 - Spec: [`spec-v1.md`](../../spec-v1.md) Section 7

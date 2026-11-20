@@ -15,21 +15,20 @@
 
 ## Commands
 
-Valid once `bootstrap-project` has run (the bare template has no `web/` or `api/`). Run from the repo root; root `package.json` scripts target `web/`. Adjust here if an app deviates.
+Run from the repo root.
 
-- install: `pnpm install`
-- dev: `pnpm dev`            | api local: `cd api && go run ./cmd/local`
-- test: `pnpm test`          | `cd api && go test ./... -race`
-- lint: `pnpm lint`          | `cd api && golangci-lint run`
-- typecheck: `pnpm typecheck`
-- e2e: `pnpm e2e`
-- migrate (dev/staging only): `goose -dir db/migrations postgres "$DATABASE_URL" up`
+- install: `cd frontend && npm ci`
+- dev: `ambit start` (or `make dev-build && bin/ambit start`) + `cd frontend && npm run dev` (Vite proxies to the API)
+- build (UI embedded): `make build` | API-only: `make dev-build` | install to `~/.local/bin`: `make install`
+- test: `go test ./... -race` (or `make test`) | `cd frontend && npm run test` | `cd npm && node --test`
+- typecheck: `cd frontend && npm run typecheck`
+- release (builds and pins checksums, never publishes): `make release VERSION=x.y.z` (see `docs/runbooks/release.md`)
 
 
 
 ## Architecture map
 
-- `web/` frontend · `api/` Go Lambda API (own `go.mod`) · `db/migrations/` SQL migrations (goose) · `infra/` IaC · `docs/` ADRs, handoffs, runbooks, design tokens
+- Go module at root: `cmd/ambit` (CLI) · `internal/` (core, httpapi, mcp, webui embed) · `frontend/` SPA (npm) · `npm/` npx shim · `scripts/` release script · `docs/` ADRs, contracts, planning, handoffs, runbooks
 - `.claude/skills/` shared skills (Claude + Cursor) · `.claude/agents|hooks|settings.json` Claude-only · `.cursor/` Cursor-only · `.github/` CI/CD, CODEOWNERS, PR template
 - Skills whose description starts with "Claude Code only:" orchestrate subagents; Cursor should not run them.
 

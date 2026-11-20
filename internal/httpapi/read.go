@@ -36,11 +36,11 @@ func getRelationshipLevel(idx *core.Index) http.HandlerFunc {
 			writeAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, relationshipLevelBody(lvl))
+		writeJSON(w, http.StatusOK, relationshipLevelBody(lvl, assignedID(idx)))
 	}
 }
 
-func relationshipLevelBody(lvl core.RelationshipLevel) relationshipLevelJSON {
+func relationshipLevelBody(lvl core.RelationshipLevel, assigned core.NodeID) relationshipLevelJSON {
 	body := relationshipLevelJSON{
 		Relationship:  relViewJSON(lvl.Relationship),
 		Members:       make([]summaryJSON, 0, len(lvl.Members)),
@@ -50,9 +50,9 @@ func relationshipLevelBody(lvl core.RelationshipLevel) relationshipLevelJSON {
 		Warnings:      warningBodies(lvl.Warnings),
 	}
 	for _, m := range lvl.Members {
-		body.Members = append(body.Members, summaryOf(m))
+		body.Members = append(body.Members, summaryOf(m, assigned))
 	}
-	body.Context = append(body.Context, summaryOf(lvl.Context[0]), summaryOf(lvl.Context[1]))
+	body.Context = append(body.Context, summaryOf(lvl.Context[0], assigned), summaryOf(lvl.Context[1], assigned))
 	for _, rel := range lvl.Relationships {
 		body.Relationships = append(body.Relationships, relJSON{
 			ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
@@ -97,7 +97,7 @@ func getNode(idx *core.Index) http.HandlerFunc {
 			writeAPIError(w, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, nodeBody(n))
+		writeJSON(w, http.StatusOK, nodeBody(n, assignedID(idx)))
 	}
 }
 
@@ -120,10 +120,10 @@ func writeLevel(w http.ResponseWriter, idx *core.Index, parent core.NodeID, expa
 		writeAPIError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, levelBody(lvl))
+	writeJSON(w, http.StatusOK, levelBody(lvl, assignedID(idx)))
 }
 
-func levelBody(lvl core.Level) levelJSON {
+func levelBody(lvl core.Level, assigned core.NodeID) levelJSON {
 	body := levelJSON{
 		Children:      make([]summaryJSON, 0, len(lvl.Children)),
 		Relationships: make([]relJSON, 0, len(lvl.Relationships)),
@@ -132,11 +132,11 @@ func levelBody(lvl core.Level) levelJSON {
 		ViewDefaults:  viewDefaultsJSON{GroupMax: lvl.ViewDefaults.GroupMax, LevelBudget: lvl.ViewDefaults.LevelBudget},
 	}
 	if lvl.Node != nil {
-		s := summaryOf(*lvl.Node)
+		s := summaryOf(*lvl.Node, assigned)
 		body.Node = &s
 	}
 	for _, child := range lvl.Children {
-		body.Children = append(body.Children, summaryOf(child))
+		body.Children = append(body.Children, summaryOf(child, assigned))
 	}
 	for _, rel := range lvl.Relationships {
 		body.Relationships = append(body.Relationships, edgeBody(rel))
@@ -161,11 +161,35 @@ func edgeBody(rel core.EdgeView) relJSON {
 	return out
 }
 
-func summaryOf(n core.NodeView) summaryJSON {
+// assignedID is the active assignment's node id, or "" when none.
+func assignedID(idx *core.Index) core.NodeID {
+	if as, ok := idx.ActiveAssignment(); ok {
+		return as.NodeID
+	}
+	return ""
+}
+
+func getAssignment(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		as, ok := idx.ActiveAssignment()
+		if !ok {
+			writeJSON(w, http.StatusOK, map[string]any{"node_id": nil})
+			return
+		}
+		body := map[string]any{"node_id": string(as.NodeID), "assigned_at": as.AssignedAt}
+		if !idx.HasNode(as.NodeID) {
+			body["dangling"] = true
+		}
+		writeJSON(w, http.StatusOK, body)
+	}
+}
+
+func summaryOf(n core.NodeView, assigned core.NodeID) summaryJSON {
 	out := summaryJSON{
 		ID: string(n.ID), Name: n.Name, Type: n.Type, Status: string(n.Status), Protected: n.Protected,
 		Icon: n.Icon, Color: n.Color, Renderer: n.Renderer, Schema: n.Schema, ChildCount: n.ChildCount,
 		GroupID: string(n.GroupID), Expanded: n.Expanded, InternalRelCount: n.InternalRelCount,
+		Assigned: assigned != "" && n.ID == assigned,
 	}
 	for _, t := range n.TypeMix {
 		out.TypeMix = append(out.TypeMix, typeCountJSON{Type: t.Type, Count: t.Count})
@@ -215,6 +239,7 @@ type nodeJSON struct {
 	Color          string              `json:"color,omitempty"`
 	Renderer       string              `json:"renderer,omitempty"`
 	Schema         []core.SchemaColumn `json:"schema,omitempty"`
+	Assigned       bool                `json:"assigned,omitempty"`
 }
 
 type summaryJSON struct {
@@ -230,6 +255,7 @@ type summaryJSON struct {
 	ChildCount int                 `json:"child_count"`
 	GroupID    string              `json:"group_id,omitempty"`
 	Expanded   bool                `json:"expanded,omitempty"`
+	Assigned   bool                `json:"assigned,omitempty"`
 	// InternalRelCount is relationships hidden inside a collapsed node.
 	InternalRelCount int             `json:"internal_rel_count,omitempty"`
 	TypeMix          []typeCountJSON `json:"type_mix,omitempty"`

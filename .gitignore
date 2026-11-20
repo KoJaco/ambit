@@ -16,3 +16,7 @@ coverage.out
 .arch/local.json
 .arch/.cache/
 .arch/.proposals/
+
+.arch/
+.cursor/
+.playwright-mcp/

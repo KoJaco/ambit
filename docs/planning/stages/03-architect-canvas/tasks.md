@@ -68,6 +68,7 @@ failures use 409 and name the node and the rule. There is no HTTP-specific valid
 same change. Setting assignment does not by itself change the node's `status`; `assigned`
 remains a status value the architect or, later, an agent sets explicitly. Clearing
 assignment leaves the model otherwise untouched.
+UI control added in stage 08 follow-up (node inspector, `GET /assignment`).
 
 ## 03.7 Layout cache
 

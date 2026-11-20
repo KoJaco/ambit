@@ -100,6 +100,7 @@ export type Summary = {
     expanded?: boolean;
     internal_rel_count?: number;
     type_mix?: TypeMixEntry[];
+    assigned?: boolean;
 };
 
 export type TypeMixEntry = { type: string; count: number };
@@ -171,6 +172,7 @@ export type NodeDetail = {
     color?: string;
     renderer?: string;
     schema?: SchemaColumn[];
+    assigned?: boolean;
 };
 
 export type NodePatch = {
@@ -267,6 +269,13 @@ export function setRelationship(input: Partial<Relationship> & { from: string; t
 
 export function deleteRelationship(id: string): Promise<void> {
     return send<void>(`/relationships/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// node_id is null when nothing is assigned. dangling means the node no longer exists.
+export type Assignment = { node_id: string | null; assigned_at?: string; dangling?: boolean };
+
+export function getAssignment(signal?: AbortSignal): Promise<Assignment> {
+    return send<Assignment>("/assignment", { signal });
 }
 
 export function setAssignment(nodeId: string): Promise<void> {

@@ -29,7 +29,7 @@ These six stop a stage being declared done early. Detail is in
 - [x] **04.8** Proposal apply atomicity and staleness hash comparison.
 - [x] **05.6** Relationship interior level — duplicate edges, members scoped to the edge.
 - [x] **06.6** `check_scope` and `ambit check` return the same verdict for the same inputs.
-- [ ] **08.5** npx shim checksum verification. The shim does not ship without it.
+- [x] **08.5** npx shim checksum verification. The shim does not ship without it.
 
 ## Stage 00 — Foundation
 
@@ -151,11 +151,11 @@ Done. [Stage](stages/00-foundation/README.md).
 
 [Stage](stages/08-distribution/README.md).
 
-- [ ] **08.1** `react-router build` produces the client bundle the Go build embeds.
-- [ ] **08.2** `ambit start` serves the embedded SPA.
-- [ ] **08.3** Unmatched non-API paths fall back to the SPA entry document.
-- [ ] **08.4** `npx ambit` detects the platform, downloads the binary, and caches it.
-- [ ] **08.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
+- [x] **08.1** `react-router build` produces the client bundle the Go build embeds.
+- [x] **08.2** `ambit start` serves the embedded SPA.
+- [x] **08.3** Unmatched non-API paths fall back to the SPA entry document.
+- [x] **08.4** `npx ambit` detects the platform, downloads the binary, and caches it.
+- [x] **08.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
 
 ## Explicitly not v1
 

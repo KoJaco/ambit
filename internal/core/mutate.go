@@ -479,3 +479,22 @@ func (idx *Index) childIDs(id NodeID) []string {
 	sort.Strings(out)
 	return out
 }
+
+// ActiveAssignment returns a copy of the machine-local assignment. The node it
+// names may not exist (see HasNode).
+func (idx *Index) ActiveAssignment() (Assignment, bool) {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if idx.Assignment == nil {
+		return Assignment{}, false
+	}
+	return Assignment{NodeID: idx.Assignment.NodeID, AssignedAt: idx.Assignment.AssignedAt}, true
+}
+
+// HasNode reports whether id is in the index.
+func (idx *Index) HasNode(id NodeID) bool {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	n, ok := idx.Nodes[id]
+	return ok && n != nil
+}

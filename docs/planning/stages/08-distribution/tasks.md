@@ -4,7 +4,7 @@ Working list. Status is mirrored in [`checklist.md`](../../checklist.md).
 
 ## 08.1 Frontend build into the Go build
 
-- [ ]
+- [x]
 
 **Touches:** `frontend/` build script, `Makefile` or the equivalent at the repo root.
 
@@ -15,7 +15,7 @@ local UI work.
 
 ## 08.2 Embed and serve
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`, `cmd/ambit`.
 
@@ -25,7 +25,7 @@ serve a page.
 
 ## 08.3 Client-route fallback
 
-- [ ]
+- [x]
 
 **Touches:** `internal/httpapi`.
 
@@ -35,7 +35,7 @@ document, so a browser refresh on a drill-down URL renders the app. A missing AP
 
 ## 08.4 npx shim
 
-- [ ]
+- [x]
 
 **Touches:** a small Node package at a path this task chooses and records in the slice log.
 Keep it out of `frontend/`, which is the SPA.
@@ -47,7 +47,7 @@ as a server. A cache hit does not download again.
 
 ## 08.5 Release gate
 
-- [ ]
+- [x]
 
 **Touches:** the shim's tests.
 

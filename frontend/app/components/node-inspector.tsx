@@ -2,7 +2,16 @@ import clsx from "clsx";
 import { X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Tooltip } from "./tooltip";
-import { getNode, updateNode, type NodeDetail } from "../api";
+import {
+    clearAssignment,
+    getAssignment,
+    getNode,
+    setAssignment,
+    updateNode,
+    type Assignment,
+    type NodeDetail,
+} from "../api";
+import { assignmentLabel, assignmentState } from "../assignment";
 import {
     nodeDotClass,
     nodeGlyphClass,
@@ -25,7 +34,9 @@ export default function NodeInspector({
     onClose,
     onSaved,
     onFocus,
+    refreshKey = 0,
 }: {
+    refreshKey?: number;
     nodeId: string;
     onClose: () => void;
     onSaved: () => void;
@@ -52,6 +63,51 @@ export default function NodeInspector({
             });
         return () => ac.abort();
     }, [nodeId]);
+
+    const [assignment, setAssignmentState] = useState<Assignment | null>(null);
+    const [otherName, setOtherName] = useState<string | null>(null);
+    const [assignError, setAssignError] = useState<string | null>(null);
+    const [assignBusy, setAssignBusy] = useState(false);
+
+    // Refetched on mount, after set/clear, and on every model-changed event (refreshKey),
+    // which the server also sends when local.json changes.
+    useEffect(() => {
+        const ac = new AbortController();
+        getAssignment(ac.signal)
+            .then((value) => {
+                setAssignmentState(value);
+                setAssignError(null);
+            })
+            .catch((err: unknown) => {
+                if (err instanceof DOMException && err.name === "AbortError") return;
+                setAssignError(err instanceof Error ? err.message : "assignment request failed");
+            });
+        return () => ac.abort();
+    }, [nodeId, refreshKey]);
+
+    const otherId = assignmentState(assignment, nodeId) === "other" ? assignment?.node_id ?? null : null;
+    useEffect(() => {
+        setOtherName(null);
+        if (!otherId) return;
+        const ac = new AbortController();
+        getNode(otherId, ac.signal)
+            .then((other) => setOtherName(other.name))
+            .catch(() => undefined);
+        return () => ac.abort();
+    }, [otherId, refreshKey]);
+
+    async function changeAssignment(action: () => Promise<void>) {
+        setAssignBusy(true);
+        setAssignError(null);
+        try {
+            await action();
+            setAssignmentState(await getAssignment());
+        } catch (err) {
+            setAssignError(err instanceof Error ? err.message : "assignment change failed");
+        } finally {
+            setAssignBusy(false);
+        }
+    }
 
     async function save() {
         if (!node) return;
@@ -306,6 +362,44 @@ export default function NodeInspector({
                             </>
                         )}
                     </div>
+                    {presentationSubview ? null : (
+                        <div className="flex shrink-0 flex-col gap-1.5 border-t border-border pt-3">
+                            <span className={sectionLabelClass}>Agent assignment</span>
+                            <p className="text-sm" role="status">
+                                {assignmentLabel(
+                                    assignment,
+                                    node.id,
+                                    otherId && otherName ? [{ id: otherId, name: otherName }] : [],
+                                )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                                Agents are limited to this node's 'Agent may edit' scope (ambit check, MCP check_scope)
+                            </p>
+                            {assignError ? <p className="text-xs text-destructive">{assignError}</p> : null}
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    type="button"
+                                    className="rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                    disabled={assignBusy || assignmentState(assignment, node.id) === "this"}
+                                    onClick={() => {
+                                        void changeAssignment(() => setAssignment(node.id));
+                                    }}
+                                >
+                                    Assign agent to this node
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                    disabled={assignBusy || assignmentState(assignment, node.id) === "none"}
+                                    onClick={() => {
+                                        void changeAssignment(clearAssignment);
+                                    }}
+                                >
+                                    Clear assignment
+                                </button>
+                            </div>
+                        </div>
+                    )}
                     <div className="flex shrink-0 items-center justify-between gap-3">
                         <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
                             .arch/nodes/{node.id}.json

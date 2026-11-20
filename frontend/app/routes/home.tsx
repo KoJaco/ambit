@@ -137,6 +137,7 @@ export default function Home() {
                                 ) : selectedId ? (
                                     <NodeInspector
                                         nodeId={selectedId}
+                                        refreshKey={refreshKey}
                                         onClose={() => setSelectedId(null)}
                                         onSaved={() => setRefreshKey((value) => value + 1)}
                                         onFocus={() => setFrontPanel("inspector")}
