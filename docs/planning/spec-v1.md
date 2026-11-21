@@ -262,7 +262,7 @@ browser window.
 
 ## 7. Distribution
 
-- `npx ambit` is a thin shim that downloads and runs a platform-specific Go binary. It is
+- `npx @kojaco/ambit` is a thin shim that downloads and runs a platform-specific Go binary. It is
   not a Node runtime dependency.
 - `react-router build` produces a static client bundle (`build/client`), `go:embed`-ed
   directly into the Go binary.
@@ -390,11 +390,11 @@ Full semantics in [`docs/architecture/enforcement-model.md`](../architecture/enf
 ## 11. CLI surface
 
 ```
-npx ambit init          # scaffold .arch/, write .gitignore entries idempotently
-npx ambit start         # serve the SPA + local HTTP API + SSE
-npx ambit mcp           # MCP server over stdio, for coding-agent harnesses
-npx ambit check         # enforcement check against the current git diff
-npx ambit hook install  # opt-in pre-commit hook; refuses to overwrite an existing one
+npx @kojaco/ambit init          # scaffold .arch/, write .gitignore entries idempotently
+npx @kojaco/ambit start         # serve the SPA + local HTTP API + SSE
+npx @kojaco/ambit mcp           # MCP server over stdio, for coding-agent harnesses
+npx @kojaco/ambit check         # enforcement check against the current git diff
+npx @kojaco/ambit hook install  # opt-in pre-commit hook; refuses to overwrite an existing one
 ```
 
 ## 12. Explicitly not v1

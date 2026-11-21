@@ -154,7 +154,7 @@ Done. [Stage](stages/00-foundation/README.md).
 - [x] **08.1** `react-router build` produces the client bundle the Go build embeds.
 - [x] **08.2** `ambit start` serves the embedded SPA.
 - [x] **08.3** Unmatched non-API paths fall back to the SPA entry document.
-- [x] **08.4** `npx ambit` detects the platform, downloads the binary, and caches it.
+- [x] **08.4** `npx @kojaco/ambit` detects the platform, downloads the binary, and caches it.
 - [x] **08.5** Release gate: the shim verifies a checksum before it runs a downloaded binary.
 
 ## Explicitly not v1

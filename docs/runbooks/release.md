@@ -1,6 +1,6 @@
 # Runbook: cutting an ambit release
 
-Nothing here is automated in CI (product CI is out of scope; see
+Releasing is not automated in CI (CI only checks changes; see [ci.md](ci.md) and
 [stage 08](../planning/stages/08-distribution/README.md)). A human runs every step.
 Design: [decision 0011](../decisions/0011-distribution-pinned-checksums.md).
 
@@ -8,7 +8,7 @@ Design: [decision 0011](../decisions/0011-distribution-pinned-checksums.md).
 
 - Go (version in `go.mod`), Node >= 18 and npm, `make`, `git`.
 - `gh` authenticated for `KoJaco/ambit` (for the GitHub release).
-- An npm account that can publish the package name (see "npm name" below).
+- An npm account that can publish the package name (see "npm name" below; the package is `@kojaco/ambit`).
 - A clean tree on the commit you intend to release. Tag and release from that commit.
 
 ## Versioning
@@ -80,12 +80,13 @@ finished, stop the server, `git checkout -- npm/checksums.json npm/package.json`
 
 ## npm name
 
-Availability of the unscoped name `ambit` on npm has not been checked. Check with
-`npm view ambit`. If it is taken, use a scoped name (for example `@kojaco/ambit`; scoped
-public packages need `npm publish --access public`, which the steps above already use).
-Change it in:
-- `npm/package.json` (`name`; the `bin` key can stay `ambit`, so the command is still `ambit`);
-- `npm/README.md` and the usage lines (`npx @scope/ambit ...`);
-- `docs/runbooks/using-ambit-in-your-app.md` and this file.
+The package publishes as **`@kojaco/ambit`**. The unscoped name `ambit` is taken on npm by an
+unrelated package (a date parser), so `npx ambit` would run the wrong thing; see
+[decision 0011](../decisions/0011-distribution-pinned-checksums.md). Scoped public packages need
+`npm publish --access public` (also set as `publishConfig.access` in `npm/package.json`).
+The `bin` key stays `ambit`, so the installed command is still `ambit`. Usage:
+`npx @kojaco/ambit <cmd>` (also `pnpm dlx`, `yarn dlx`, `bunx`; the shim is zero-dependency
+CommonJS). The repo itself stays on npm with a single `package-lock.json`.
+You need publish rights on the `@kojaco` npm scope.
 
 The GitHub release location is independent of the npm name.

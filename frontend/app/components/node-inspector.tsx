@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Tooltip } from "./tooltip";
 import {
@@ -21,11 +21,10 @@ import {
     statusTone,
 } from "../node-presentation";
 import { previewScope } from "../scope-preview";
-import {
-    PresentationControls,
-    type PresentationSubview,
-} from "./node-inspector-presentation";
-import { RightRailPanel } from "./right-rail-panel";
+import { AppearanceEditor, AppearancePill } from "./appearance-editor";
+import { Collapsible } from "./collapsible";
+import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
+import { nodeSettingsSummary } from "../node-settings";
 
 const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
 
@@ -43,17 +42,19 @@ export default function NodeInspector({
     onFocus?: () => void;
 }) {
     const uid = useId();
+    const settingsId = `${uid}-settings`;
     const [node, setNode] = useState<NodeDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
-    const [presentationSubview, setPresentationSubview] = useState<PresentationSubview>(null);
+    const [appearanceOpen, setAppearanceOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const [presentationTouched, setPresentationTouched] = useState(false);
 
     useEffect(() => {
         const ac = new AbortController();
         setNode(null);
         setError(null);
-        setPresentationSubview(null);
+        setAppearanceOpen(false);
         setPresentationTouched(false);
         getNode(nodeId, ac.signal)
             .then(setNode)
@@ -150,57 +151,39 @@ export default function NodeInspector({
 
     const markPresentation = () => setPresentationTouched(true);
 
-    const closeButton = (
-        <Tooltip label="Close inspector">
-            <button
-                type="button"
-                aria-label="Close inspector"
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                onClick={onClose}
-            >
-                <X className="size-4" aria-hidden />
-            </button>
-        </Tooltip>
+    const state = assignmentState(assignment, nodeId);
+    const summary = node ? nodeSettingsSummary(node, state) : [];
+    // The header holds the actions outside the scrolling body, so the body's scrollbar never runs
+    // behind the theme toggle or the close button.
+    const header = (
+        <div className="-mb-2 flex shrink-0 items-center justify-between gap-3">
+            {!node || !preview ? <h2 className="font-semibold">Inspector</h2> : <span />}
+            <PanelHeaderActions onClose={onClose} closeLabel="Close inspector" />
+        </div>
     );
 
     return (
-        <RightRailPanel className="min-h-[75vh] overflow-hidden" onPointerDown={() => onFocus?.()}>
-            {!node || !preview ? (
-                <div className="flex shrink-0 items-center justify-between">
-                    <h2 className="font-semibold">Inspector</h2>
-                    {closeButton}
-                </div>
-            ) : null}
+        <RightRailPanel className="overflow-hidden" onPointerDown={() => onFocus?.()}>
+            {header}
             {error ? <p className="shrink-0 text-destructive">{error}</p> : null}
             {node && preview ? (
                 <>
-                    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-1">
-                        {presentationSubview ? (
-                            <PresentationControls
-                                subview={presentationSubview}
-                                onSubview={setPresentationSubview}
+                    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-1 [scrollbar-gutter:stable]">
+                        {appearanceOpen ? (
+                            <AppearanceEditor
                                 backLabel="Inspector"
-                                icon={node.icon}
-                                color={node.color}
                                 type={node.type}
-                                renderer={node.renderer}
+                                value={{ icon: node.icon, color: node.color, renderer: node.renderer }}
+                                onChange={(next) => {
+                                    markPresentation();
+                                    setNode({ ...node, ...next });
+                                }}
                                 schema={node.schema}
-                                onPickIcon={(id) => {
-                                    markPresentation();
-                                    setNode({ ...node, icon: id });
-                                }}
-                                onPickColor={(token) => {
-                                    markPresentation();
-                                    setNode({ ...node, color: token });
-                                }}
-                                onPickRenderer={(id) => {
-                                    markPresentation();
-                                    setNode({ ...node, renderer: id });
-                                }}
                                 onChangeSchema={(rows) => {
                                     markPresentation();
                                     setNode({ ...node, schema: rows });
                                 }}
+                                onDone={() => setAppearanceOpen(false)}
                             />
                         ) : (
                             <>
@@ -214,7 +197,7 @@ export default function NodeInspector({
                                             return <Icon className="size-5" strokeWidth={2} />;
                                         })()}
                                     </span>
-                                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                                         <input
                                             aria-label="Name"
                                             className={clsx(inputClass, "text-lg font-semibold")}
@@ -228,22 +211,25 @@ export default function NodeInspector({
                                             onChange={(event) => setNode({ ...node, type: event.target.value })}
                                         />
                                     </div>
-                                    {closeButton}
                                 </div>
-                                <PresentationControls
-                                    subview={null}
-                                    onSubview={setPresentationSubview}
-                                    backLabel="Inspector"
-                                    icon={node.icon}
-                                    color={node.color}
+                                <AppearancePill
                                     type={node.type}
-                                    renderer={node.renderer}
-                                    schema={node.schema}
-                                    onPickIcon={() => { }}
-                                    onPickColor={() => { }}
-                                    onPickRenderer={() => { }}
-                                    onChangeSchema={() => { }}
+                                    value={{ icon: node.icon, color: node.color, renderer: node.renderer }}
+                                    onClick={() => setAppearanceOpen(true)}
                                 />
+                                <div className="flex flex-col gap-2">
+                                    <label htmlFor={`${uid}-spec`} className={sectionLabelClass}>
+                                        Spec
+                                    </label>
+                                    <textarea
+                                        id={`${uid}-spec`}
+                                        rows={6}
+                                        className={clsx(inputClass, "min-h-32 resize-y text-sm leading-relaxed")}
+                                        placeholder="What this node is responsible for."
+                                        value={node.markdown}
+                                        onChange={(event) => setNode({ ...node, markdown: event.target.value })}
+                                    />
+                                </div>
                                 <div className="flex flex-col gap-2">
                                     <label htmlFor={`${uid}-status`} className={sectionLabelClass}>
                                         Status
@@ -267,140 +253,167 @@ export default function NodeInspector({
                                         </select>
                                     </div>
                                 </div>
-                                <div className="flex flex-col gap-2">
-                                    <label htmlFor={`${uid}-spec`} className={sectionLabelClass}>
-                                        Spec
-                                    </label>
-                                    <textarea
-                                        id={`${uid}-spec`}
-                                        className={clsx(inputClass, "min-h-32 text-sm")}
-                                        placeholder="What this node is responsible for."
-                                        value={node.markdown}
-                                        onChange={(event) => setNode({ ...node, markdown: event.target.value })}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                    <label htmlFor={`${uid}-impl`} className={sectionLabelClass}>
-                                        Implemented in
-                                    </label>
-                                    <p id={`${uid}-impl-hint`} className="text-xs text-muted-foreground">
-                                        One glob per line
-                                    </p>
-                                    <textarea
-                                        id={`${uid}-impl`}
-                                        aria-describedby={`${uid}-impl-hint`}
-                                        className={clsx(inputClass, "min-h-16 font-mono text-xs")}
-                                        value={node.implementation.join("\n")}
-                                        onChange={(event) =>
-                                            setNode({ ...node, implementation: event.target.value.split("\n") })
-                                        }
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                    <label htmlFor={`${uid}-scope`} className={sectionLabelClass}>
-                                        Agent may edit
-                                    </label>
-                                    <textarea
-                                        id={`${uid}-scope`}
-                                        className={clsx(inputClass, "min-h-16 font-mono text-xs")}
-                                        placeholder="Empty: same as Implemented in"
-                                        value={node.scope.join("\n")}
-                                        onChange={(event) =>
-                                            setNode({ ...node, scope: event.target.value.split("\n") })
-                                        }
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        {preview.defaultsToImplementation
-                                            ? "Empty scope defaults to implementation."
-                                            : "Scope covers the globs written above."}
-                                    </p>
-                                    <ul className="flex flex-wrap gap-1.5" aria-label="Effective globs">
-                                        {preview.globs.length > 0 ? (
-                                            preview.globs.map((glob) => (
-                                                <li
-                                                    key={glob}
-                                                    className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
-                                                >
-                                                    {glob}
-                                                </li>
-                                            ))
-                                        ) : (
-                                            <li className="font-mono text-xs text-muted-foreground">(no globs)</li>
-                                        )}
-                                    </ul>
-                                </div>
-                                <div className="flex items-start gap-3">
+                                <div className="rounded-[14px] border border-border">
                                     <button
                                         type="button"
-                                        role="switch"
-                                        aria-checked={node.protected}
-                                        aria-labelledby={`${uid}-protected`}
-                                        aria-describedby={`${uid}-protected-help`}
-                                        className={clsx(
-                                            "relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-                                            node.protected ? "bg-primary" : "bg-border",
-                                        )}
-                                        onClick={() => setNode({ ...node, protected: !node.protected })}
+                                        aria-expanded={settingsOpen}
+                                        aria-controls={settingsId}
+                                        className="flex w-full items-start justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                                        onClick={() => setSettingsOpen((open) => !open)}
                                     >
-                                        <span
-                                            aria-hidden
-                                            className={clsx(
-                                                "inline-block size-4 rounded-full bg-card transition-transform",
-                                                node.protected ? "translate-x-[18px]" : "translate-x-0.5",
+                                        <span className="flex min-w-0 flex-col gap-1.5">
+                                            <span className="text-sm font-medium">Node settings</span>
+                                            {settingsOpen ? null : (
+                                                <span className="flex flex-wrap gap-1.5">
+                                                    {summary.map((item) => (
+                                                        <span
+                                                            key={item.kind}
+                                                            className={clsx(
+                                                                "rounded-full px-2 py-0.5 text-[11px]",
+                                                                item.kind === "scope"
+                                                                    ? "bg-muted text-muted-foreground"
+                                                                    : "bg-primary/10 font-medium text-primary",
+                                                            )}
+                                                        >
+                                                            {item.label}
+                                                        </span>
+                                                    ))}
+                                                </span>
                                             )}
+                                        </span>
+                                        <ChevronDown
+                                            className={clsx(
+                                                "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
+                                                settingsOpen && "rotate-180",
+                                            )}
+                                            aria-hidden
                                         />
                                     </button>
-                                    <div className="flex flex-col gap-0.5">
-                                        <span id={`${uid}-protected`} className="text-sm font-medium">
-                                            Protected
-                                        </span>
-                                        <span id={`${uid}-protected-help`} className="text-xs text-muted-foreground">
-                                            Agents cannot edit this node's files, regardless of assignment.
-                                        </span>
-                                    </div>
+                                    <Collapsible open={settingsOpen} id={settingsId}>
+                                        <div className="flex flex-col gap-5 border-t border-border p-3">
+                                            <div className="flex flex-col gap-2">
+                                                <label htmlFor={`${uid}-impl`} className={sectionLabelClass}>
+                                                    Implemented in
+                                                </label>
+                                                <p id={`${uid}-impl-hint`} className="text-xs text-muted-foreground">
+                                                    One glob per line
+                                                </p>
+                                                <textarea
+                                                    id={`${uid}-impl`}
+                                                    aria-describedby={`${uid}-impl-hint`}
+                                                    className={clsx(inputClass, "min-h-16 font-mono text-xs")}
+                                                    value={node.implementation.join("\n")}
+                                                    onChange={(event) =>
+                                                        setNode({ ...node, implementation: event.target.value.split("\n") })
+                                                    }
+                                                />
+                                            </div>
+                                            <div className="flex flex-col gap-2">
+                                                <label htmlFor={`${uid}-scope`} className={sectionLabelClass}>
+                                                    Agent may edit
+                                                </label>
+                                                <textarea
+                                                    id={`${uid}-scope`}
+                                                    className={clsx(inputClass, "min-h-16 font-mono text-xs")}
+                                                    placeholder="Empty: same as Implemented in"
+                                                    value={node.scope.join("\n")}
+                                                    onChange={(event) =>
+                                                        setNode({ ...node, scope: event.target.value.split("\n") })
+                                                    }
+                                                />
+                                                <p className="text-xs text-muted-foreground">
+                                                    {preview.defaultsToImplementation
+                                                        ? "Empty scope defaults to implementation."
+                                                        : "Scope covers the globs written above."}
+                                                </p>
+                                                <ul className="flex flex-wrap gap-1.5" aria-label="Effective globs">
+                                                    {preview.globs.length > 0 ? (
+                                                        preview.globs.map((glob) => (
+                                                            <li
+                                                                key={glob}
+                                                                className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
+                                                            >
+                                                                {glob}
+                                                            </li>
+                                                        ))
+                                                    ) : (
+                                                        <li className="font-mono text-xs text-muted-foreground">(no globs)</li>
+                                                    )}
+                                                </ul>
+                                            </div>
+                                            <div className="flex items-start gap-3">
+                                                <button
+                                                    type="button"
+                                                    role="switch"
+                                                    aria-checked={node.protected}
+                                                    aria-labelledby={`${uid}-protected`}
+                                                    aria-describedby={`${uid}-protected-help`}
+                                                    className={clsx(
+                                                        "relative mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                                                        node.protected ? "bg-primary" : "bg-border",
+                                                    )}
+                                                    onClick={() => setNode({ ...node, protected: !node.protected })}
+                                                >
+                                                    <span
+                                                        aria-hidden
+                                                        className={clsx(
+                                                            "inline-block size-4 rounded-full bg-card transition-transform",
+                                                            node.protected ? "translate-x-[18px]" : "translate-x-0.5",
+                                                        )}
+                                                    />
+                                                </button>
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span id={`${uid}-protected`} className="text-sm font-medium">
+                                                        Protected
+                                                    </span>
+                                                    <span id={`${uid}-protected-help`} className="text-xs text-muted-foreground">
+                                                        Agents cannot edit this node's files, regardless of assignment.
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col gap-1.5 border-t border-border pt-4">
+                                                <span className={sectionLabelClass}>Agent assignment</span>
+                                                <p className="text-sm" role="status">
+                                                    {assignmentLabel(
+                                                        assignment,
+                                                        node.id,
+                                                        otherId && otherName ? [{ id: otherId, name: otherName }] : [],
+                                                    )}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Agents are limited to this node's 'Agent may edit' scope (ambit check, MCP check_scope)
+                                                </p>
+                                                {assignError ? <p className="text-xs text-destructive">{assignError}</p> : null}
+                                                <div className="flex flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                                        disabled={assignBusy || state === "this"}
+                                                        onClick={() => {
+                                                            void changeAssignment(() => setAssignment(node.id));
+                                                        }}
+                                                    >
+                                                        Assign agent to this node
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                                        disabled={assignBusy || state === "none"}
+                                                        onClick={() => {
+                                                            void changeAssignment(clearAssignment);
+                                                        }}
+                                                    >
+                                                        Clear assignment
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </Collapsible>
                                 </div>
                             </>
                         )}
                     </div>
-                    {presentationSubview ? null : (
-                        <div className="flex shrink-0 flex-col gap-1.5 border-t border-border pt-3">
-                            <span className={sectionLabelClass}>Agent assignment</span>
-                            <p className="text-sm" role="status">
-                                {assignmentLabel(
-                                    assignment,
-                                    node.id,
-                                    otherId && otherName ? [{ id: otherId, name: otherName }] : [],
-                                )}
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                                Agents are limited to this node's 'Agent may edit' scope (ambit check, MCP check_scope)
-                            </p>
-                            {assignError ? <p className="text-xs text-destructive">{assignError}</p> : null}
-                            <div className="flex flex-wrap gap-2">
-                                <button
-                                    type="button"
-                                    className="rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-                                    disabled={assignBusy || assignmentState(assignment, node.id) === "this"}
-                                    onClick={() => {
-                                        void changeAssignment(() => setAssignment(node.id));
-                                    }}
-                                >
-                                    Assign agent to this node
-                                </button>
-                                <button
-                                    type="button"
-                                    className="rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-                                    disabled={assignBusy || assignmentState(assignment, node.id) === "none"}
-                                    onClick={() => {
-                                        void changeAssignment(clearAssignment);
-                                    }}
-                                >
-                                    Clear assignment
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                    <div className="flex shrink-0 items-center justify-between gap-3">
+                    <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border pt-3">
                         <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
                             .arch/nodes/{node.id}.json
                         </span>

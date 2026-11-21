@@ -4,6 +4,7 @@ import FlowCanvas from "../components/FlowCanvas";
 import NodeInspector from "../components/node-inspector";
 import { ControlBar } from "../components/ControlBar";
 import type { ControlBarTool } from "../components/types";
+import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
 import { ReactFlowProvider } from "@xyflow/react";
@@ -17,6 +18,7 @@ import { RightRailStack, type RightRailFront } from "../components/right-rail-st
 import { EdgeActions } from "../components/edge-actions";
 import type { Relationship } from "../api";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
+import { floatingToggleMode, useRailState } from "../right-rail-state";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
 export function meta({}: Route.MetaArgs) {
@@ -35,6 +37,7 @@ export default function Home() {
     const [refreshKey, setRefreshKey] = useState(0);
     const [proposalRefreshKey, setProposalRefreshKey] = useState(0);
     const [selectedEdge, setSelectedEdge] = useState<Relationship | null>(null);
+    const toggleMode = floatingToggleMode(useRailState());
     useEffect(
         () =>
             subscribeEvents({
@@ -71,6 +74,7 @@ export default function Home() {
                         tool={tool === "grab" ? "grab" : "pointer"}
                         onSelectNode={(id) => {
                             setSelectedId(id);
+                            if (id === null) return;
                             setSelectedEdge(null);
                             setFrontPanel("inspector");
                         }}
@@ -100,9 +104,11 @@ export default function Home() {
                                 refreshKey={refreshKey}
                             />
                         </div>
-                        <div className="pointer-events-auto">
-                            <ModeToggle />
-                        </div>
+                        {toggleMode === "hidden" ? null : (
+                            <div className={clsx("pointer-events-auto", toggleMode === "shifted" && "mr-[min(440px,92vw)]")}>
+                                <ModeToggle />
+                            </div>
+                        )}
                     </header>
                     <div className="relative min-h-0 flex-1">
                         <Sidebar
@@ -110,46 +116,6 @@ export default function Home() {
                             relationshipId={relationshipId}
                             refreshKey={refreshKey}
                             onMutated={() => setRefreshKey((value) => value + 1)}
-                        />
-                        <RightRailStack
-                            front={frontPanel}
-                            onFocusInspector={() => setFrontPanel("inspector")}
-                            onFocusReview={() => setFrontPanel("review")}
-                            inspector={
-                                selectedEdge ? (
-                                    <EdgeActions
-                                        edge={selectedEdge}
-                                        onClose={() => setSelectedEdge(null)}
-                                        onMutated={() => setRefreshKey((value) => value + 1)}
-                                        onDeleted={() => {
-                                            const deleted = selectedEdge;
-                                            setSelectedEdge(null);
-                                            if (relationshipId && deleted?.id === relationshipId) {
-                                                const fromNodeId = (location.state as { fromNodeId?: string } | null)
-                                                    ?.fromNodeId;
-                                                const target = returnNodeIdAfterDelete(deleted, fromNodeId);
-                                                if (target) navigate(`/node/${target}`);
-                                                else navigate("/");
-                                            }
-                                        }}
-                                        onFocus={() => setFrontPanel("inspector")}
-                                    />
-                                ) : selectedId ? (
-                                    <NodeInspector
-                                        nodeId={selectedId}
-                                        refreshKey={refreshKey}
-                                        onClose={() => setSelectedId(null)}
-                                        onSaved={() => setRefreshKey((value) => value + 1)}
-                                        onFocus={() => setFrontPanel("inspector")}
-                                    />
-                                ) : null
-                            }
-                            review={
-                                <ProposalReview
-                                    refreshKey={refreshKey + proposalRefreshKey}
-                                    onFocus={() => setFrontPanel("review")}
-                                />
-                            }
                         />
                     </div>
                     <ControlBar
@@ -160,6 +126,46 @@ export default function Home() {
                         onZoomOut={() => zoomRef.current?.zoomOut()}
                     />
                 </div>
+                <RightRailStack
+                    front={frontPanel}
+                    onFocusInspector={() => setFrontPanel("inspector")}
+                    onFocusReview={() => setFrontPanel("review")}
+                    inspector={
+                        selectedEdge ? (
+                            <EdgeActions
+                                edge={selectedEdge}
+                                onClose={() => setSelectedEdge(null)}
+                                onMutated={() => setRefreshKey((value) => value + 1)}
+                                onDeleted={() => {
+                                    const deleted = selectedEdge;
+                                    setSelectedEdge(null);
+                                    if (relationshipId && deleted?.id === relationshipId) {
+                                        const fromNodeId = (location.state as { fromNodeId?: string } | null)
+                                            ?.fromNodeId;
+                                        const target = returnNodeIdAfterDelete(deleted, fromNodeId);
+                                        if (target) navigate(`/node/${target}`);
+                                        else navigate("/");
+                                    }
+                                }}
+                                onFocus={() => setFrontPanel("inspector")}
+                            />
+                        ) : selectedId ? (
+                            <NodeInspector
+                                nodeId={selectedId}
+                                refreshKey={refreshKey}
+                                onClose={() => setSelectedId(null)}
+                                onSaved={() => setRefreshKey((value) => value + 1)}
+                                onFocus={() => setFrontPanel("inspector")}
+                            />
+                        ) : null
+                    }
+                    review={
+                        <ProposalReview
+                            refreshKey={refreshKey + proposalRefreshKey}
+                            onFocus={() => setFrontPanel("review")}
+                        />
+                    }
+                />
             </UIProvider>
         </div>
     );

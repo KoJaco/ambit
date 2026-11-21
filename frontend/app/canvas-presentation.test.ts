@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize, stackOffset } from "./canvas-presentation";
+import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize, stackOffset, stackedCardExtraHeight } from "./canvas-presentation";
 
 describe("canvas presentation", () => {
     it("maps renderer ids onto canvas node types", () => {
@@ -36,10 +36,13 @@ describe("canvas presentation", () => {
 });
 
 describe("stacked summary card footprint", () => {
-    it("reserves the sheet offset on the right and bottom only for stacked cards", () => {
+    it("reserves the sheet offset and the summary/action rows only for stacked cards", () => {
         const flat = nodeLayoutSize("card");
         const stacked = nodeLayoutSize("card", 0, true);
-        expect(stacked).toEqual({ width: flat.width + stackOffset, height: flat.height + stackOffset });
+        expect(stacked).toEqual({
+            width: flat.width + stackOffset,
+            height: flat.height + stackOffset + stackedCardExtraHeight,
+        });
     });
 
     it("stacks only collapsed card nodes with children", () => {

@@ -5,6 +5,25 @@ import { edgePillClass, edgePillDrillableClass } from "./edge-shared";
 
 const maxProbed = 20;
 
+// The level payload does not say which members have an interior, so each member is probed once
+// (404 means no interior). A successful probe also yields the member's own label and kind.
+// Disabled until `enabled`, aborts on unmount or when the member set changes.
+export function useMemberProbe(members: string[], enabled: boolean): Record<string, Relationship> {
+    const [probed, setProbed] = useState<Record<string, Relationship>>({});
+    useEffect(() => {
+        if (!enabled) return;
+        const ac = new AbortController();
+        for (const id of members.slice(0, maxProbed)) {
+            getRelationshipLevel(id, ac.signal)
+                .then((level) => setProbed((current) => ({ ...current, [id]: level.relationship })))
+                .catch(() => undefined);
+        }
+        return () => ac.abort();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enabled, members.join("\0")]);
+    return probed;
+}
+
 // Pill for a rolled-up edge that stands for several relationships. Click or Enter opens a small list
 // of member ids. The level payload does not say which members have an interior, so on open each
 // member is probed once (404 means no interior) and only drillable ones get a link.
@@ -12,11 +31,14 @@ export function AggregatedPill({
     rel,
     label,
     fromNodeId,
+    detail,
     onOpenChange,
 }: {
     rel: Relationship;
     label: string;
     fromNodeId?: string;
+    // Full text for the pill tooltip (label and from -> to), kept off the canvas.
+    detail?: string;
     // Lets the label wrapper raise itself above neighbouring pills while the popover is open.
     onOpenChange?: (open: boolean) => void;
 }) {
@@ -25,22 +47,10 @@ export function AggregatedPill({
         onOpenChange?.(open);
         return () => onOpenChange?.(false);
     }, [open, onOpenChange]);
-    const [drillable, setDrillable] = useState<Record<string, boolean>>({});
     const rootRef = useRef<HTMLDivElement>(null);
     const members = rel.members ?? [];
     const kinds = (rel.kinds ?? []).join(", ");
-
-    useEffect(() => {
-        if (!open) return;
-        const ac = new AbortController();
-        for (const id of members.slice(0, maxProbed)) {
-            getRelationshipLevel(id, ac.signal)
-                .then(() => setDrillable((current) => ({ ...current, [id]: true })))
-                .catch(() => undefined);
-        }
-        return () => ac.abort();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [open, members.join("\0")]);
+    const drillable = useMemberProbe(members, open);
 
     useEffect(() => {
         if (!open) return;
@@ -63,8 +73,8 @@ export function AggregatedPill({
                 type="button"
                 aria-expanded={open}
                 aria-haspopup="true"
-                title={kinds ? `Kinds: ${kinds}` : undefined}
-                className={`block min-h-6 max-w-[11rem] cursor-pointer break-words text-center leading-normal focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary ${edgePillClass} ${edgePillDrillableClass}`}
+                title={[detail ?? label, kinds ? `Kinds: ${kinds}` : ""].filter(Boolean).join("\n")}
+                className={`block min-h-6 max-w-[11rem] cursor-pointer truncate text-center focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary ${edgePillClass} ${edgePillDrillableClass}`}
                 onClick={(event) => {
                     event.stopPropagation();
                     setOpen((value) => !value);

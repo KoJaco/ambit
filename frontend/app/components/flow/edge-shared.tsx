@@ -1,6 +1,7 @@
 import { useMemo, type CSSProperties } from "react";
 import { getSmoothStepPath, useStore, type EdgeProps, type ReactFlowState } from "@xyflow/react";
 import { routeEdges, type EdgeRoute, type Rect } from "../../edge-routing";
+import { estimatePillSize, layoutEdgeLabels } from "../../label-layout";
 import type { Relationship } from "../../api";
 
 export type FlowEdgeData = {
@@ -13,8 +14,9 @@ export type FlowEdgeData = {
     labelCount?: number;
 };
 
+// Pills are compact and single-line: label only, ellipsis past 11rem. Detail goes in the title.
 export const edgePillClass =
-    "rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground";
+    "max-w-[11rem] truncate rounded-full border border-border bg-card px-2.5 py-0.5 text-[11px] leading-normal font-medium text-muted-foreground";
 export const edgePillDrillableClass = "hover:border-primary/50 hover:text-primary";
 
 // Label layer sits before the node layer in the viewport and has no stacking context of its own, so
@@ -29,24 +31,77 @@ export const edgeLabelStyle = (x: number, y: number, raised = false): CSSPropert
     zIndex: raised ? LABEL_Z_RAISED : LABEL_Z,
 });
 
+// Hover text for a pill: the full label plus the from -> to detail kept off the canvas.
+export function edgeTitle(label: string, fromName?: string, toName?: string, extra?: string): string {
+    const parts = [label];
+    if (fromName && toName) parts.push(`${fromName} → ${toName}`);
+    if (extra) parts.push(extra);
+    return parts.join("\n");
+}
+
+// Extra width of the small kind glyph some pills carry, so the layout estimate matches.
+export const dataPillGlyphWidth = 14;
+
+function pillSizeFor(edge: { type?: string; data?: unknown }): { w: number; h: number } | null {
+    const label = (edge.data as FlowEdgeData | undefined)?.rel?.label ?? "";
+    switch (edge.type) {
+        case "data":
+            return estimatePillSize(label || "data", dataPillGlyphWidth);
+        case "button":
+            return estimatePillSize(label || "relationship");
+        case "arch":
+            return label ? estimatePillSize(label) : null;
+        default:
+            return null;
+    }
+}
+
+// One layout for every edge on the canvas: routes first, then pill collision avoidance. Each edge
+// component asks for its own slice, so the work is cached on a cheap signature of the inputs and
+// done once per change instead of once per edge.
+let layoutCache: { key: string; value: Map<string, string> } | null = null;
+
+function layoutAll(s: ReactFlowState): Map<string, string> {
+    const rects = new Map<string, Rect>();
+    // Node bodies the pills must stay off. Expanded group frames are backgrounds, not obstacles.
+    const obstacles: Rect[] = [];
+    for (const [nodeId, node] of s.nodeLookup) {
+        const w = node.measured.width ?? node.width;
+        const h = node.measured.height ?? node.height;
+        if (w == null || h == null || node.hidden) continue;
+        const rect = { x: node.internals.positionAbsolute.x, y: node.internals.positionAbsolute.y, w, h };
+        rects.set(nodeId, rect);
+        if (node.type !== "container") obstacles.push(rect);
+    }
+    const edges = s.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
+    const sizes = new Map<string, { w: number; h: number }>();
+    for (const e of s.edges) {
+        const size = pillSizeFor(e);
+        if (size) sizes.set(e.id, size);
+    }
+    let key = "";
+    for (const [id, r] of rects) key += `${id}:${r.x},${r.y},${r.w},${r.h};`;
+    key += "|";
+    for (const r of obstacles) key += `${r.x},${r.y},${r.w},${r.h};`;
+    key += "|";
+    for (const e of edges) key += `${e.id}:${e.source}>${e.target}:${sizes.get(e.id)?.w ?? ""};`;
+    if (layoutCache?.key === key) return layoutCache.value;
+    const routes = routeEdges(edges, rects);
+    const labels = layoutEdgeLabels(routes, sizes, obstacles);
+    const value = new Map<string, string>();
+    for (const [id, route] of routes) {
+        const p = labels.get(id) ?? { x: route.labelX, y: route.labelY };
+        value.set(id, JSON.stringify({ ...route, labelX: p.x, labelY: p.y }));
+    }
+    layoutCache = { key, value };
+    return value;
+}
+
 export function useEdgeGeometry(props: EdgeProps) {
     const data = props.data as FlowEdgeData | undefined;
-    const { id, source, target } = props;
+    const { id } = props;
     // The selector returns a serialized route so React only re-renders when the geometry changes.
-    const serialized = useStore((s: ReactFlowState) => {
-        const rects = new Map<string, Rect>();
-        for (const [nodeId, node] of s.nodeLookup) {
-            const w = node.measured.width ?? node.width;
-            const h = node.measured.height ?? node.height;
-            if (w == null || h == null || node.hidden) continue;
-            rects.set(nodeId, { x: node.internals.positionAbsolute.x, y: node.internals.positionAbsolute.y, w, h });
-        }
-        const incident = s.edges
-            .filter((e) => e.source === source || e.target === source || e.source === target || e.target === target)
-            .map((e) => ({ id: e.id, source: e.source, target: e.target }));
-        const route = routeEdges(incident, rects).get(id);
-        return route ? JSON.stringify(route) : "";
-    });
+    const serialized = useStore((s: ReactFlowState) => layoutAll(s).get(id) ?? "");
     const route = useMemo(() => (serialized ? (JSON.parse(serialized) as EdgeRoute) : null), [serialized]);
     let edgePath: string;
     let labelX: number;
@@ -56,16 +111,13 @@ export function useEdgeGeometry(props: EdgeProps) {
     } else {
         [edgePath, labelX, labelY] = getSmoothStepPath({
             sourceX: props.sourceX,
-            sourceY: props.sourceY,
             sourcePosition: props.sourcePosition,
+            sourceY: props.sourceY,
             targetX: props.targetX,
             targetY: props.targetY,
             targetPosition: props.targetPosition,
             borderRadius: 12,
         });
     }
-    const labelIndex = data?.labelIndex ?? 0;
-    const labelCount = data?.labelCount ?? 1;
-    const labelOffsetY = (labelIndex - (labelCount - 1) / 2) * 30;
-    return { data, edgePath, labelX, labelY: labelY + labelOffsetY };
+    return { data, edgePath, labelX, labelY };
 }

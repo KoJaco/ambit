@@ -9,9 +9,11 @@ From a checkout of this repo (needs Go and Node):
 Make sure `~/.local/bin` is on your `PATH` (`PREFIX=/some/dir make install` installs under
 `/some/dir/bin`). Check with `ambit version`.
 
-After a release is published, `npx ambit <command>` downloads, checksum-verifies and caches
-the binary, then runs it ([release runbook](release.md)). `npx` is not available until
-then, and the npm name is unchecked.
+After a release is published, `npx @kojaco/ambit <command>` downloads, checksum-verifies and
+caches the binary, then runs it ([release runbook](release.md)); `pnpm dlx`, `yarn dlx` and
+`bunx` work too. `npx` is not available until then. After a global install
+(`npm i -g @kojaco/ambit`) the command is just `ambit`. The unscoped npm name `ambit` is a
+different package, so never run `npx ambit`.
 
 ## In your app repo
 
@@ -47,7 +49,7 @@ Cursor, `.cursor/mcp.json`:
 
 If the harness does not start in the repo root, pass the directory:
 `"args": ["mcp", "/absolute/path/to/your-app"]`. Before the npm package is published, use
-the installed `ambit`; afterwards `"command": "npx", "args": ["ambit", "mcp"]` also works
+the installed `ambit`; afterwards `"command": "npx", "args": ["@kojaco/ambit", "mcp"]` also works
 (the shim keeps stdout clean for JSON-RPC). The exact config key names are each harness's;
 check their docs if yours differs.
 
@@ -61,10 +63,11 @@ the currently assigned node (assignment lives in `.arch/local.json`). It exits n
 errors (missing `.arch`, git or glob failures); warnings (for example un-ignored paths or a
 dangling assignment) go to stderr and do not change the exit code.
 
-`ambit hook install` writes `.git/hooks/pre-commit`, which runs `ambit check` using the
-absolute path of the binary that installed it. It refuses to overwrite an existing hook.
-If you installed via `npx`, that path is the cached binary under the npm cache version
-directory, so reinstall the hook after upgrading.
+`ambit hook install` writes `.git/hooks/pre-commit`, a small POSIX sh script that runs
+`ambit check` if `ambit` is on your PATH and otherwise `npx --yes @kojaco/ambit check`. It
+embeds no absolute path, so it keeps working after upgrades. It refuses to overwrite an
+existing hook. Like `ambit check`, it exits non-zero only on errors, so out-of-scope files
+do not block a commit.
 
 ## What to commit in `.arch/`
 
