@@ -49,6 +49,13 @@ describe("pair and lane offsets", () => {
         const y2 = routes.get("2")!.points[0].y;
         expect(y1).toBeLessThan(y2);
     });
+    it("spreads three parallel edges between the same nodes at least 10px apart", () => {
+        const rects = new Map([["a", r(0, 0, 100, 120)], ["b", r(300, 0, 100, 120)]]);
+        const routes = routeEdges(["1", "2", "3"].map((id) => ({ id, source: "a", target: "b" })), rects);
+        const ys = ["1", "2", "3"].map((id) => routes.get(id)!.points[0].y).sort((x, y) => x - y);
+        expect(ys[1] - ys[0]).toBeGreaterThanOrEqual(10);
+        expect(ys[2] - ys[1]).toBeGreaterThanOrEqual(10);
+    });
     it("separates a reciprocal pair into different lanes", () => {
         const rects = new Map([["a", r(0, 0)], ["b", r(300, 0)]]);
         const routes = routeEdges([{ id: "1", source: "a", target: "b" }, { id: "2", source: "b", target: "a" }], rects);
