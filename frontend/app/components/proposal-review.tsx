@@ -17,7 +17,7 @@ import {
 } from "../api";
 import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks } from "../proposal-detail";
 import { proposalRows } from "../proposal-rows";
-import { RightRailPanel } from "./right-rail-panel";
+import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { ReviewOpActions } from "./review-op-actions";
 
 type DetailSelection = { proposalId: string; index: number };
@@ -98,6 +98,9 @@ export function ProposalReview({
                             <ChevronLeft className="size-4" aria-hidden />
                             Review
                         </button>
+                        <span className="ml-auto">
+                            <PanelHeaderActions />
+                        </span>
                     </div>
                     <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
                         {proposalDetailBlocks(detailOp).map((block, blockIndex) => (
@@ -130,7 +133,10 @@ export function ProposalReview({
                 <>
                     <div className="flex items-center justify-between" onPointerDown={() => onFocus?.()}>
                         <h2 className="font-semibold">Review</h2>
-                        <span className="text-xs text-foreground/60">{summaries.length}</span>
+                        <span className="flex items-center gap-2">
+                            <span className="text-xs text-foreground/60">{summaries.length}</span>
+                            <PanelHeaderActions />
+                        </span>
                     </div>
                     {error ? <p className="text-red-600">{error}</p> : null}
                     <div className="flex min-h-0 flex-col gap-3">

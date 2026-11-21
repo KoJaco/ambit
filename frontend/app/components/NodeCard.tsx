@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Lock, Ungroup } from "lucide-react";
 import { Link } from "react-router";
 import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
-import { summaryText } from "../level-view";
+import { fullSummaryText } from "../node-card-summary";
 import { AgentChip } from "./agent-chip";
 import { Tooltip } from "./tooltip";
 import {
@@ -147,57 +147,59 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                     </ul>
                 ) : null}
                 {stacked ? (
-                    <div className="flex items-center gap-2 border-t border-border px-3 py-1.5 text-xs text-muted-foreground">
-                        <span className="min-w-0 flex-1 line-clamp-2 break-words tabular-nums" title="Direct children">
-                            {summaryText(childCount, data.typeMix)}
+                    <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+                        <p className="break-words tabular-nums" title="Direct children">
+                            {fullSummaryText(childCount, data.typeMix)}
                             {data.internalRelCount ? (
                                 <span className="ml-1.5" title="Relationships hidden inside this node">
                                     · {data.internalRelCount} internal
                                 </span>
                             ) : null}
-                        </span>
-                        {data.onToggleMode ? (
-                            <Tooltip label="Expand">
-                                <button
-                                    type="button"
-                                    aria-label={`Expand ${data.name}`}
-                                    aria-expanded={false}
-                                    className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        data.onToggleMode?.(id);
-                                    }}
-                                    onDoubleClick={(event) => event.stopPropagation()}
-                                >
-                                    <ChevronDown className="size-4" aria-hidden />
-                                </button>
-                            </Tooltip>
-                        ) : null}
-                        {data.onUngroup ? (
-                            <Tooltip label="Ungroup">
-                                <button
-                                    type="button"
-                                    aria-label={`Ungroup ${data.name}`}
-                                    className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                                    onClick={(event) => {
-                                        event.stopPropagation();
-                                        data.onUngroup?.(id);
-                                    }}
-                                    onDoubleClick={(event) => event.stopPropagation()}
-                                >
-                                    <Ungroup className="size-4" aria-hidden />
-                                </button>
-                            </Tooltip>
-                        ) : null}
-                        <Link
-                            to={`/node/${id}`}
-                            aria-label={`Open ${data.name}`}
-                            className="nodrag nopan flex h-6 items-center rounded-md px-1.5 font-medium hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
-                            onClick={(event) => event.stopPropagation()}
-                            onDoubleClick={(event) => event.stopPropagation()}
-                        >
-                            Open <ChevronRight className="size-3" aria-hidden />
-                        </Link>
+                        </p>
+                        <div className="flex items-center gap-1">
+                            {data.onToggleMode ? (
+                                <Tooltip label="Expand">
+                                    <button
+                                        type="button"
+                                        aria-label={`Expand ${data.name}`}
+                                        aria-expanded={false}
+                                        className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            data.onToggleMode?.(id);
+                                        }}
+                                        onDoubleClick={(event) => event.stopPropagation()}
+                                    >
+                                        <ChevronDown className="size-4" aria-hidden />
+                                    </button>
+                                </Tooltip>
+                            ) : null}
+                            {data.onUngroup ? (
+                                <Tooltip label="Ungroup">
+                                    <button
+                                        type="button"
+                                        aria-label={`Ungroup ${data.name}`}
+                                        className="nodrag nopan flex size-6 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            data.onUngroup?.(id);
+                                        }}
+                                        onDoubleClick={(event) => event.stopPropagation()}
+                                    >
+                                        <Ungroup className="size-4" aria-hidden />
+                                    </button>
+                                </Tooltip>
+                            ) : null}
+                            <Link
+                                to={`/node/${id}`}
+                                aria-label={`Open ${data.name}`}
+                                className="nodrag nopan ml-auto flex h-6 items-center rounded-md px-1.5 font-medium hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                onClick={(event) => event.stopPropagation()}
+                                onDoubleClick={(event) => event.stopPropagation()}
+                            >
+                                Open <ChevronRight className="size-3" aria-hidden />
+                            </Link>
+                        </div>
                     </div>
                 ) : null}
                 <Handle type="source" position={Position.Right} />

@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
+import { Plus } from "lucide-react";
 import { createNode as postNode, getLevel, getRelationshipLevel, type SchemaColumn, type Summary } from "../api";
-import {
-    PresentationControls,
-    type PresentationSubview,
-} from "./node-inspector-presentation";
+import { AppearanceEditor, AppearancePill } from "./appearance-editor";
+import { Collapsible } from "./collapsible";
+import { groupNodesByType } from "../node-groups";
+import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-presentation";
 import { Tooltip } from "./tooltip";
 import styles from "./Sidebar.module.css";
 
@@ -34,7 +35,11 @@ export function Sidebar({
     const [name, setName] = useState("");
     const [type, setType] = useState("");
     const [presentation, setPresentation] = useState<CreatePresentation>({});
-    const [presentationSubview, setPresentationSubview] = useState<PresentationSubview>(null);
+    const [creating, setCreating] = useState(false);
+    const [appearanceOpen, setAppearanceOpen] = useState(false);
+    const creatorId = useId();
+    const nameRef = useRef<HTMLInputElement>(null);
+    const newButtonRef = useRef<HTMLButtonElement>(null);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -84,10 +89,24 @@ export function Sidebar({
         setName("");
         setType("");
         setPresentation({});
-        setPresentationSubview(null);
+        setAppearanceOpen(false);
+    }
+
+    function openCreator() {
+        setCreating(true);
+        // The region turns visible as it animates in; focus once it can take it.
+        window.setTimeout(() => nameRef.current?.focus(), 50);
+    }
+
+    function closeCreator() {
+        resetCreateForm();
+        setError(null);
+        setCreating(false);
+        newButtonRef.current?.focus();
     }
 
     async function createNode() {
+        if (name.trim() === "") return;
         setError(null);
         const body: Parameters<typeof postNode>[0] = { name, type };
         if (relationshipId) {
@@ -114,6 +133,8 @@ export function Sidebar({
             return;
         }
         resetCreateForm();
+        setCreating(false);
+        newButtonRef.current?.focus();
         onMutated();
     }
 
@@ -149,66 +170,91 @@ export function Sidebar({
                             <NodeLinks items={children} currentId={nodeId} />
                         </section>
                     ) : null}
-                    <form
-                        className="mt-auto flex min-h-0 flex-col gap-2"
-                        onSubmit={(event) => {
-                            event.preventDefault();
-                            void createNode();
-                        }}
+                </div>
+            )}
+            {collapsed ? null : (
+                <div className="shrink-0 border-t border-border px-3 py-2.5">
+                    <Collapsible open={creating} id={creatorId}>
+                        <form
+                            className="flex flex-col gap-2 pb-2.5"
+                            aria-label="New node"
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                void createNode();
+                            }}
+                            onKeyDown={(event) => {
+                                if (event.key !== "Escape") return;
+                                event.stopPropagation();
+                                if (appearanceOpen) setAppearanceOpen(false);
+                                else closeCreator();
+                            }}
+                        >
+                            {appearanceOpen ? (
+                                <div className="max-h-[50vh] overflow-y-auto">
+                                    <AppearanceEditor
+                                        type={type}
+                                        value={presentation}
+                                        onChange={(next) => setPresentation((prev) => ({ ...prev, ...next }))}
+                                        schema={presentation.schema}
+                                        onChangeSchema={(rows) => setPresentation((prev) => ({ ...prev, schema: rows }))}
+                                        onDone={() => setAppearanceOpen(false)}
+                                        backLabel="New node"
+                                    />
+                                </div>
+                            ) : (
+                                <>
+                                    <input
+                                        ref={nameRef}
+                                        aria-label="Name"
+                                        className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                        placeholder="Name"
+                                        value={name}
+                                        onChange={(event) => setName(event.target.value)}
+                                    />
+                                    <input
+                                        aria-label="Type"
+                                        className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                        placeholder="Type"
+                                        value={type}
+                                        onChange={(event) => setType(event.target.value)}
+                                    />
+                                    <AppearancePill
+                                        type={type}
+                                        value={presentation}
+                                        onClick={() => setAppearanceOpen(true)}
+                                    />
+                                    {error ? <p className="text-xs text-destructive">{error}</p> : null}
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="submit"
+                                            disabled={name.trim() === ""}
+                                            className="flex-1 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                        >
+                                            Create
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-full border border-border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                                            onClick={closeCreator}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </form>
+                    </Collapsible>
+                    <button
+                        ref={newButtonRef}
+                        type="button"
+                        aria-expanded={creating}
+                        aria-controls={creatorId}
+                        className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        onClick={() => (creating ? closeCreator() : openCreator())}
                     >
-                        {presentationSubview ? (
-                            <div className="flex min-h-0 flex-1 flex-col">
-                                <PresentationControls
-                                    subview={presentationSubview}
-                                    onSubview={setPresentationSubview}
-                                    backLabel="New node"
-                                    icon={presentation.icon}
-                                    color={presentation.color}
-                                    type={type}
-                                    renderer={presentation.renderer}
-                                    schema={presentation.schema}
-                                    onPickIcon={(id) => setPresentation((prev) => ({ ...prev, icon: id }))}
-                                    onPickColor={(token) => setPresentation((prev) => ({ ...prev, color: token }))}
-                                    onPickRenderer={(id) => setPresentation((prev) => ({ ...prev, renderer: id }))}
-                                    onChangeSchema={(rows) => setPresentation((prev) => ({ ...prev, schema: rows }))}
-                                />
-                            </div>
-                        ) : (
-                            <div className="border p-1.5 rounded-md space-y-1.5">
-                                <h2 className="text-xs uppercase tracking-wide text-foreground/60">New node</h2>
-                                <input
-                                    className="rounded border border-border bg-accent px-2 w-full py-1"
-                                    placeholder="Name"
-                                    value={name}
-                                    onChange={(event) => setName(event.target.value)}
-                                />
-                                <input
-                                    className="rounded border border-border w-full bg-accent px-2 py-1"
-                                    placeholder="Type"
-                                    value={type}
-                                    onChange={(event) => setType(event.target.value)}
-                                />
-                                <PresentationControls
-                                    subview={null}
-                                    onSubview={setPresentationSubview}
-                                    backLabel="New node"
-                                    icon={presentation.icon}
-                                    color={presentation.color}
-                                    type={type}
-                                    renderer={presentation.renderer}
-                                    schema={presentation.schema}
-                                    onPickIcon={() => { }}
-                                    onPickColor={() => { }}
-                                    onPickRenderer={() => { }}
-                                    onChangeSchema={() => { }}
-                                />
-                                {error ? <p className="text-xs text-red-600">{error}</p> : null}
-                                <button type="submit" className="rounded bg-primary text-primary-foreground px-2 py-1 w-full">
-                                    Create
-                                </button>
-                            </div>
-                        )}
-                    </form>
+                        <Plus className="size-4" aria-hidden />
+                        New node
+                    </button>
                 </div>
             )}
         </aside>
@@ -218,19 +264,42 @@ export function Sidebar({
 function NodeLinks({ items, currentId }: { items: Summary[]; currentId?: string }) {
     if (items.length === 0) return <p className="text-xs text-foreground/50">None</p>;
     return (
-        <ul className="flex flex-col gap-1">
-            {items.map((item) => (
-                <li key={item.id}>
-                    <Link
-                        to={`/node/${item.id}`}
-                        className={clsx("block rounded px-1 py-0.5", item.id === currentId && "bg-accent")}
-                    >
-                        {item.name}
-                        <span className="ml-2 text-xs text-foreground/50">{item.type}</span>
-                    </Link>
-                </li>
+        <div className="flex flex-col gap-3">
+            {groupNodesByType(items).map((group) => (
+                <div key={group.type} role="group" aria-label={group.label}>
+                    <h3 className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {group.label}
+                    </h3>
+                    <ul className="flex flex-col gap-1">
+                        {group.items.map((item) => {
+                            const Icon = resolveIconComponent(item.icon);
+                            const current = item.id === currentId;
+                            return (
+                                <li key={item.id}>
+                                    <Link
+                                        to={`/node/${item.id}`}
+                                        aria-current={current ? "page" : undefined}
+                                        className={clsx(
+                                            "flex min-h-8 items-center gap-2 rounded-[10px] border bg-card px-2 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                                            current ? "border-primary bg-accent ring-1 ring-primary" : "border-border",
+                                        )}
+                                    >
+                                        <span
+                                            className={nodeGlyphClass(resolveNodeColor(item.type, item.color))}
+                                            style={{ width: "1.5rem", height: "1.5rem", borderRadius: "0.375rem" }}
+                                            aria-hidden
+                                        >
+                                            <Icon className="size-3.5" strokeWidth={2} />
+                                        </span>
+                                        <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                                    </Link>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
             ))}
-        </ul>
+        </div>
     );
 }
 
