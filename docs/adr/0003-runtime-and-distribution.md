@@ -63,7 +63,7 @@ Not dagre, and not over the whole graph flattened.
 ### Distribution is a single Go binary with the SPA embedded
 
 `react-router build` produces a static client bundle, `go:embed`-ed into the binary.
-`npx ambit` is a thin shim that downloads and runs the platform-specific binary — it is not
+`npx @kojaco/ambit` is a thin shim that downloads and runs the platform-specific binary — it is not
 a Node runtime dependency, and no Node runtime is required on the user's machine.
 
 ## Alternatives Considered

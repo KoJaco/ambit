@@ -19,7 +19,11 @@ func TestHookInstallWritesThenRefuses(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(first)
-	if !strings.Contains(text, shellSingle(binPath)) || !strings.Contains(text, "check") || !strings.HasPrefix(text, "#!/bin/sh\n") {
+	if !strings.HasPrefix(text, "#!/bin/sh\n") ||
+		!strings.Contains(text, "command -v ambit") ||
+		!strings.Contains(text, "exec ambit check") ||
+		!strings.Contains(text, "exec npx --yes @kojaco/ambit check") ||
+		strings.Contains(text, binPath) || strings.Contains(text, filepath.Dir(binPath)) {
 		t.Fatalf("hook:\n%s", text)
 	}
 	info, err := os.Stat(path)
@@ -73,8 +77,4 @@ func runFail(t *testing.T, dir, bin string, args ...string) string {
 		t.Fatalf("expected failure, output:\n%s", out)
 	}
 	return string(out)
-}
-
-func shellSingle(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }

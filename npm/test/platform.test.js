@@ -32,3 +32,11 @@ test('cache dir resolution', () => {
   assert.strictEqual(cacheRoot('darwin', {}, '/h'), path.join('/h', 'Library', 'Caches', 'ambit'));
   assert.strictEqual(cacheRoot('win32', { LOCALAPPDATA: '/L' }, '/h'), path.join('/L', 'ambit'));
 });
+
+test('package.json publishes as @kojaco/ambit with an ambit bin', () => {
+  const pkg = require('../package.json');
+  assert.strictEqual(pkg.name, '@kojaco/ambit');
+  assert.strictEqual(pkg.publishConfig.access, 'public');
+  assert.ok(pkg.bin.ambit);
+  assert.ok(require('node:fs').existsSync(path.join(__dirname, '..', pkg.bin.ambit)));
+});

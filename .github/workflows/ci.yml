@@ -1,0 +1,111 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./... -race -count=1
+
+  lint:
+    # Informational only: the repo has pre-existing gofmt findings. See docs/runbooks/ci.md.
+    name: lint (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt -l
+        run: |
+          files="$(gofmt -l . || true)"
+          if [ -n "$files" ]; then
+            echo "gofmt would change these files (informational, not failing):"
+            echo "$files"
+          else
+            echo "gofmt clean"
+          fi
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npx vitest run
+
+  shim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test
+        working-directory: npm
+
+  build-smoke:
+    needs: [go, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: make build VERSION=ci
+      - run: scripts/ci-smoke.sh
+
+  release-dry-run:
+    # Cross-builds all 6 targets and pins checksums; nothing is published.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build-smoke, shim]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: ALLOW_DIRTY=1 scripts/release.sh 0.0.0-ci
+      - name: Check release artifacts
+        run: |
+          n="$(find bin/release -maxdepth 1 -type f -name 'ambit_0.0.0-ci_*' | wc -l)"
+          echo "binaries: $n"
+          test "$n" -eq 6
+          test -s bin/release/checksums.txt
+          test "$(wc -l < bin/release/checksums.txt)" -eq 6

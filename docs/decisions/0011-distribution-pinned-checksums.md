@@ -6,7 +6,7 @@ Accepted for stage 08 (2026-11-20), pending review. Defaults chosen unattended; 
 
 ## Context
 
-Stage 08 ships one Go binary that serves the SPA and the API, plus an `npx ambit` shim that
+Stage 08 ships one Go binary that serves the SPA and the API, plus an `npx @kojaco/ambit` shim that
 fetches it. `go:embed` cannot reach `frontend/build`, a missing embed directory breaks
 `go build`, and `cmd/ambit` tests build the binary, so a fresh clone must still compile and
 test without a frontend build. The shim runs downloaded code, so it must not trust the host
@@ -35,7 +35,14 @@ that serves the binary.
 5. **No CI release workflow.** Product CI is out of scope (decision 0004). `scripts/release.sh`
    (`make release VERSION=x.y.z`) builds and pins; a human uploads and publishes
    ([runbook](../runbooks/release.md)). The script refuses to finish if any checksum is missing.
-6. **npm name `ambit` is unchecked.** Fallback is a scoped name; see the runbook.
+6. **npm package name is `@kojaco/ambit`.** The unscoped `ambit` is owned by an unrelated
+   package (a date parser), so `npx ambit` would run the wrong code and we cannot publish
+   under it. The scoped package keeps `bin: {ambit}`, so the installed command is `ambit`.
+   Docs must never say `npx ambit`. The shim is zero-dependency CommonJS, so npm, pnpm, yarn
+   and bun runners all work; the repo itself stays on npm (one `package-lock.json`).
+7. **Git hook calls the CLI via PATH or npx.** `ambit hook install` writes a POSIX sh hook that
+   runs `ambit check` if `ambit` is on PATH, else `npx --yes @kojaco/ambit check`. It embeds no
+   absolute binary path, so it survives upgrades.
 
 ## Consequences
 
