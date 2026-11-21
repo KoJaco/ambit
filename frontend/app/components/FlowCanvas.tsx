@@ -39,12 +39,12 @@ import {
     outsideReparentTarget,
     defaultGroupName,
     groupableSelection,
-    groupButtonLabel,
     stageErrorMessage,
     stagedMessage,
     type Rect,
 } from "../canvas-structure";
-import { StructurePanel, type StructureRequest } from "./structure-panel";
+import type { StructureRequest } from "./structure-panel";
+import { barStore } from "../bottom-bar";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
 import {
@@ -69,6 +69,8 @@ import { ContainerNode, GroupFrame } from "./flow/group-node";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
+// Shift joins the default Meta/Control; Shift + drag on the pane still box-selects (selectionKeyCode).
+const multiSelectionKeys = ["Shift", "Meta", "Control"];
 const nodeTypes = {
     card: NodeCard,
     schema: SchemaNode,
@@ -303,7 +305,7 @@ export default function FlowCanvas({
     relationshipId?: string;
     tool: "grab" | "pointer";
     refreshKey?: number;
-    onSelectNode?: (id: string) => void;
+    onSelectNode?: (id: string | null) => void;
     onSelectEdge?: (edge: Relationship | null) => void;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
@@ -321,7 +323,6 @@ export default function FlowCanvas({
     const [notice, setNotice] = useState<{ kind: "info" | "staged" | "error"; text: string } | null>(null);
     const [request, setRequest] = useState<StructureRequest | null>(null);
     const [staging, setStaging] = useState(false);
-    const groupButtonRef = useRef<HTMLButtonElement | null>(null);
     const openerRef = useRef<HTMLElement | null>(null);
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
@@ -701,11 +702,36 @@ export default function FlowCanvas({
     };
 
     const groupIds = useMemo(() => (relationshipId ? [] : groupableSelection(nodes)), [nodes, relationshipId]);
-    const openGroupForm = useCallback(() => {
-        openerRef.current = groupButtonRef.current;
+    const openGroupForm = useCallback((opener: HTMLElement | null) => {
+        openerRef.current = opener;
         const names = (levelRef.current?.children ?? []).map((child) => child.name);
         setRequest({ kind: "group", ids: groupIds, suggestion: defaultGroupName(names) });
     }, [groupIds]);
+
+    const clearSelection = useCallback(() => {
+        setNodes((current) => current.map((node) => (node.selected ? { ...node, selected: false } : node)));
+    }, []);
+
+    // Cancel on the selection bar also closes an inspector left open on the last clicked node.
+    const clearSelectionAndInspector = useCallback(() => {
+        clearSelection();
+        onSelectNode?.(null);
+    }, [clearSelection, onSelectNode]);
+
+    // The bottom bar (ControlBar) swaps the toolbar for the group/ungroup form or the selection
+    // bar. This canvas owns the state and the staging; the bar only renders it.
+    useEffect(() => {
+        barStore.set({
+            request,
+            busy: staging,
+            selectedCount: groupIds.length,
+            onOpenGroup: openGroupForm,
+            onConfirm: (value) => void confirmRequest(value),
+            onCancel: closeRequest,
+            onClearSelection: clearSelectionAndInspector,
+        });
+    }, [request, staging, groupIds.length, openGroupForm, confirmRequest, closeRequest, clearSelectionAndInspector]);
+    useEffect(() => () => barStore.reset(), []);
 
     const hint = useMemo(() => {
         if (relationshipId) return null;
@@ -760,32 +786,11 @@ export default function FlowCanvas({
                     ) : null}
                 </div>
             ) : null}
-            {request || groupIds.length >= 2 ? (
-                <div className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2">
-                    {request ? (
-                        <StructurePanel
-                            request={request}
-                            busy={staging}
-                            onConfirm={(value) => void confirmRequest(value)}
-                            onCancel={closeRequest}
-                        />
-                    ) : (
-                        <button
-                            ref={groupButtonRef}
-                            type="button"
-                            aria-label={groupButtonLabel(groupIds.length)}
-                            onClick={openGroupForm}
-                            className="pointer-events-auto inline-flex h-7 items-center rounded-full border border-border bg-card px-3 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                            {groupButtonLabel(groupIds.length)}
-                        </button>
-                    )}
-                </div>
-            ) : null}
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                multiSelectionKeyCode={multiSelectionKeys}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
                 onNodeClick={onNodeClick}
