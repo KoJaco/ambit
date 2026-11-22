@@ -31,6 +31,10 @@ export function canvasEdgeType(kind?: string): CanvasEdgeType {
 // (translate 4px and 8px in NodeCard, so 8px right/bottom, plus a little breathing room).
 export const stackOffset = 12;
 
+// A stacked summary card also carries the full type-mix text (wraps, never truncated) and an
+// action row below the header, so it is taller than a plain card.
+export const stackedCardExtraHeight = 48;
+
 // A collapsed node with children is drawn as a stacked summary card.
 export function isStackedCard(renderer?: string, childCount = 0, expanded = false): boolean {
     return childCount > 0 && canvasNodeType(renderer, childCount, expanded) === "card";
@@ -44,7 +48,9 @@ export function nodeLayoutSize(
     stacked = false,
 ): { width: number; height: number } {
     const base = baseLayoutSize(renderer, schemaLength);
-    return stacked ? { width: base.width + stackOffset, height: base.height + stackOffset } : base;
+    return stacked
+        ? { width: base.width + stackOffset, height: base.height + stackOffset + stackedCardExtraHeight }
+        : base;
 }
 
 function baseLayoutSize(renderer?: string, schemaLength = 0): { width: number; height: number } {

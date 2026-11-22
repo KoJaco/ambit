@@ -39,12 +39,14 @@ import {
     outsideReparentTarget,
     defaultGroupName,
     groupableSelection,
-    groupButtonLabel,
     stageErrorMessage,
     stagedMessage,
     type Rect,
 } from "../canvas-structure";
-import { StructurePanel, type StructureRequest } from "./structure-panel";
+import type { StructureRequest } from "./structure-panel";
+import { barStore } from "../bottom-bar";
+import { history } from "../history";
+import { useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
 import {
@@ -69,6 +71,8 @@ import { ContainerNode, GroupFrame } from "./flow/group-node";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
+// Shift joins the default Meta/Control; Shift + drag on the pane still box-selects (selectionKeyCode).
+const multiSelectionKeys = ["Shift", "Meta", "Control"];
 const nodeTypes = {
     card: NodeCard,
     schema: SchemaNode,
@@ -175,9 +179,22 @@ function containerSizing(
 }
 
 // Left padding for fit-view so the sidebar overlay does not cover the first column.
-function fitPadding() {
-    const left = Math.round(Math.min(290, window.innerWidth * 0.3));
-    return { top: 0.2, right: 0.2, bottom: 0.2, left: `${left}px` as const };
+// Room kept clear for chrome that floats over the canvas: the sidebar on the left and, when a
+// right-rail sheet is open, the sheet (same width as the rail in right-rail-stack).
+export function fitInsets(viewportWidth: number, railOpen: boolean) {
+    const left = Math.round(Math.min(290, viewportWidth * 0.3));
+    const right = railOpen ? Math.round(Math.min(440, viewportWidth * 0.92)) + 24 : 0;
+    return { left, right };
+}
+
+function fitPadding(railOpen: boolean) {
+    const { left, right } = fitInsets(window.innerWidth, railOpen);
+    return {
+        top: 0.2,
+        bottom: 0.2,
+        left: `${left}px` as const,
+        right: right > 0 ? (`${right}px` as const) : 0.2,
+    };
 }
 
 function buildArchNodes(
@@ -303,7 +320,7 @@ export default function FlowCanvas({
     relationshipId?: string;
     tool: "grab" | "pointer";
     refreshKey?: number;
-    onSelectNode?: (id: string) => void;
+    onSelectNode?: (id: string | null) => void;
     onSelectEdge?: (edge: Relationship | null) => void;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
@@ -312,6 +329,8 @@ export default function FlowCanvas({
 }) {
     const navigate = useNavigate();
     const { zoomIn, zoomOut, fitView, screenToFlowPosition, getInternalNode } = useReactFlow();
+    const railOpenRef = useRef(false);
+    railOpenRef.current = useRailState().panels > 0;
     const [level, setLevel] = useState<Level | null>(null);
     const [relLevel, setRelLevel] = useState<RelationshipLevel | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -321,7 +340,6 @@ export default function FlowCanvas({
     const [notice, setNotice] = useState<{ kind: "info" | "staged" | "error"; text: string } | null>(null);
     const [request, setRequest] = useState<StructureRequest | null>(null);
     const [staging, setStaging] = useState(false);
-    const groupButtonRef = useRef<HTMLButtonElement | null>(null);
     const openerRef = useRef<HTMLElement | null>(null);
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
@@ -341,12 +359,12 @@ export default function FlowCanvas({
             zoomIn: () => void zoomIn(),
             zoomOut: () => void zoomOut(),
         });
-        onRequestRecenterRef?.(() => void fitView({ padding: fitPadding() }));
+        onRequestRecenterRef?.(() => void fitView({ padding: fitPadding(railOpenRef.current) }));
     }, [fitView, onRequestRecenterRef, onRequestZoomRef, zoomIn, zoomOut]);
 
     useEffect(() => {
         if (fitToken === 0) return;
-        void fitView({ padding: fitPadding() });
+        void fitView({ padding: fitPadding(railOpenRef.current) });
     }, [fitToken, fitView]);
 
     useEffect(() => {
@@ -690,22 +708,69 @@ export default function FlowCanvas({
         // Members are stored relative to their group, as React Flow holds them.
         const placed = new Map(nodesRef.current.map((item) => [item.id, item.position]));
         placed.set(node.id, node.position);
-        void putLayout(cacheKey, {
-            positions: ids.map((id) => {
-                const point = placed.get(id) ?? { x: 0, y: 0 };
+        const toPositions = (map: Map<string, Point>) =>
+            ids.map((id) => {
+                const point = map.get(id) ?? { x: 0, y: 0 };
                 return { id, x: point.x, y: point.y };
-            }),
+            });
+        const start = dragStart.current?.id === node.id ? dragStart.current.position : null;
+        if (start && (start.x !== node.position.x || start.y !== node.position.y)) {
+            const movedTo = node.position;
+            const key = cacheKey;
+            const sig = layoutSignature(activeLevel?.children ?? []);
+            const before = new Map(placed).set(node.id, start);
+            const move = async (to: Point) => {
+                await putLayout(key, { positions: toPositions(new Map(before).set(node.id, to)) });
+                saveLayoutSig(key, sig);
+                // Only touch the canvas when the level the move happened on is still the one shown.
+                if (cacheKeyRef.current === key) {
+                    setNodes((current) => current.map((item) => (item.id === node.id ? { ...item, position: to } : item)));
+                }
+            };
+            history.record({
+                label: `move ${node.data.name}`,
+                undo: () => move(start),
+                redo: () => move(movedTo),
+            });
+        }
+        void putLayout(cacheKey, {
+            positions: toPositions(placed),
         }).then(() => saveLayoutSig(cacheKey, layoutSignature(activeLevel?.children ?? []))).catch((err: unknown) => {
             setError(err instanceof Error ? err.message : "layout save failed");
         });
     };
 
     const groupIds = useMemo(() => (relationshipId ? [] : groupableSelection(nodes)), [nodes, relationshipId]);
-    const openGroupForm = useCallback(() => {
-        openerRef.current = groupButtonRef.current;
+    const openGroupForm = useCallback((opener: HTMLElement | null) => {
+        openerRef.current = opener;
         const names = (levelRef.current?.children ?? []).map((child) => child.name);
         setRequest({ kind: "group", ids: groupIds, suggestion: defaultGroupName(names) });
     }, [groupIds]);
+
+    const clearSelection = useCallback(() => {
+        setNodes((current) => current.map((node) => (node.selected ? { ...node, selected: false } : node)));
+    }, []);
+
+    // Cancel on the selection bar also closes an inspector left open on the last clicked node.
+    const clearSelectionAndInspector = useCallback(() => {
+        clearSelection();
+        onSelectNode?.(null);
+    }, [clearSelection, onSelectNode]);
+
+    // The bottom bar (ControlBar) swaps the toolbar for the group/ungroup form or the selection
+    // bar. This canvas owns the state and the staging; the bar only renders it.
+    useEffect(() => {
+        barStore.set({
+            request,
+            busy: staging,
+            selectedCount: groupIds.length,
+            onOpenGroup: openGroupForm,
+            onConfirm: (value) => void confirmRequest(value),
+            onCancel: closeRequest,
+            onClearSelection: clearSelectionAndInspector,
+        });
+    }, [request, staging, groupIds.length, openGroupForm, confirmRequest, closeRequest, clearSelectionAndInspector]);
+    useEffect(() => () => barStore.reset(), []);
 
     const hint = useMemo(() => {
         if (relationshipId) return null;
@@ -760,32 +825,11 @@ export default function FlowCanvas({
                     ) : null}
                 </div>
             ) : null}
-            {request || groupIds.length >= 2 ? (
-                <div className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2">
-                    {request ? (
-                        <StructurePanel
-                            request={request}
-                            busy={staging}
-                            onConfirm={(value) => void confirmRequest(value)}
-                            onCancel={closeRequest}
-                        />
-                    ) : (
-                        <button
-                            ref={groupButtonRef}
-                            type="button"
-                            aria-label={groupButtonLabel(groupIds.length)}
-                            onClick={openGroupForm}
-                            className="pointer-events-auto inline-flex h-7 items-center rounded-full border border-border bg-card px-3 text-[11px] font-medium text-foreground shadow-sm hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                        >
-                            {groupButtonLabel(groupIds.length)}
-                        </button>
-                    )}
-                </div>
-            ) : null}
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
+                multiSelectionKeyCode={multiSelectionKeys}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
                 onNodeClick={onNodeClick}

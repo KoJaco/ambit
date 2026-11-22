@@ -3,7 +3,7 @@ import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import { relationshipDrillId } from "../api";
 import { AggregatedPill } from "./flow/aggregated-members";
-import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, useEdgeGeometry } from "./flow/edge-shared";
+import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, edgeTitle, useEdgeGeometry } from "./flow/edge-shared";
 
 export function ArchEdge(props: EdgeProps) {
     const { id, markerEnd } = props;
@@ -54,12 +54,18 @@ export function ArchEdge(props: EdgeProps) {
                                 rel={rel}
                                 label={label}
                                 fromNodeId={edgeData?.fromNodeId}
+                                detail={edgeTitle(label, edgeData?.fromName, edgeData?.toName)}
                                 onOpenChange={setPopoverOpen}
                             />
                         ) : (
                             <span
-                                title={rel?.aggregated && rel.kinds?.length ? `Kinds: ${rel.kinds.join(", ")}` : undefined}
-                                className={`block max-w-[11rem] break-words text-center leading-normal ${edgePillClass} ${
+                                title={edgeTitle(
+                                    label,
+                                    edgeData?.fromName,
+                                    edgeData?.toName,
+                                    rel?.aggregated && rel.kinds?.length ? `Kinds: ${rel.kinds.join(", ")}` : undefined,
+                                )}
+                                className={`block text-center ${edgePillClass} ${
                                     drillable ? edgePillDrillableClass : ""
                                 }`}
                             >

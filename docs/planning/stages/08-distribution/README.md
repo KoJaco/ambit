@@ -25,7 +25,7 @@ missing MCP would be a broken release, so this stage waits until the subcommands
 - `react-router build` producing a static client bundle.
 - `go:embed` of that bundle into the `ambit` binary.
 - `ambit start` serving the bundle, with fallback to the entry document for client routes.
-- An `npx ambit` shim: platform detection, download, cache, checksum verification.
+- An `npx @kojaco/ambit` shim: platform detection, download, cache, checksum verification.
 - The checksum release gate.
 
 Distribution shape: [ADR-0003](../../../adr/0003-runtime-and-distribution.md).

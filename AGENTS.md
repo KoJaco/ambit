@@ -22,6 +22,7 @@ Run from the repo root.
 - build (UI embedded): `make build` | API-only: `make dev-build` | install to `~/.local/bin`: `make install`
 - test: `go test ./... -race` (or `make test`) | `cd frontend && npm run test` | `cd npm && node --test`
 - typecheck: `cd frontend && npm run typecheck`
+- CI: see `docs/runbooks/ci.md` (job list, local equivalents; lint is informational)
 - release (builds and pins checksums, never publishes): `make release VERSION=x.y.z` (see `docs/runbooks/release.md`)
 
 

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { CheckIcon } from "lucide-react";
 import { groupButtonLabel, resolveGroupName } from "../canvas-structure";
 
 export type StructureRequest =
@@ -8,7 +9,8 @@ export type StructureRequest =
 const buttonClass =
     "inline-flex h-7 min-w-6 items-center justify-center rounded-full px-3 text-[11px] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50";
 
-// Small inline form for group (asks for a name) and ungroup (asks about the container).
+// Group (asks for a name) and ungroup (asks about the container) form. It renders inside the
+// bottom bar, which replaces the toolbar while it is open, so it has no frame of its own.
 // Esc cancels, Enter confirms. Focus moves in on open; the caller restores it on close.
 export function StructurePanel({
     request,
@@ -45,7 +47,7 @@ export function StructurePanel({
         <form
             role="group"
             aria-label={title}
-            className="pointer-events-auto flex flex-wrap items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-[11px] text-foreground shadow-sm"
+            className="flex items-center gap-2 px-2 text-[11px] text-foreground"
             onSubmit={(event) => {
                 event.preventDefault();
                 confirm();
@@ -78,14 +80,20 @@ export function StructurePanel({
             ) : (
                 <>
                     <span className="font-medium">Move children out of {request.name}?</span>
-                    <label className="flex min-h-6 items-center gap-1.5">
+                    <label className="flex min-h-6 cursor-pointer items-center gap-1.5">
                         <input
                             type="checkbox"
                             checked={deleteContainer}
                             onChange={(event) => setDeleteContainer(event.target.checked)}
                             aria-label="Also delete the container"
-                            className="size-4 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                            className="peer sr-only"
                         />
+                        <span
+                            aria-hidden
+                            className="flex size-4 shrink-0 items-center justify-center rounded-[5px] border border-foreground/50 bg-card text-primary-foreground peer-checked:border-primary peer-checked:bg-primary peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary [&>svg]:opacity-0 peer-checked:[&>svg]:opacity-100"
+                        >
+                            <CheckIcon className="size-3" strokeWidth={3} />
+                        </span>
                         Also delete the container
                     </label>
                 </>
@@ -105,7 +113,7 @@ export function StructurePanel({
                 type="button"
                 onClick={onCancel}
                 aria-label="Cancel"
-                className={`${buttonClass} border border-border hover:bg-muted`}
+                className={`${buttonClass} border border-border hover:bg-accent`}
             >
                 Cancel
             </button>

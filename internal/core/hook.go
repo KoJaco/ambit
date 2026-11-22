@@ -8,15 +8,21 @@ import (
 	"strings"
 )
 
-// InstallHook writes a pre-commit hook that runs this ambit binary's check
-// command. An existing hook is left unchanged.
+// hookScript runs `ambit check` from PATH, falling back to npx. It embeds no
+// absolute path, so it survives upgrades and moves of the installing binary.
+const hookScript = `#!/bin/sh
+if command -v ambit >/dev/null 2>&1; then
+  exec ambit check
+else
+  exec npx --yes @kojaco/ambit check
+fi
+`
+
+// InstallHook writes a pre-commit hook that runs ` + "`ambit check`" + ` via PATH or
+// npx. An existing hook is left unchanged.
 func InstallHook(dir string) error {
 	if dir == "" {
 		dir = "."
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
 	}
 	hooks, err := gitPath(dir, "hooks")
 	if err != nil {
@@ -28,8 +34,7 @@ func InstallHook(dir string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	script := "#!/bin/sh\nexec " + shellQuote(exe) + " check\n"
-	return os.WriteFile(path, []byte(script), 0o755)
+	return os.WriteFile(path, []byte(hookScript), 0o755)
 }
 
 func gitPath(dir, name string) (string, error) {
@@ -51,8 +56,4 @@ func gitPath(dir, name string) (string, error) {
 		p = filepath.Join(dir, p)
 	}
 	return p, nil
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }

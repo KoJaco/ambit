@@ -1,10 +1,33 @@
 {
-  "name": "ambit",
+  "name": "@kojaco/ambit",
   "version": "0.0.0-dev",
   "description": "npx shim for the ambit CLI: downloads and checksum-verifies the release binary, then runs it.",
-  "bin": { "ambit": "bin/ambit.js" },
-  "files": ["bin", "lib", "checksums.json", "README.md"],
-  "engines": { "node": ">=18" },
+  "bin": {
+    "ambit": "bin/ambit.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "checksums.json",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "license": "UNLICENSED",
-  "scripts": { "test": "node --test" }
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KoJaco/ambit.git",
+    "directory": "npm"
+  },
+  "homepage": "https://github.com/KoJaco/ambit#readme",
+  "bugs": {
+    "url": "https://github.com/KoJaco/ambit/issues"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
 }

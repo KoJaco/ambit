@@ -35,9 +35,9 @@ publish. You can use ambit in your own apps **today** without publishing: `make 
 | Platforms | darwin, linux, windows x amd64, arm64 | cross-built, only linux/amd64 was run |
 | Release host | GitHub Releases `KoJaco/ambit`, tag `v<version>` | **you** upload |
 | Checksums | **Pinned inside the npm package** (`npm/checksums.json`), sha256, verified before chmod/rename/exec | a checksum file next to the binary on the same host would not protect against a compromised host. ADR 0011 |
-| npm package name | `ambit` | **unchecked for availability**; scoped fallback documented in `docs/runbooks/release.md` |
+| npm package name | `@kojaco/ambit` | **resolved:** unscoped `ambit` is taken (date parser); publishing as `@kojaco/ambit` (see decision 0011) |
 | License | none set | no `LICENSE` file exists; pick one before publishing |
-| CI | none | docs say product CI is out of scope; release is the local `make release VERSION=x.y.z` |
+| CI | `.github/workflows/ci.yml` (added after stage 08; see `docs/runbooks/ci.md`) | release is still the local `make release VERSION=x.y.z` |
 | Fonts | Self-hosted Inter (variable, no opsz axis, no italics) + JetBrains Mono | the embedded UI makes zero third-party requests; +311 KiB woff2, browser fetches latin only |
 | Package manager | npm (not pnpm) | `frontend/package-lock.json` is tracked; I removed the stray `pnpm-lock.yaml` |
 | AGENTS.md | Replaced only the stale Commands section and the first Architecture-map bullet | the rest is byte-identical; CLAUDE.md untouched |
@@ -67,9 +67,8 @@ publish. You can use ambit in your own apps **today** without publishing: `make 
 
 ## Findings you should know about
 
-1. **`ambit hook install` hardcodes the absolute path of the binary that ran it.** Installed via `npx`, that is the versioned
-   cache path, so the hook breaks after an upgrade (runbook says to reinstall). A hook that calls `ambit check` via PATH,
-   or `npx ambit check`, would be sturdier. Not changed.
+1. **RESOLVED: `ambit hook install` used to hardcode the absolute binary path.** The hook now runs `ambit check` via PATH,
+   falling back to `npx --yes @kojaco/ambit check`; no absolute path is embedded.
 2. **`ambit check` exits 0 on out-of-scope files** (it prints a report; non-zero only on errors), so the pre-commit hook does
    not block out-of-scope commits. This matches the docs ("not `--strict` by default") but is worth knowing.
 3. **Assignment UI was missing** (03.6 only had the backend; no component ever called `setAssignment`, and nothing exposed the
@@ -93,12 +92,12 @@ publish. You can use ambit in your own apps **today** without publishing: `make 
 
 ## Manual steps only you can do (when you want to publish)
 
-1. Check the npm name: `npm view ambit` (if taken, use a scoped name; see `docs/runbooks/release.md`). Add a `LICENSE`.
+1. npm name is resolved (`@kojaco/ambit`; you need publish rights on the `@kojaco` scope). Add a `LICENSE`.
 2. `make release VERSION=0.1.0` (refuses without all 6 checksums, runs the shim tests).
 3. Create the GitHub release `v0.1.0` on `KoJaco/ambit` and upload `bin/release/*`.
 4. `cd npm && npm pack --dry-run`, then `npm publish --access public`. (Commit or revert `npm/checksums.json` and
    `npm/package.json` afterwards; they are tracked placeholders.)
-5. Smoke test on a clean machine: `npx ambit version`, then `npx ambit init && npx ambit start`.
+5. Smoke test on a clean machine: `npx @kojaco/ambit version`, then `npx @kojaco/ambit init && npx @kojaco/ambit start`.
 
 ## Plugging into your own apps (checklist)
 
@@ -107,7 +106,7 @@ publish. You can use ambit in your own apps **today** without publishing: `make 
 - [ ] `ambit start`, build the model visually; group related nodes, set "Agent may edit" scopes, mark protected nodes
 - [ ] Add the MCP config (`.mcp.json` / `.cursor/mcp.json`, `ambit mcp`), restart the harness
 - [ ] Assign a node to the agent (inspector), have the agent call `get_context` / `check_scope` / `update_node_status`
-- [ ] `ambit hook install` (optional; see finding 1)
+- [ ] `ambit hook install` (optional)
 - [ ] 06.7: record what you had to change in the brief after a real session
 
 ## Assignment follow-up (verified in the browser)

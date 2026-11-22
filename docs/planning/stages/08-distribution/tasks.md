@@ -40,7 +40,7 @@ document, so a browser refresh on a drill-down URL renders the app. A missing AP
 **Touches:** a small Node package at a path this task chooses and records in the slice log.
 Keep it out of `frontend/`, which is the SPA.
 
-**Done when:** `npx ambit` detects the current platform, downloads the matching binary if
+**Done when:** `npx @kojaco/ambit` detects the current platform, downloads the matching binary if
 the cache does not have it, and execs that binary so `init`, `start`, `mcp`, `check`, and
 `hook install` are the same subcommands as the Go binary. The shim does not stay resident
 as a server. A cache hit does not download again.

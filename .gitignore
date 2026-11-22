@@ -8,7 +8,7 @@ frontend/build/
 frontend/.react-router/
 
 # Go
-bin/
+/bin/
 *.test
 coverage.out
 

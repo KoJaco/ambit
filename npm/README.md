@@ -1,4 +1,4 @@
-# ambit (npx shim)
+# @kojaco/ambit (npx shim)
 
 Thin launcher for the `ambit` CLI. It downloads the release binary for your
 platform, verifies it against checksums pinned inside this package, caches it,
@@ -6,11 +6,19 @@ and runs it with your arguments. It never stays resident.
 
 ## Usage
 
-    npx ambit init
-    npx ambit start
-    npx ambit mcp
-    npx ambit check
-    npx ambit hook install
+    npx @kojaco/ambit init
+    npx @kojaco/ambit start
+    npx @kojaco/ambit mcp
+    npx @kojaco/ambit check
+    npx @kojaco/ambit hook install
+
+Other runners work the same way: `pnpm dlx @kojaco/ambit <cmd>`,
+`yarn dlx @kojaco/ambit <cmd>`, `bunx @kojaco/ambit <cmd>`. The shim is a plain
+zero-dependency CommonJS package, so npm, pnpm, yarn and bun runners all work.
+After a global install (`npm i -g @kojaco/ambit`) the command is just `ambit`.
+
+The unscoped name `ambit` on npm belongs to another package (a date parser), so
+never run `npx ambit`.
 
 All arguments pass through untouched; the exit code is the binary's. Shim
 messages go to stderr only, so `ambit mcp` keeps stdout clean for JSON-RPC.
@@ -45,7 +53,6 @@ and re-downloaded if it no longer matches.
 
 - The repo copy of `checksums.json` is a placeholder (`0.0.0-dev`, no artifacts);
   the release script rewrites it and `package.json`'s version.
-- Availability of the npm name `ambit` has not been checked.
 - No license is set (`UNLICENSED` placeholder).
 
 ## Tests

@@ -126,3 +126,34 @@ describe("proposal rows", () => {
         expect(rows[0].stale).toBe(false);
     });
 });
+
+describe("review presentation", () => {
+    const move = (id: string, parent: string): OpDiff => ({
+        index: 0,
+        op: "update_node",
+        node_id: id,
+        status: "pending",
+        stale: false,
+        fields: ["parent_id"],
+        current: node({ id, name: id.toUpperCase(), parent_id: "walkflow-platform" }),
+        proposed: node({ id, name: id.toUpperCase(), parent_id: parent || undefined }),
+        relationship: null,
+        current_relationship: null,
+    });
+
+    it("uses names and humanised fields", () => {
+        const rows = proposalRows(diff([move("a", "")]));
+        expect(rows[0].verb).toBe("Update");
+        expect(rows[0].title).toBe("A");
+        expect(rows[0].change).toBe("Parent: walkflow-platform → root");
+    });
+
+    it("collapses three or more identical moves and leaves pairs alone", async () => {
+        const { groupRows } = await import("./proposal-rows");
+        const seven = proposalRows(diff(["a", "b", "c", "d", "e", "f", "g"].map((id) => move(id, ""))));
+        const items = groupRows(seven);
+        expect(items).toHaveLength(1);
+        expect(items[0]).toMatchObject({ kind: "group", group: { title: "Move 7 nodes to root" } });
+        expect(groupRows(seven.slice(0, 2)).every((item) => item.kind === "row")).toBe(true);
+    });
+});

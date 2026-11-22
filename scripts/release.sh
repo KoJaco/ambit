@@ -115,7 +115,7 @@ Release ${version} built in ${out}/. NOT published. Remaining steps are manual:
 
   1. Create the GitHub release and upload the artifacts:
        gh release create v${version} ${out}/* --repo KoJaco/ambit --title v${version}
-  2. Publish the shim (check the tarball first):
+  2. Publish the shim as @kojaco/ambit (check the tarball first):
        cd npm && npm pack --dry-run
        cd npm && npm publish --access public
 

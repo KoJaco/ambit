@@ -134,7 +134,7 @@ Icon registry and optional node colour (architect-first). See
 
 [Stage README](stages/08-distribution/README.md).
 
-`go:embed` of the static SPA, and the `npx ambit` shim.
+`go:embed` of the static SPA, and the `npx @kojaco/ambit` shim.
 
 **Gate:** checksum verification on download. Do not ship the shim without it.
 

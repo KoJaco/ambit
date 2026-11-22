@@ -94,7 +94,7 @@ too-deep ids, and empty expand.
 `components/flow/group-node.tsx`, new pure `level-view.ts`.
 
 **Done when:** compound ELK layout; expanded groups render as containers with a collapse
-toggle and Open link; collapsed nodes render as summary cards; aggregated edges list their
+toggle (Open only on summary cards, per the 2026-11-21 amendment to ADR 0010); collapsed nodes render as summary cards; aggregated edges list their
 members; view mode persists in the layout cache with the expanded-set hash in the key;
 over-budget hint shows and nothing auto-collapses after an architect choice; dragging out of a
 group opens a reparent proposal.

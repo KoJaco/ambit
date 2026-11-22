@@ -32,10 +32,12 @@ drawn on its parent's level in one of two **view modes**:
 
 | Mode | Rendering | Interaction |
 | --- | --- | --- |
-| **group** (expanded) | A labelled frame with its children laid out inside it, on the same canvas | Collapse toggle in the header; "Open" drills to `/node/:id` |
-| **summary** (collapsed) | A single card showing a child count and a short type mix (e.g. `6 · 3 service, 2 store`) | Double-click drills; expand toggle |
+| **group** (expanded) | A labelled frame with its children laid out inside it, on the same canvas | Collapse toggle in the header only. No Open link, no drill on double-click |
+| **summary** (collapsed) | A single card showing a child count and a short type mix (e.g. `6 · 3 service, 2 store`) | Open link and double-click drill to `/node/:id`; expand toggle |
 
 A leaf node renders exactly as it does today.
+
+> Amendment 2026-11-21: group-mode drilling was removed because it repeated the same picture. Open exists only on summary cards; collapse a group first.
 
 The view mode is **view state, not model state**. It lives in the gitignored layout cache
 (`.arch/.cache/`) next to positions, keyed per level. Enforcement, MCP and `ambit check`

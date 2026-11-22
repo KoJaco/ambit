@@ -4,6 +4,7 @@ import FlowCanvas from "../components/FlowCanvas";
 import NodeInspector from "../components/node-inspector";
 import { ControlBar } from "../components/ControlBar";
 import type { ControlBarTool } from "../components/types";
+import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
 import { ReactFlowProvider } from "@xyflow/react";
@@ -17,6 +18,8 @@ import { RightRailStack, type RightRailFront } from "../components/right-rail-st
 import { EdgeActions } from "../components/edge-actions";
 import type { Relationship } from "../api";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
+import { floatingToggleMode, useRailState } from "../right-rail-state";
+import { history, isOutsideChange, useHistory } from "../history";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
 export function meta({}: Route.MetaArgs) {
@@ -35,16 +38,42 @@ export default function Home() {
     const [refreshKey, setRefreshKey] = useState(0);
     const [proposalRefreshKey, setProposalRefreshKey] = useState(0);
     const [selectedEdge, setSelectedEdge] = useState<Relationship | null>(null);
+    const toggleMode = floatingToggleMode(useRailState());
     useEffect(
         () =>
             subscribeEvents({
-                onModelChanged: () => setRefreshKey((value) => value + 1),
+                onModelChanged: () => {
+                    // A change we did not make invalidates every recorded undo step.
+                    if (isOutsideChange()) history.clear();
+                    setRefreshKey((value) => value + 1);
+                },
                 onIntegrityChanged: () => setRefreshKey((value) => value + 1),
                 onProposalsChanged: () => setProposalRefreshKey((value) => value + 1),
             }),
         [],
     );
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const historyView = useHistory();
+    const [historyEpoch, setHistoryEpoch] = useState(0);
+    const [historyNote, setHistoryNote] = useState<string | null>(null);
+    useEffect(() => {
+        if (!historyNote) return;
+        const timer = window.setTimeout(() => setHistoryNote(null), 3000);
+        return () => window.clearTimeout(timer);
+    }, [historyNote]);
+    async function stepHistory(dir: "undo" | "redo") {
+        try {
+            const label = await history[dir]();
+            if (!label) return;
+            setHistoryNote(`${dir === "undo" ? "Undid" : "Redid"}: ${label}`);
+        } catch (err) {
+            history.clear();
+            setHistoryNote(`Could not ${dir}: ${err instanceof Error ? err.message : "request failed"}. History cleared.`);
+        }
+        // Reload what the steps touched; the inspector remounts so it shows the restored values.
+        setHistoryEpoch((value) => value + 1);
+        setRefreshKey((value) => value + 1);
+    }
     const [frontPanel, setFrontPanel] = useState<RightRailFront>("review");
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
@@ -71,6 +100,7 @@ export default function Home() {
                         tool={tool === "grab" ? "grab" : "pointer"}
                         onSelectNode={(id) => {
                             setSelectedId(id);
+                            if (id === null) return;
                             setSelectedEdge(null);
                             setFrontPanel("inspector");
                         }}
@@ -100,9 +130,11 @@ export default function Home() {
                                 refreshKey={refreshKey}
                             />
                         </div>
-                        <div className="pointer-events-auto">
-                            <ModeToggle />
-                        </div>
+                        {toggleMode === "hidden" ? null : (
+                            <div className={clsx("pointer-events-auto", toggleMode === "shifted" && "mr-[min(440px,92vw)]")}>
+                                <ModeToggle />
+                            </div>
+                        )}
                     </header>
                     <div className="relative min-h-0 flex-1">
                         <Sidebar
@@ -111,46 +143,6 @@ export default function Home() {
                             refreshKey={refreshKey}
                             onMutated={() => setRefreshKey((value) => value + 1)}
                         />
-                        <RightRailStack
-                            front={frontPanel}
-                            onFocusInspector={() => setFrontPanel("inspector")}
-                            onFocusReview={() => setFrontPanel("review")}
-                            inspector={
-                                selectedEdge ? (
-                                    <EdgeActions
-                                        edge={selectedEdge}
-                                        onClose={() => setSelectedEdge(null)}
-                                        onMutated={() => setRefreshKey((value) => value + 1)}
-                                        onDeleted={() => {
-                                            const deleted = selectedEdge;
-                                            setSelectedEdge(null);
-                                            if (relationshipId && deleted?.id === relationshipId) {
-                                                const fromNodeId = (location.state as { fromNodeId?: string } | null)
-                                                    ?.fromNodeId;
-                                                const target = returnNodeIdAfterDelete(deleted, fromNodeId);
-                                                if (target) navigate(`/node/${target}`);
-                                                else navigate("/");
-                                            }
-                                        }}
-                                        onFocus={() => setFrontPanel("inspector")}
-                                    />
-                                ) : selectedId ? (
-                                    <NodeInspector
-                                        nodeId={selectedId}
-                                        refreshKey={refreshKey}
-                                        onClose={() => setSelectedId(null)}
-                                        onSaved={() => setRefreshKey((value) => value + 1)}
-                                        onFocus={() => setFrontPanel("inspector")}
-                                    />
-                                ) : null
-                            }
-                            review={
-                                <ProposalReview
-                                    refreshKey={refreshKey + proposalRefreshKey}
-                                    onFocus={() => setFrontPanel("review")}
-                                />
-                            }
-                        />
                     </div>
                     <ControlBar
                         selectedTool={tool}
@@ -158,8 +150,64 @@ export default function Home() {
                         onRecenter={() => recenterRef.current?.()}
                         onZoomIn={() => zoomRef.current?.zoomIn()}
                         onZoomOut={() => zoomRef.current?.zoomOut()}
+                        onUndo={historyView.canUndo && !historyView.busy ? () => void stepHistory("undo") : undefined}
+                        onRedo={historyView.canRedo && !historyView.busy ? () => void stepHistory("redo") : undefined}
+                        undoLabel={historyView.undoLabel}
+                        redoLabel={historyView.redoLabel}
                     />
                 </div>
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2"
+                >
+                    {historyNote ? (
+                        <p className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground shadow-md">
+                            {historyNote}
+                        </p>
+                    ) : null}
+                </div>
+                <RightRailStack
+                    front={frontPanel}
+                    onFocusInspector={() => setFrontPanel("inspector")}
+                    onFocusReview={() => setFrontPanel("review")}
+                    inspector={
+                        selectedEdge ? (
+                            <EdgeActions
+                                edge={selectedEdge}
+                                onClose={() => setSelectedEdge(null)}
+                                onMutated={() => setRefreshKey((value) => value + 1)}
+                                onDeleted={() => {
+                                    const deleted = selectedEdge;
+                                    setSelectedEdge(null);
+                                    if (relationshipId && deleted?.id === relationshipId) {
+                                        const fromNodeId = (location.state as { fromNodeId?: string } | null)
+                                            ?.fromNodeId;
+                                        const target = returnNodeIdAfterDelete(deleted, fromNodeId);
+                                        if (target) navigate(`/node/${target}`);
+                                        else navigate("/");
+                                    }
+                                }}
+                                onFocus={() => setFrontPanel("inspector")}
+                            />
+                        ) : selectedId ? (
+                            <NodeInspector
+                                key={`${selectedId}:${historyEpoch}`}
+                                nodeId={selectedId}
+                                refreshKey={refreshKey}
+                                onClose={() => setSelectedId(null)}
+                                onSaved={() => setRefreshKey((value) => value + 1)}
+                                onFocus={() => setFrontPanel("inspector")}
+                            />
+                        ) : null
+                    }
+                    review={
+                        <ProposalReview
+                            refreshKey={refreshKey + proposalRefreshKey}
+                            onFocus={() => setFrontPanel("review")}
+                        />
+                    }
+                />
             </UIProvider>
         </div>
     );

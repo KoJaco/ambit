@@ -13,4 +13,4 @@ Completed implementation passes land here. One section per pass. Status stays in
 - Release tooling: `scripts/release.sh` / `make release VERSION=x.y.z`; manual upload and publish.
 - Decisions: [0011](../../../decisions/0011-distribution-pinned-checksums.md). Runbooks:
   [release](../../../runbooks/release.md), [using ambit in your app](../../../runbooks/using-ambit-in-your-app.md).
-- Not done: publishing, npm name check, running binaries on macOS/Windows.
+- Not done: publishing, running binaries on macOS/Windows.  (npm name since resolved: @kojaco/ambit.)
