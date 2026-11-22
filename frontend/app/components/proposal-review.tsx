@@ -1,7 +1,6 @@
-import { Fragment, useEffect, useState } from "react";
-import { Tooltip } from "./tooltip";
+import { useEffect, useState, type ReactNode } from "react";
 import clsx from "clsx";
-import { ChevronLeft, ListChecks, XCircle } from "lucide-react";
+import { ChevronDown, ChevronLeft, ListChecks, XCircle } from "lucide-react";
 import {
     acceptAll,
     acceptOperation,
@@ -16,7 +15,9 @@ import {
     type ProposalSummary,
 } from "../api";
 import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks } from "../proposal-detail";
-import { proposalRows } from "../proposal-rows";
+import { history } from "../history";
+import { acceptedEntry } from "../proposal-history";
+import { groupRows, proposalOrigin, proposalRows, type ReviewRow, type RowGroup, type RowVerb } from "../proposal-rows";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { ReviewOpActions } from "./review-op-actions";
 
@@ -77,6 +78,86 @@ export function ProposalReview({
         }
     }
 
+    // Accepting is what changes the model, so it is what undo has to reverse. An accept that
+    // cannot be reversed exactly clears history rather than leave steps that no longer fit.
+    function recordAcceptance(summary: string | undefined, ops: OpDiff[], applied: number[]) {
+        const done = ops.filter((op) => applied.includes(op.index));
+        if (done.length === 0) return;
+        const entry = acceptedEntry(summary || "accepted proposal", done);
+        if (entry) history.record(entry);
+        else history.clear();
+    }
+
+    async function acceptRows(proposal: ProposalSummary, diff: ProposalDiff | undefined, rows: ReviewRow[], label: string) {
+        await run(async () => {
+            const done: number[] = [];
+            for (const row of rows) {
+                if (row.status !== "pending" || !row.canAccept) continue;
+                await acceptOperation(proposal.proposal_id, row.index, row.needsConfirm);
+                done.push(row.index);
+            }
+            recordAcceptance(label, diff?.operations ?? [], done);
+            await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
+        });
+    }
+
+    async function rejectRows(proposalId: string, rows: ReviewRow[]) {
+        await run(async () => {
+            for (const row of rows) {
+                if (row.status === "pending") await rejectOperation(proposalId, row.index);
+            }
+            await reloadOne(proposalId, setSummaries, setDiffs);
+        });
+    }
+
+    function renderRow(proposalId: string, diff: ProposalDiff | undefined, row: ReviewRow): ReactNode {
+        const proposal = summaries.find((item) => item.proposal_id === proposalId);
+        return (
+            <li
+                key={row.key}
+                className={clsx(
+                    "group relative rounded-xl border bg-card transition-colors hover:bg-accent/50 focus-within:bg-accent/50",
+                    row.stale ? "border-amber-600/60 bg-amber-500/10" : "border-border",
+                )}
+            >
+                <button
+                    type="button"
+                    className="flex w-full cursor-pointer items-start gap-2.5 rounded-xl px-2.5 py-2 pr-[4.5rem] text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                    onClick={() => {
+                        onFocus?.();
+                        setDetail({ proposalId, index: row.index });
+                    }}
+                >
+                    <VerbChip verb={row.verb} done={row.status !== "pending"} />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-sm font-medium">
+                            {row.title}
+                            {row.stale ? (
+                                <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                                    Stale
+                                </span>
+                            ) : null}
+                            {row.status !== "pending" ? (
+                                <span className="ml-2 text-xs font-normal text-muted-foreground">{row.status}</span>
+                            ) : null}
+                        </span>
+                        {row.change ? <span className="truncate text-xs text-muted-foreground">{row.change}</span> : null}
+                    </span>
+                </button>
+                {row.status === "pending" ? (
+                    <ReviewOpActions
+                        className="absolute top-1.5 right-1.5 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                        canAccept={row.canAccept}
+                        needsConfirm={row.needsConfirm}
+                        busy={busy}
+                        onAccept={() => void acceptRows(proposal ?? emptySummary(proposalId), diff, [row], row.title)}
+                        onReject={() => void rejectRows(proposalId, [row])}
+                    />
+                ) : null}
+            </li>
+        );
+    }
+
     if (summaries.length === 0 && !error) return null;
 
     const detailOp = detail ? findOp(diffs, detail) : null;
@@ -115,6 +196,7 @@ export function ProposalReview({
                             onAccept={() =>
                                 void run(async () => {
                                     await acceptOperation(detail.proposalId, detail.index, detailNeedsConfirm(detailOp));
+                                    recordAcceptance(diffs[detail.proposalId]?.summary, [detailOp], [detail.index]);
                                     setDetail(null);
                                     await reloadOne(detail.proposalId, setSummaries, setDiffs);
                                 })
@@ -131,42 +213,64 @@ export function ProposalReview({
                 </div>
             ) : (
                 <>
-                    <div className="flex items-center justify-between" onPointerDown={() => onFocus?.()}>
-                        <h2 className="font-semibold">Review</h2>
-                        <span className="flex items-center gap-2">
-                            <span className="text-xs text-foreground/60">{summaries.length}</span>
-                            <PanelHeaderActions />
-                        </span>
+                    <div className="flex shrink-0 items-center justify-between" onPointerDown={() => onFocus?.()}>
+                        <h2 className="flex items-center gap-2 font-semibold">
+                            Review
+                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                {summaries.length} {summaries.length === 1 ? "proposal" : "proposals"}
+                            </span>
+                        </h2>
+                        <PanelHeaderActions />
                     </div>
-                    {error ? <p className="text-red-600">{error}</p> : null}
-                    <div className="flex min-h-0 flex-col gap-3">
-                        {summaries.map((proposal, index) => (
-                            <Fragment key={proposal.proposal_id}>
-                                {index > 0 ? <hr className="my-2 border-foreground/15" /> : null}
-                                <section className="flex flex-col gap-2">
-                                    <header className="flex flex-wrap items-baseline justify-between gap-2">
-                                        <div className="min-w-0 flex-1">
-                                            <p className="font-medium">
+                    {error ? <p className="shrink-0 text-destructive">{error}</p> : null}
+                    <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-1">
+                        {summaries.map((proposal) => {
+                            const diff = diffs[proposal.proposal_id];
+                            const rows = proposalRows(diff ?? emptyDiff(proposal));
+                            const pending = rows.filter((row) => row.status === "pending").length;
+                            const origin = proposalOrigin(proposal.source);
+                            return (
+                                <section
+                                    key={proposal.proposal_id}
+                                    aria-label={proposal.summary || proposal.proposal_id}
+                                    className="rounded-2xl border border-border bg-background/40"
+                                >
+                                    <header className="sticky top-0 z-10 flex flex-col gap-2.5 rounded-t-2xl border-b border-border bg-card/95 p-3 backdrop-blur">
+                                        <div className="flex flex-col gap-1">
+                                            <p className="text-sm leading-snug font-semibold">
                                                 {proposal.unreadable
                                                     ? `Unreadable ${proposal.proposal_id}`
                                                     : proposal.summary || `${proposal.source} ${proposal.proposal_id}`}
                                             </p>
                                             {proposal.error ? (
-                                                <p className="text-xs text-red-600">{proposal.error}</p>
-                                            ) : null}
+                                                <p className="text-xs text-destructive">{proposal.error}</p>
+                                            ) : (
+                                                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                                    <span
+                                                        className={clsx(
+                                                            "rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                                                            origin === "You" ? "bg-muted" : "bg-primary/10 text-primary",
+                                                        )}
+                                                    >
+                                                        {origin}
+                                                    </span>
+                                                    <span>
+                                                        {rows.length} {rows.length === 1 ? "change" : "changes"}
+                                                        {pending !== rows.length ? `, ${pending} pending` : ""}
+                                                    </span>
+                                                </p>
+                                            )}
                                         </div>
                                         {proposal.unreadable ? (
                                             <button
                                                 type="button"
-                                                className="rounded-md border border-foreground/20 px-2 py-1 text-xs"
+                                                className={outlineButton}
                                                 disabled={busy}
                                                 onClick={() =>
                                                     void run(async () => {
                                                         await deleteProposal(proposal.proposal_id);
                                                         setSummaries((current) =>
-                                                            current.filter(
-                                                                (item) => item.proposal_id !== proposal.proposal_id,
-                                                            ),
+                                                            current.filter((item) => item.proposal_id !== proposal.proposal_id),
                                                         );
                                                     })
                                                 }
@@ -174,33 +278,31 @@ export function ProposalReview({
                                                 Delete
                                             </button>
                                         ) : (
-                                            <div className="flex gap-1">
-                                                <Tooltip label="Accept all">
+                                            <div className="flex gap-2">
                                                 <button
                                                     type="button"
-                                                    className="inline-flex size-7 items-center justify-center rounded-md text-emerald-600 hover:bg-foreground/10"
-                                                    disabled={busy}
-                                                    aria-label="Accept all"
+                                                    className={primaryButton}
+                                                    disabled={busy || pending === 0}
                                                     onClick={() =>
                                                         void run(async () => {
+                                                            const ops = diff?.operations.filter((op) => op.status === "pending") ?? [];
                                                             const result = await acceptAll(proposal.proposal_id);
                                                             setSkipped((current) => ({
                                                                 ...current,
                                                                 [proposal.proposal_id]: result.skipped,
                                                             }));
+                                                            recordAcceptance(proposal.summary, ops, result.applied);
                                                             await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
                                                         })
                                                     }
                                                 >
                                                     <ListChecks className="size-4" aria-hidden />
+                                                    Accept all
                                                 </button>
-                                                </Tooltip>
-                                                <Tooltip label="Reject all">
                                                 <button
                                                     type="button"
-                                                    className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10"
-                                                    disabled={busy}
-                                                    aria-label="Reject all"
+                                                    className={outlineButton}
+                                                    disabled={busy || pending === 0}
                                                     onClick={() =>
                                                         void run(async () => {
                                                             await rejectAll(proposal.proposal_id);
@@ -209,110 +311,126 @@ export function ProposalReview({
                                                     }
                                                 >
                                                     <XCircle className="size-4" aria-hidden />
+                                                    Reject all
                                                 </button>
-                                                </Tooltip>
                                             </div>
                                         )}
                                     </header>
                                     {skipped[proposal.proposal_id]?.length ? (
-                                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                                        <p className="px-3 pt-2 text-xs text-amber-700 dark:text-amber-400">
                                             Skipped{" "}
-                                            {skipped[proposal.proposal_id]
-                                                .map((op) => `${op.node_id} (${op.reason})`)
-                                                .join(", ")}
+                                            {skipped[proposal.proposal_id].map((op) => `${op.node_id} (${op.reason})`).join(", ")}
                                         </p>
                                     ) : null}
-                                    <ul className="flex flex-col gap-1">
-                                        {proposalRows(diffs[proposal.proposal_id] ?? emptyDiff(proposal)).map(
-                                            (row) => (
-                                                <li
-                                                    key={row.key}
-                                                    className={clsx(
-                                                        "relative rounded-md border px-2 py-1 pr-16 transition-colors",
-                                                        row.stale
-                                                            ? "border-amber-600/70 bg-amber-500/10"
-                                                            : "border-foreground/15",
-                                                    )}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        className="w-full cursor-pointer text-left hover:opacity-90"
-                                                        onClick={() => {
-                                                            onFocus?.();
-                                                            setDetail({
-                                                                proposalId: proposal.proposal_id,
-                                                                index: row.index,
-                                                            });
-                                                        }}
-                                                    >
-                                                        <p>
-                                                            {row.summary}
-                                                            {row.stale ? (
-                                                                <span
-                                                                    className="ml-2 text-xs uppercase tracking-wide text-amber-700 dark:text-amber-400"
-                                                                >
-                                                                    Stale
-                                                                </span>
-                                                            ) : null}
-                                                            {row.status !== "pending" ? (
-                                                                <span className="ml-2 text-xs text-foreground/60">
-                                                                    {row.status}
-                                                                </span>
-                                                            ) : null}
-                                                        </p>
-                                                        {row.detail ? (
-                                                            <p className="truncate text-xs text-foreground/70">
-                                                                {row.detail}
-                                                            </p>
-                                                        ) : null}
-                                                    </button>
-                                                    {row.status === "pending" ? (
-                                                        <ReviewOpActions
-                                                            className="absolute top-1 right-1"
-                                                            canAccept={row.canAccept}
-                                                            needsConfirm={row.needsConfirm}
-                                                            busy={busy}
-                                                            onAccept={() =>
-                                                                void run(async () => {
-                                                                    await acceptOperation(
-                                                                        proposal.proposal_id,
-                                                                        row.index,
-                                                                        row.needsConfirm,
-                                                                    );
-                                                                    await reloadOne(
-                                                                        proposal.proposal_id,
-                                                                        setSummaries,
-                                                                        setDiffs,
-                                                                    );
-                                                                })
-                                                            }
-                                                            onReject={() =>
-                                                                void run(async () => {
-                                                                    await rejectOperation(
-                                                                        proposal.proposal_id,
-                                                                        row.index,
-                                                                    );
-                                                                    await reloadOne(
-                                                                        proposal.proposal_id,
-                                                                        setSummaries,
-                                                                        setDiffs,
-                                                                    );
-                                                                })
-                                                            }
-                                                        />
-                                                    ) : null}
-                                                </li>
+                                    <ul className="flex flex-col gap-1.5 p-2">
+                                        {groupRows(rows).map((item) =>
+                                            item.kind === "group" ? (
+                                                <GroupItem
+                                                    key={item.group.key}
+                                                    group={item.group}
+                                                    busy={busy}
+                                                    renderRow={(row) => renderRow(proposal.proposal_id, diff, row)}
+                                                    onAccept={() => acceptRows(proposal, diff, item.group.rows, item.group.title)}
+                                                    onReject={() => rejectRows(proposal.proposal_id, item.group.rows)}
+                                                />
+                                            ) : (
+                                                renderRow(proposal.proposal_id, diff, item.row)
                                             ),
                                         )}
                                     </ul>
                                 </section>
-                            </Fragment>
-                        ))}
+                            );
+                        })}
                     </div>
                 </>
             )}
         </RightRailPanel>
     );
+}
+
+const buttonBase =
+    "inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50";
+const primaryButton = clsx(buttonBase, "bg-primary text-primary-foreground hover:opacity-90");
+const outlineButton = clsx(buttonBase, "border border-border bg-card hover:bg-accent");
+
+const VERB_STYLE: Record<RowVerb, string> = {
+    Create: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300",
+    Update: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
+    Delete: "bg-red-500/15 text-red-800 dark:text-red-300",
+    Connect: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+    Other: "bg-muted text-muted-foreground",
+};
+
+function VerbChip({ verb, done }: { verb: RowVerb; done?: boolean }) {
+    return (
+        <span
+            className={clsx(
+                "mt-0.5 inline-flex w-[3.75rem] shrink-0 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                VERB_STYLE[verb],
+                done && "opacity-50",
+            )}
+        >
+            {verb}
+        </span>
+    );
+}
+
+// A run of identical edits (e.g. seven nodes moved to the root) as one expandable row.
+function GroupItem({
+    group,
+    busy,
+    renderRow,
+    onAccept,
+    onReject,
+}: {
+    group: RowGroup;
+    busy: boolean;
+    renderRow: (row: ReviewRow) => ReactNode;
+    onAccept: () => void;
+    onReject: () => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const pending = group.rows.filter((row) => row.status === "pending" && row.canAccept).length;
+    const id = `group-${group.key.replace(/[^a-z0-9]/gi, "-")}`;
+    return (
+        <li className="rounded-xl border border-border bg-card">
+            <div className="group relative">
+                <button
+                    type="button"
+                    aria-expanded={open}
+                    aria-controls={id}
+                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 pr-[4.5rem] text-left hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                    onClick={() => setOpen((value) => !value)}
+                >
+                    <VerbChip verb={group.verb} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{group.title}</span>
+                    <ChevronDown
+                        className={clsx("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-180")}
+                        aria-hidden
+                    />
+                </button>
+                {pending > 0 ? (
+                    <ReviewOpActions
+                        className="absolute top-1.5 right-1.5"
+                        canAccept
+                        needsConfirm={false}
+                        busy={busy}
+                        onAccept={onAccept}
+                        onReject={onReject}
+                    />
+                ) : null}
+            </div>
+            {open ? (
+                <ul id={id} className="flex flex-col gap-1.5 border-t border-border p-2">
+                    {group.rows.map(renderRow)}
+                </ul>
+            ) : null}
+        </li>
+    );
+}
+
+function emptySummary(id: string): ProposalSummary {
+    return { proposal_id: id, unreadable: false };
 }
 
 function DetailBlockView({ block }: { block: ReturnType<typeof proposalDetailBlocks>[number] }) {

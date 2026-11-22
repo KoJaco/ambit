@@ -1,9 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
-import { Plus } from "lucide-react";
-import { createNode as postNode, getLevel, getRelationshipLevel, type SchemaColumn, type Summary } from "../api";
-import { AppearanceEditor, AppearancePill } from "./appearance-editor";
+import { PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { history } from "../history";
+import { createNode as postNode, deleteNode, getLevel, getRelationshipLevel, type SchemaColumn, type Summary } from "../api";
+import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
+import { CollapsibleSection } from "./collapsible-section";
 import { Collapsible } from "./collapsible";
 import { groupNodesByType } from "../node-groups";
 import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-presentation";
@@ -127,7 +129,14 @@ export function Sidebar({
             body.schema = presentation.schema.filter((row) => row.title.trim() !== "" && row.type.trim() !== "");
         }
         try {
-            await postNode(body);
+            let created = await postNode(body);
+            history.record({
+                label: `create ${created.name}`,
+                undo: () => deleteNode(created.id),
+                redo: async () => {
+                    created = await postNode(body);
+                },
+            });
         } catch (err) {
             setError(err instanceof Error ? err.message : "create failed");
             return;
@@ -141,8 +150,8 @@ export function Sidebar({
     return (
         <aside
             className={clsx(
-                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-md",
-                collapsed ? "w-10" : "max-h-full min-h-[25vh] w-64"
+                "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden border border-border bg-card shadow-md",
+                collapsed ? "size-10 rounded-full" : "relative max-h-full min-h-[25vh] w-64 rounded-xl"
             )}
         >
             <Tooltip label={collapsed ? "Expand sidebar" : "Collapse sidebar"} prefer="bottom">
@@ -150,16 +159,19 @@ export function Sidebar({
                     type="button"
                     aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                     aria-expanded={!collapsed}
-                    className="ml-2 my-2 w-fit rounded-full border border-border bg-primary/10 text-primary px-2 py-1 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={clsx(
+                        "inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+                        collapsed ? "m-auto" : "absolute top-2 right-2 z-10"
+                    )}
                     onClick={() => setCollapsed((value) => !value)}
                 >
-                    <span aria-hidden>{collapsed ? ">" : "<"}</span>
+                    {collapsed ? <PanelLeftOpen className="size-4" aria-hidden /> : <PanelLeftClose className="size-4" aria-hidden />}
                 </button>
             </Tooltip>
             {collapsed ? null : (
-                <div className={clsx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pb-4 text-sm", styles.sidebarScroll)}>
+                <div className={clsx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-3 pb-4 text-sm", styles.sidebarScroll)}>
                     <section>
-                        <h2 className="mb-1 text-xs uppercase tracking-wide text-foreground/60">Roots</h2>
+                        <h2 className="mb-1 pr-8 text-xs uppercase tracking-wide text-foreground/60">Roots</h2>
                         <NodeLinks items={roots} currentId={nodeId} />
                     </section>
                     {nodeId || relationshipId ? (
@@ -185,63 +197,57 @@ export function Sidebar({
                             onKeyDown={(event) => {
                                 if (event.key !== "Escape") return;
                                 event.stopPropagation();
-                                if (appearanceOpen) setAppearanceOpen(false);
-                                else closeCreator();
+                                closeCreator();
                             }}
                         >
-                            {appearanceOpen ? (
-                                <div className="max-h-[50vh] overflow-y-auto">
-                                    <AppearanceEditor
-                                        type={type}
-                                        value={presentation}
-                                        onChange={(next) => setPresentation((prev) => ({ ...prev, ...next }))}
-                                        schema={presentation.schema}
-                                        onChangeSchema={(rows) => setPresentation((prev) => ({ ...prev, schema: rows }))}
-                                        onDone={() => setAppearanceOpen(false)}
-                                        backLabel="New node"
-                                    />
-                                </div>
-                            ) : (
-                                <>
-                                    <input
-                                        ref={nameRef}
-                                        aria-label="Name"
-                                        className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                                        placeholder="Name"
-                                        value={name}
-                                        onChange={(event) => setName(event.target.value)}
-                                    />
-                                    <input
-                                        aria-label="Type"
-                                        className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                                        placeholder="Type"
-                                        value={type}
-                                        onChange={(event) => setType(event.target.value)}
-                                    />
-                                    <AppearancePill
-                                        type={type}
-                                        value={presentation}
-                                        onClick={() => setAppearanceOpen(true)}
-                                    />
-                                    {error ? <p className="text-xs text-destructive">{error}</p> : null}
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="submit"
-                                            disabled={name.trim() === ""}
-                                            className="flex-1 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-                                        >
-                                            Create
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="rounded-full border border-border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                                            onClick={closeCreator}
-                                        >
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </>
-                            )}
+                            <input
+                                ref={nameRef}
+                                aria-label="Name"
+                                className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                placeholder="Name"
+                                value={name}
+                                onChange={(event) => setName(event.target.value)}
+                            />
+                            <input
+                                aria-label="Type"
+                                className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                placeholder="Type"
+                                value={type}
+                                onChange={(event) => setType(event.target.value)}
+                            />
+                            <CollapsibleSection
+                                title="Appearance"
+                                id={`${creatorId}-appearance`}
+                                open={appearanceOpen}
+                                onToggle={() => setAppearanceOpen((open) => !open)}
+                                maxHeightClass="max-h-[40vh]"
+                                summary={<AppearanceSummary type={type} value={presentation} />}
+                            >
+                                <AppearanceFields
+                                    type={type}
+                                    value={presentation}
+                                    onChange={(next) => setPresentation((prev) => ({ ...prev, ...next }))}
+                                    schema={presentation.schema}
+                                    onChangeSchema={(rows) => setPresentation((prev) => ({ ...prev, schema: rows }))}
+                                />
+                            </CollapsibleSection>
+                            {error ? <p className="text-xs text-destructive">{error}</p> : null}
+                            <div className="flex gap-2">
+                                <button
+                                    type="submit"
+                                    disabled={name.trim() === ""}
+                                    className="flex-1 rounded-full bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                >
+                                    Create
+                                </button>
+                                <button
+                                    type="button"
+                                    className="rounded-full border border-border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                                    onClick={closeCreator}
+                                >
+                                    Cancel
+                                </button>
+                            </div>
                         </form>
                     </Collapsible>
                     <button

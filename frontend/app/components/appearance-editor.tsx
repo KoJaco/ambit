@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { Check, ChevronLeft, Palette } from "lucide-react";
+import { Check } from "lucide-react";
 import type { SchemaColumn } from "../api";
 import { RENDERER_IDS } from "../canvas-presentation";
 import {
@@ -26,35 +26,16 @@ export const RENDERER_LABELS: Record<(typeof RENDERER_IDS)[number], string> = {
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 const sectionLabel = "text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
 
-// Compact trigger showing the current icon tile and renderer. Opens the AppearanceEditor.
-export function AppearancePill({
-    value,
-    type,
-    onClick,
-    expanded = false,
-    controls,
-}: {
-    value: Appearance;
-    type: string;
-    onClick: () => void;
-    expanded?: boolean;
-    controls?: string;
-}) {
+// Collapsed-state summary for the Appearance section: current icon tile (or colour dot) and renderer.
+export function AppearanceSummary({ value, type }: { value: Appearance; type: string }) {
     const token = resolveNodeColor(type, value.color);
     const Icon = resolveIconComponent(value.icon);
-    const renderer = !value.renderer || value.renderer === "card" ? "Card" : (RENDERER_LABELS[value.renderer as keyof typeof RENDERER_LABELS] ?? value.renderer);
+    const renderer =
+        !value.renderer || value.renderer === "card"
+            ? "Card"
+            : (RENDERER_LABELS[value.renderer as keyof typeof RENDERER_LABELS] ?? value.renderer);
     return (
-        <button
-            type="button"
-            aria-label="Edit appearance"
-            aria-expanded={expanded}
-            aria-controls={controls}
-            className={clsx(
-                "inline-flex min-h-8 w-fit items-center gap-2 rounded-full border border-border bg-card py-1 pr-3 pl-1.5 text-xs font-medium text-foreground hover:bg-accent",
-                focusRing,
-            )}
-            onClick={onClick}
-        >
+        <span className="flex items-center gap-2 text-xs text-muted-foreground">
             {value.icon ? (
                 <span className={nodeGlyphClass(token)} style={{ width: "1.25rem", height: "1.25rem", borderRadius: "0.375rem" }} aria-hidden>
                     <Icon className="size-3" strokeWidth={2} />
@@ -62,30 +43,24 @@ export function AppearancePill({
             ) : (
                 <span className={nodeDotClass(token)} aria-hidden />
             )}
-            <span>Edit appearance</span>
-            <span className="text-muted-foreground" aria-hidden>
-                {renderer}
-            </span>
-        </button>
+            <span>{value.icon ?? "Default icon"}</span>
+            <span aria-hidden>·</span>
+            <span>{renderer}</span>
+        </span>
     );
 }
 
-// One panel for icon, colour and canvas renderer. Empty string means "default" for each field.
-export function AppearanceEditor({
+// Icon, colour and canvas renderer pickers. Empty string means "default" for each field.
+// Lives inside a CollapsibleSection, which owns the heading and scrolling.
+export function AppearanceFields({
     value,
     onChange,
-    onDone,
-    doneLabel = "Done",
-    backLabel = "Back",
     type = "",
     schema,
     onChangeSchema,
 }: {
     value: Appearance;
     onChange: (next: Appearance) => void;
-    onDone: () => void;
-    doneLabel?: string;
-    backLabel?: string;
     type?: string;
     schema?: SchemaColumn[];
     onChangeSchema?: (rows: SchemaColumn[]) => void;
@@ -101,29 +76,7 @@ export function AppearanceEditor({
         );
 
     return (
-        <div className="flex min-h-0 flex-col gap-4 motion-safe:animate-in motion-safe:slide-in-from-right-4 motion-safe:duration-200">
-            <div className="flex items-center justify-between gap-2">
-                <button
-                    type="button"
-                    className={clsx("inline-flex min-h-6 items-center gap-1 rounded-md pr-1 text-xs text-foreground/80 hover:text-foreground", focusRing)}
-                    onClick={onDone}
-                >
-                    <ChevronLeft className="size-4" aria-hidden />
-                    {backLabel}
-                </button>
-                <span className="flex items-center gap-1.5 text-sm font-medium">
-                    <Palette className="size-4 text-muted-foreground" aria-hidden />
-                    Appearance
-                </span>
-                <button
-                    type="button"
-                    className={clsx("rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground hover:opacity-90", focusRing)}
-                    onClick={onDone}
-                >
-                    {doneLabel}
-                </button>
-            </div>
-
+        <div className="flex flex-col gap-4">
             <section className="flex flex-col gap-2" aria-label="Icon">
                 <span className={sectionLabel}>Icon</span>
                 <button type="button" aria-pressed={!value.icon} className={optionClass(!value.icon)} onClick={() => set({ icon: "" })}>

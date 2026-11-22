@@ -49,11 +49,11 @@ export function ShortcutsDialog({
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
                 {shortcutsByGroup().map(({ group, items }) => (
-                    <section key={group} aria-label={group} className="mb-4 last:mb-0">
-                        <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3>
-                        <ul className="divide-y divide-border">
+                    <section key={group} aria-label={group} className="mb-7 last:mb-0">
+                        <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group}</h3>
+                        <ul className="flex flex-col gap-1">
                             {items.map((item) => (
-                                <li key={item.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                                <li key={item.id} className="flex items-center justify-between gap-3 py-1 text-sm">
                                     <span>{item.label}</span>
                                     <span className="flex items-center gap-1.5">
                                         {item.keys.map((chord, index) => (
@@ -68,28 +68,28 @@ export function ShortcutsDialog({
                         </ul>
                     </section>
                 ))}
-                <section aria-label="Mouse and trackpad" className="mt-4">
-                    <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Mouse and trackpad</h3>
-                    <ul className="divide-y divide-border text-sm">
-                        <li className="flex items-center justify-between gap-3 py-1.5">
+                <section aria-label="Mouse and trackpad" className="mt-7">
+                    <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Mouse and trackpad</h3>
+                    <ul className="flex flex-col gap-1 text-sm">
+                        <li className="flex items-center justify-between gap-3 py-1">
                             <span>Pan temporarily</span>
                             <span>
                                 Hold <Kbd>Space</Kbd> and drag
                             </span>
                         </li>
-                        <li className="flex items-center justify-between gap-3 py-1.5">
+                        <li className="flex items-center justify-between gap-3 py-1">
                             <span>Select several nodes</span>
                             <span>
                                 <Kbd>Shift</Kbd> or <Kbd>{formatChord("Mod", platform)}</Kbd> and click
                             </span>
                         </li>
-                        <li className="flex items-center justify-between gap-3 py-1.5">
+                        <li className="flex items-center justify-between gap-3 py-1">
                             <span>Box select</span>
                             <span>
                                 Hold <Kbd>Shift</Kbd> and drag
                             </span>
                         </li>
-                        <li className="flex items-center justify-between gap-3 py-1.5">
+                        <li className="flex items-center justify-between gap-3 py-1">
                             <span>Zoom</span>
                             <span>Mouse wheel or pinch</span>
                         </li>

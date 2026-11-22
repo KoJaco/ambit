@@ -1,6 +1,5 @@
 import clsx from "clsx";
-import { ChevronDown } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Tooltip } from "./tooltip";
 import {
     clearAssignment,
@@ -11,6 +10,7 @@ import {
     type Assignment,
     type NodeDetail,
 } from "../api";
+import { history } from "../history";
 import { assignmentLabel, assignmentState } from "../assignment";
 import {
     nodeDotClass,
@@ -21,8 +21,8 @@ import {
     statusTone,
 } from "../node-presentation";
 import { previewScope } from "../scope-preview";
-import { AppearanceEditor, AppearancePill } from "./appearance-editor";
-import { Collapsible } from "./collapsible";
+import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
+import { CollapsibleSection } from "./collapsible-section";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { nodeSettingsSummary } from "../node-settings";
 
@@ -43,12 +43,15 @@ export default function NodeInspector({
 }) {
     const uid = useId();
     const settingsId = `${uid}-settings`;
+    const appearanceId = `${uid}-appearance`;
     const [node, setNode] = useState<NodeDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [appearanceOpen, setAppearanceOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [presentationTouched, setPresentationTouched] = useState(false);
+    // The node as last loaded or saved: what undo restores.
+    const baseline = useRef<NodeDetail | null>(null);
 
     useEffect(() => {
         const ac = new AbortController();
@@ -57,7 +60,10 @@ export default function NodeInspector({
         setAppearanceOpen(false);
         setPresentationTouched(false);
         getNode(nodeId, ac.signal)
-            .then(setNode)
+            .then((loaded) => {
+                baseline.current = loaded;
+                setNode(loaded);
+            })
             .catch((err: unknown) => {
                 if (err instanceof DOMException && err.name === "AbortError") return;
                 setError(err instanceof Error ? err.message : "node request failed");
@@ -115,22 +121,18 @@ export default function NodeInspector({
         setSaving(true);
         setError(null);
         try {
-            const patch: Parameters<typeof updateNode>[1] = {
-                name: node.name,
-                type: node.type,
-                status: node.status,
-                implementation: lines(node.implementation),
-                scope: lines(node.scope),
-                protected: node.protected,
-                markdown: node.markdown,
-            };
-            if (presentationTouched) {
-                patch.icon = node.icon ?? "";
-                patch.color = node.color ?? "";
-                patch.renderer = node.renderer ?? "";
-                patch.schema = (node.schema ?? []).filter((row) => row.title.trim() !== "" && row.type.trim() !== "");
-            }
+            const before = baseline.current;
+            const patch = toPatch(node, presentationTouched);
             const saved = await updateNode(node.id, patch);
+            if (before) {
+                const undoPatch = toPatch(before, true);
+                history.record({
+                    label: `edit ${before.name}`,
+                    undo: async () => void (await updateNode(node.id, undoPatch)),
+                    redo: async () => void (await updateNode(node.id, patch)),
+                });
+            }
+            baseline.current = saved;
             setNode(saved);
             setPresentationTouched(false);
             onSaved();
@@ -169,9 +171,70 @@ export default function NodeInspector({
             {node && preview ? (
                 <>
                     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-1 [scrollbar-gutter:stable]">
-                        {appearanceOpen ? (
-                            <AppearanceEditor
-                                backLabel="Inspector"
+                        <div className="flex flex-col gap-2">
+                            <span
+                                className={nodeGlyphClass(resolveNodeColor(node.type, node.color), "lg")}
+                                aria-hidden
+                            >
+                                {(() => {
+                                    const Icon = resolveIconComponent(node.icon);
+                                    return <Icon className="size-5" strokeWidth={2} />;
+                                })()}
+                            </span>
+                            <input
+                                aria-label="Name"
+                                className={clsx(inputClass, "text-lg font-semibold")}
+                                value={node.name}
+                                onChange={(event) => setNode({ ...node, name: event.target.value })}
+                            />
+                            <input
+                                aria-label="Type"
+                                className={clsx(inputClass, "text-xs text-muted-foreground")}
+                                value={node.type}
+                                onChange={(event) => setNode({ ...node, type: event.target.value })}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label htmlFor={`${uid}-spec`} className={sectionLabelClass}>
+                                Spec
+                            </label>
+                            <textarea
+                                id={`${uid}-spec`}
+                                rows={12}
+                                className={clsx(inputClass, "min-h-56 resize-y text-sm leading-relaxed")}
+                                placeholder="What this node is responsible for."
+                                value={node.markdown}
+                                onChange={(event) => setNode({ ...node, markdown: event.target.value })}
+                            />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                            <label htmlFor={`${uid}-status`} className={sectionLabelClass}>
+                                Status
+                            </label>
+                            <div className="flex items-center gap-2">
+                                <span className={nodeDotClass(statusTone(node.status))} aria-hidden />
+                                <select
+                                    id={`${uid}-status`}
+                                    className={clsx(inputClass, "flex-1")}
+                                    value={node.status}
+                                    onChange={(event) => setNode({ ...node, status: event.target.value })}
+                                >
+                                    {statusOptions(node.status).map((status) => (
+                                        <option key={status} value={status}>
+                                            {statusLabel(status)}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <CollapsibleSection
+                            title="Appearance"
+                            id={appearanceId}
+                            open={appearanceOpen}
+                            onToggle={() => setAppearanceOpen((open) => !open)}
+                            summary={<AppearanceSummary type={node.type} value={{ icon: node.icon, color: node.color, renderer: node.renderer }} />}
+                        >
+                            <AppearanceFields
                                 type={node.type}
                                 value={{ icon: node.icon, color: node.color, renderer: node.renderer }}
                                 onChange={(next) => {
@@ -183,114 +246,32 @@ export default function NodeInspector({
                                     markPresentation();
                                     setNode({ ...node, schema: rows });
                                 }}
-                                onDone={() => setAppearanceOpen(false)}
                             />
-                        ) : (
-                            <>
-                                <div className="flex items-start gap-3">
-                                    <span
-                                        className={nodeGlyphClass(resolveNodeColor(node.type, node.color), "lg")}
-                                        aria-hidden
-                                    >
-                                        {(() => {
-                                            const Icon = resolveIconComponent(node.icon);
-                                            return <Icon className="size-5" strokeWidth={2} />;
-                                        })()}
-                                    </span>
-                                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                        <input
-                                            aria-label="Name"
-                                            className={clsx(inputClass, "text-lg font-semibold")}
-                                            value={node.name}
-                                            onChange={(event) => setNode({ ...node, name: event.target.value })}
-                                        />
-                                        <input
-                                            aria-label="Type"
-                                            className={clsx(inputClass, "text-xs text-muted-foreground")}
-                                            value={node.type}
-                                            onChange={(event) => setNode({ ...node, type: event.target.value })}
-                                        />
-                                    </div>
-                                </div>
-                                <AppearancePill
-                                    type={node.type}
-                                    value={{ icon: node.icon, color: node.color, renderer: node.renderer }}
-                                    onClick={() => setAppearanceOpen(true)}
-                                />
-                                <div className="flex flex-col gap-2">
-                                    <label htmlFor={`${uid}-spec`} className={sectionLabelClass}>
-                                        Spec
-                                    </label>
-                                    <textarea
-                                        id={`${uid}-spec`}
-                                        rows={6}
-                                        className={clsx(inputClass, "min-h-32 resize-y text-sm leading-relaxed")}
-                                        placeholder="What this node is responsible for."
-                                        value={node.markdown}
-                                        onChange={(event) => setNode({ ...node, markdown: event.target.value })}
-                                    />
-                                </div>
-                                <div className="flex flex-col gap-2">
-                                    <label htmlFor={`${uid}-status`} className={sectionLabelClass}>
-                                        Status
-                                    </label>
-                                    <div className="flex items-center gap-2">
+                        </CollapsibleSection>
+                        <CollapsibleSection
+                            title="Node settings"
+                            id={settingsId}
+                            open={settingsOpen}
+                            onToggle={() => setSettingsOpen((open) => !open)}
+                            summary={
+                                <span className="flex flex-wrap gap-1.5">
+                                    {summary.map((item) => (
                                         <span
-                                            className={nodeDotClass(statusTone(node.status))}
-                                            aria-hidden
-                                        />
-                                        <select
-                                            id={`${uid}-status`}
-                                            className={clsx(inputClass, "flex-1")}
-                                            value={node.status}
-                                            onChange={(event) => setNode({ ...node, status: event.target.value })}
-                                        >
-                                            {statusOptions(node.status).map((status) => (
-                                                <option key={status} value={status}>
-                                                    {statusLabel(status)}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
-                                <div className="rounded-[14px] border border-border">
-                                    <button
-                                        type="button"
-                                        aria-expanded={settingsOpen}
-                                        aria-controls={settingsId}
-                                        className="flex w-full items-start justify-between gap-3 rounded-[14px] px-3 py-2.5 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                                        onClick={() => setSettingsOpen((open) => !open)}
-                                    >
-                                        <span className="flex min-w-0 flex-col gap-1.5">
-                                            <span className="text-sm font-medium">Node settings</span>
-                                            {settingsOpen ? null : (
-                                                <span className="flex flex-wrap gap-1.5">
-                                                    {summary.map((item) => (
-                                                        <span
-                                                            key={item.kind}
-                                                            className={clsx(
-                                                                "rounded-full px-2 py-0.5 text-[11px]",
-                                                                item.kind === "scope"
-                                                                    ? "bg-muted text-muted-foreground"
-                                                                    : "bg-primary/10 font-medium text-primary",
-                                                            )}
-                                                        >
-                                                            {item.label}
-                                                        </span>
-                                                    ))}
-                                                </span>
-                                            )}
-                                        </span>
-                                        <ChevronDown
+                                            key={item.kind}
                                             className={clsx(
-                                                "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform duration-200 motion-reduce:transition-none",
-                                                settingsOpen && "rotate-180",
+                                                "rounded-full px-2 py-0.5 text-[11px]",
+                                                item.kind === "scope"
+                                                    ? "bg-muted text-muted-foreground"
+                                                    : "bg-primary/10 font-medium text-primary",
                                             )}
-                                            aria-hidden
-                                        />
-                                    </button>
-                                    <Collapsible open={settingsOpen} id={settingsId}>
-                                        <div className="flex flex-col gap-5 border-t border-border p-3">
+                                        >
+                                            {item.label}
+                                        </span>
+                                    ))}
+                                </span>
+                            }
+                        >
+                            <div className="flex flex-col gap-5">
                                             <div className="flex flex-col gap-2">
                                                 <label htmlFor={`${uid}-impl`} className={sectionLabelClass}>
                                                     Implemented in
@@ -408,10 +389,7 @@ export default function NodeInspector({
                                                 </div>
                                             </div>
                                         </div>
-                                    </Collapsible>
-                                </div>
-                            </>
-                        )}
+                        </CollapsibleSection>
                     </div>
                     <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border pt-3">
                         <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">
@@ -441,6 +419,26 @@ const sectionLabelClass = "text-xs font-medium uppercase tracking-wide text-mute
 function statusOptions(current: string): readonly string[] {
     if ((STATUSES as readonly string[]).includes(current)) return STATUSES;
     return [current, ...STATUSES];
+}
+
+// presentation=false leaves icon/colour/renderer/schema untouched, as a save without appearance edits does.
+function toPatch(node: NodeDetail, presentation: boolean): Parameters<typeof updateNode>[1] {
+    const patch: Parameters<typeof updateNode>[1] = {
+        name: node.name,
+        type: node.type,
+        status: node.status,
+        implementation: lines(node.implementation),
+        scope: lines(node.scope),
+        protected: node.protected,
+        markdown: node.markdown,
+    };
+    if (presentation) {
+        patch.icon = node.icon ?? "";
+        patch.color = node.color ?? "";
+        patch.renderer = node.renderer ?? "";
+        patch.schema = (node.schema ?? []).filter((row) => row.title.trim() !== "" && row.type.trim() !== "");
+    }
+    return patch;
 }
 
 function lines(value: string[]): string[] {

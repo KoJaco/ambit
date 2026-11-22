@@ -94,7 +94,7 @@ export const docsSections: DocSection[] = [
                     ["Both are staged as a single proposal. Nothing changes until you accept it in Proposals."],
                     ["Drill in with Open on a summary card (collapse a group first); use the breadcrumbs to come back up."],
                     ["Review proposals from agents in the Proposals panel and accept or reject each operation."],
-                    ["Undo and redo are in the toolbar but stay disabled until canvas history is available. Until then, reject a staged proposal to back out of a structure change."],
+                    ["Undo and redo (Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z) cover your last 50 direct edits this session: node edits, new nodes, deleted plain relationships, node moves, and proposals you accept in Review (group, ungroup, reparent). Rejecting a proposal changes nothing, so there is nothing to undo. They do not cover assignments or relationships that have an interior. A change made outside this tab, such as by an agent, clears the history."],
                 ],
             },
         ],
