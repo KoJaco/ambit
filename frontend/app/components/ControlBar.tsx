@@ -146,6 +146,8 @@ export function ControlBar({
     onZoomIn,
     onUndo,
     onRedo,
+    undoLabel,
+    redoLabel,
 }: {
     selectedTool: ControlBarTool;
     onSelectTool: (tool: ControlBarTool) => void;
@@ -154,6 +156,9 @@ export function ControlBar({
     onZoomIn?: () => void;
     onUndo?: () => void;
     onRedo?: () => void;
+    // What the next undo/redo would change, for the tooltip.
+    undoLabel?: string | null;
+    redoLabel?: string | null;
 }) {
     const session = useSyncExternalStore(barStore.subscribe, barStore.get, barStore.getServerSnapshot);
     const mode = resolveBarMode(session);
@@ -276,7 +281,8 @@ export function ControlBar({
                     <div key={groupKey} className="flex items-center gap-0.5">
                         {groupButtons.map(({ tool, label, displayTitle, shortcut }) => {
                             const isTool = tool === "grab" || tool === "pointer";
-                            const title = displayTitle ?? label;
+                            const detail = tool === "undo" ? undoLabel : tool === "redo" ? redoLabel : null;
+                            const title = detail ? `${displayTitle ?? label}: ${detail}` : (displayTitle ?? label);
                             return (
                                 <BarButton
                                     key={tool}

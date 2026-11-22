@@ -19,6 +19,7 @@ import { EdgeActions } from "../components/edge-actions";
 import type { Relationship } from "../api";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
 import { floatingToggleMode, useRailState } from "../right-rail-state";
+import { history, isOutsideChange, useHistory } from "../history";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
 export function meta({}: Route.MetaArgs) {
@@ -41,13 +42,38 @@ export default function Home() {
     useEffect(
         () =>
             subscribeEvents({
-                onModelChanged: () => setRefreshKey((value) => value + 1),
+                onModelChanged: () => {
+                    // A change we did not make invalidates every recorded undo step.
+                    if (isOutsideChange()) history.clear();
+                    setRefreshKey((value) => value + 1);
+                },
                 onIntegrityChanged: () => setRefreshKey((value) => value + 1),
                 onProposalsChanged: () => setProposalRefreshKey((value) => value + 1),
             }),
         [],
     );
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const historyView = useHistory();
+    const [historyEpoch, setHistoryEpoch] = useState(0);
+    const [historyNote, setHistoryNote] = useState<string | null>(null);
+    useEffect(() => {
+        if (!historyNote) return;
+        const timer = window.setTimeout(() => setHistoryNote(null), 3000);
+        return () => window.clearTimeout(timer);
+    }, [historyNote]);
+    async function stepHistory(dir: "undo" | "redo") {
+        try {
+            const label = await history[dir]();
+            if (!label) return;
+            setHistoryNote(`${dir === "undo" ? "Undid" : "Redid"}: ${label}`);
+        } catch (err) {
+            history.clear();
+            setHistoryNote(`Could not ${dir}: ${err instanceof Error ? err.message : "request failed"}. History cleared.`);
+        }
+        // Reload what the steps touched; the inspector remounts so it shows the restored values.
+        setHistoryEpoch((value) => value + 1);
+        setRefreshKey((value) => value + 1);
+    }
     const [frontPanel, setFrontPanel] = useState<RightRailFront>("review");
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
@@ -124,7 +150,22 @@ export default function Home() {
                         onRecenter={() => recenterRef.current?.()}
                         onZoomIn={() => zoomRef.current?.zoomIn()}
                         onZoomOut={() => zoomRef.current?.zoomOut()}
+                        onUndo={historyView.canUndo && !historyView.busy ? () => void stepHistory("undo") : undefined}
+                        onRedo={historyView.canRedo && !historyView.busy ? () => void stepHistory("redo") : undefined}
+                        undoLabel={historyView.undoLabel}
+                        redoLabel={historyView.redoLabel}
                     />
+                </div>
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2"
+                >
+                    {historyNote ? (
+                        <p className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground shadow-md">
+                            {historyNote}
+                        </p>
+                    ) : null}
                 </div>
                 <RightRailStack
                     front={frontPanel}
@@ -151,6 +192,7 @@ export default function Home() {
                             />
                         ) : selectedId ? (
                             <NodeInspector
+                                key={`${selectedId}:${historyEpoch}`}
                                 nodeId={selectedId}
                                 refreshKey={refreshKey}
                                 onClose={() => setSelectedId(null)}

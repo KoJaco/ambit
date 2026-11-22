@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { X } from "lucide-react";
 import clsx from "clsx";
-import { deleteRelationship, getNode, relationshipDrillId, type NodeDetail, type Relationship } from "../api";
+import { history } from "../history";
+import { deleteRelationship, getNode, setRelationship, relationshipDrillId, type NodeDetail, type Relationship } from "../api";
 import { specExcerpt } from "../excerpt";
 import { edgeKindStyle, type EdgeKindStyle } from "../kind-style";
 import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-presentation";
@@ -321,6 +322,17 @@ export function EdgeActions({
                                 onClick={() =>
                                     void run(async () => {
                                         await deleteRelationship(edge.id);
+                                        // An edge with an interior takes its members with it; undo cannot
+                                        // restore those, so only plain edges are undoable.
+                                        if (edge.drillable || edge.aggregated) history.clear();
+                                        else {
+                                            const { id, from, to, label, kind } = edge;
+                                            history.record({
+                                                label: `delete ${label || "relationship"}`,
+                                                undo: async () => void (await setRelationship({ id, from, to, label, kind })),
+                                                redo: () => deleteRelationship(id),
+                                            });
+                                        }
                                         onClose();
                                         onDeleted?.();
                                     })

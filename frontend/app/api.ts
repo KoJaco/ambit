@@ -6,6 +6,7 @@ import {
     type ViewDefaults,
     type ViewModes,
 } from "./level-view";
+import { markOwnWrite } from "./history";
 
 export const rootLayoutKey = "_root";
 
@@ -202,6 +203,7 @@ export type Layout = {
 };
 
 async function send<T>(path: string, init?: RequestInit): Promise<T> {
+    if (init?.method && init.method !== "GET") markOwnWrite();
     const res = await fetch(path, init);
     if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;

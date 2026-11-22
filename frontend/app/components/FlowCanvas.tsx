@@ -45,6 +45,8 @@ import {
 } from "../canvas-structure";
 import type { StructureRequest } from "./structure-panel";
 import { barStore } from "../bottom-bar";
+import { history } from "../history";
+import { useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
 import {
@@ -177,9 +179,22 @@ function containerSizing(
 }
 
 // Left padding for fit-view so the sidebar overlay does not cover the first column.
-function fitPadding() {
-    const left = Math.round(Math.min(290, window.innerWidth * 0.3));
-    return { top: 0.2, right: 0.2, bottom: 0.2, left: `${left}px` as const };
+// Room kept clear for chrome that floats over the canvas: the sidebar on the left and, when a
+// right-rail sheet is open, the sheet (same width as the rail in right-rail-stack).
+export function fitInsets(viewportWidth: number, railOpen: boolean) {
+    const left = Math.round(Math.min(290, viewportWidth * 0.3));
+    const right = railOpen ? Math.round(Math.min(440, viewportWidth * 0.92)) + 24 : 0;
+    return { left, right };
+}
+
+function fitPadding(railOpen: boolean) {
+    const { left, right } = fitInsets(window.innerWidth, railOpen);
+    return {
+        top: 0.2,
+        bottom: 0.2,
+        left: `${left}px` as const,
+        right: right > 0 ? (`${right}px` as const) : 0.2,
+    };
 }
 
 function buildArchNodes(
@@ -314,6 +329,8 @@ export default function FlowCanvas({
 }) {
     const navigate = useNavigate();
     const { zoomIn, zoomOut, fitView, screenToFlowPosition, getInternalNode } = useReactFlow();
+    const railOpenRef = useRef(false);
+    railOpenRef.current = useRailState().panels > 0;
     const [level, setLevel] = useState<Level | null>(null);
     const [relLevel, setRelLevel] = useState<RelationshipLevel | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -342,12 +359,12 @@ export default function FlowCanvas({
             zoomIn: () => void zoomIn(),
             zoomOut: () => void zoomOut(),
         });
-        onRequestRecenterRef?.(() => void fitView({ padding: fitPadding() }));
+        onRequestRecenterRef?.(() => void fitView({ padding: fitPadding(railOpenRef.current) }));
     }, [fitView, onRequestRecenterRef, onRequestZoomRef, zoomIn, zoomOut]);
 
     useEffect(() => {
         if (fitToken === 0) return;
-        void fitView({ padding: fitPadding() });
+        void fitView({ padding: fitPadding(railOpenRef.current) });
     }, [fitToken, fitView]);
 
     useEffect(() => {
@@ -691,11 +708,33 @@ export default function FlowCanvas({
         // Members are stored relative to their group, as React Flow holds them.
         const placed = new Map(nodesRef.current.map((item) => [item.id, item.position]));
         placed.set(node.id, node.position);
-        void putLayout(cacheKey, {
-            positions: ids.map((id) => {
-                const point = placed.get(id) ?? { x: 0, y: 0 };
+        const toPositions = (map: Map<string, Point>) =>
+            ids.map((id) => {
+                const point = map.get(id) ?? { x: 0, y: 0 };
                 return { id, x: point.x, y: point.y };
-            }),
+            });
+        const start = dragStart.current?.id === node.id ? dragStart.current.position : null;
+        if (start && (start.x !== node.position.x || start.y !== node.position.y)) {
+            const movedTo = node.position;
+            const key = cacheKey;
+            const sig = layoutSignature(activeLevel?.children ?? []);
+            const before = new Map(placed).set(node.id, start);
+            const move = async (to: Point) => {
+                await putLayout(key, { positions: toPositions(new Map(before).set(node.id, to)) });
+                saveLayoutSig(key, sig);
+                // Only touch the canvas when the level the move happened on is still the one shown.
+                if (cacheKeyRef.current === key) {
+                    setNodes((current) => current.map((item) => (item.id === node.id ? { ...item, position: to } : item)));
+                }
+            };
+            history.record({
+                label: `move ${node.data.name}`,
+                undo: () => move(start),
+                redo: () => move(movedTo),
+            });
+        }
+        void putLayout(cacheKey, {
+            positions: toPositions(placed),
         }).then(() => saveLayoutSig(cacheKey, layoutSignature(activeLevel?.children ?? []))).catch((err: unknown) => {
             setError(err instanceof Error ? err.message : "layout save failed");
         });
