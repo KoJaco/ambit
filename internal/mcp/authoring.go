@@ -12,11 +12,17 @@ import (
 type seedModelIn struct {
 	Transcript    string        `json:"transcript" jsonschema:"required"`
 	ParentID      string        `json:"parent_id,omitempty"`
-	Nodes         []seedNodeIn  `json:"nodes" jsonschema:"required"`
+	Nodes         []seedNodeIn  `json:"nodes,omitempty"`
 	Relationships []seedRelIn   `json:"relationships,omitempty"`
+	// Updates, DeleteRelationships and DeleteNodes let one proposal restructure a model.
+	// Order of staging: creates, updates, relationships, relationship deletes, node deletes.
+	Updates             []updateNodeIn `json:"updates,omitempty"`
+	DeleteRelationships []string       `json:"delete_relationships,omitempty"`
+	DeleteNodes         []string       `json:"delete_nodes,omitempty"`
 }
 
 type seedNodeIn struct {
+	ID             string   `json:"id,omitempty"`
 	Name           string   `json:"name" jsonschema:"required"`
 	Type           string   `json:"type" jsonschema:"required"`
 	ParentID       string   `json:"parent_id,omitempty"`
@@ -40,7 +46,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 	if strings.TrimSpace(in.Transcript) == "" {
 		return toolErr(fmt.Errorf("%w: transcript is required", core.ErrBadOperation))
 	}
-	if len(in.Nodes) == 0 {
+	if len(in.Nodes) == 0 && len(in.Updates) == 0 && len(in.DeleteRelationships) == 0 && len(in.DeleteNodes) == 0 {
 		return toolErr(fmt.Errorf("%w: nodes must not be empty", core.ErrBadOperation))
 	}
 	defaultParent := core.NodeID(in.ParentID)
@@ -53,6 +59,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 		ops = append(ops, core.StageOp{
 			Op: core.OpCreateNode,
 			Create: core.CreateInput{
+				ID:             core.NodeID(n.ID),
 				Name:           n.Name,
 				Type:           n.Type,
 				Spec:           n.Spec,
@@ -65,6 +72,13 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 			},
 		})
 	}
+	for _, u := range in.Updates {
+		patch, err := updatePatch(u)
+		if err != nil {
+			return toolErr(err)
+		}
+		ops = append(ops, core.StageOp{Op: core.OpUpdateNode, NodeID: core.NodeID(u.NodeID), Update: patch})
+	}
 	for _, r := range in.Relationships {
 		ops = append(ops, core.StageOp{
 			Op:    core.OpSetRelationship,
@@ -74,6 +88,12 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 			Kind:  r.Kind,
 			RelID: core.RelID(r.RelationshipID),
 		})
+	}
+	for _, rid := range in.DeleteRelationships {
+		ops = append(ops, core.StageOp{Op: core.OpDeleteRelationship, RelID: core.RelID(rid)})
+	}
+	for _, nid := range in.DeleteNodes {
+		ops = append(ops, core.StageOp{Op: core.OpDeleteNode, NodeID: core.NodeID(nid)})
 	}
 	summary := fmt.Sprintf("%d node(s) from transcript", len(in.Nodes))
 	if len(in.Transcript) > 80 {
@@ -103,15 +123,13 @@ type createNodeIn struct {
 }
 
 func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in createNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
-	if in.ID != "" {
-		return toolErr(fmt.Errorf("%w: id is derived from name and cannot be set", core.ErrBadOperation))
-	}
 	_, out, err := e.stage(ctx, core.StageInput{
 		Source:  core.OpCreateNode,
 		Summary: fmt.Sprintf("1 node (%s)", in.Name),
 		Ops: []core.StageOp{{
 			Op: core.OpCreateNode,
 			Create: core.CreateInput{
+				ID:             core.NodeID(in.ID),
 				Name:           in.Name,
 				Type:           in.Type,
 				Spec:           in.Spec,
@@ -143,11 +161,29 @@ type updateNodeIn struct {
 }
 
 func (e *toolEnv) handleUpdateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in updateNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
+	patch, err := updatePatch(in)
+	if err != nil {
+		return toolErr(err)
+	}
+	_, out, err := e.stage(ctx, core.StageInput{
+		Source:  core.OpUpdateNode,
+		Summary: fmt.Sprintf("update %s", in.NodeID),
+		Ops: []core.StageOp{{
+			Op:     core.OpUpdateNode,
+			NodeID: core.NodeID(in.NodeID),
+			Update: patch,
+		}},
+	})
+	return nil, out, err
+}
+
+// updatePatch validates an update_node request and converts it to a core patch.
+func updatePatch(in updateNodeIn) (core.UpdateInput, error) {
 	if in.ID != "" {
-		return toolErr(fmt.Errorf("%w: id is immutable; rename via name", core.ErrBadOperation))
+		return core.UpdateInput{}, fmt.Errorf("%w: id is immutable; rename via name", core.ErrBadOperation)
 	}
 	if in.Status != nil {
-		return toolErr(fmt.Errorf("%w: status must be set with update_node_status, not update_node", core.ErrBadOperation))
+		return core.UpdateInput{}, fmt.Errorf("%w: status must be set with update_node_status, not update_node", core.ErrBadOperation)
 	}
 	patch := core.UpdateInput{
 		Name:           in.Name,
@@ -166,16 +202,7 @@ func (e *toolEnv) handleUpdateNode(ctx context.Context, _ *sdkmcp.CallToolReques
 		r := core.RelID(*in.RelationshipID)
 		patch.Relationship = &r
 	}
-	_, out, err := e.stage(ctx, core.StageInput{
-		Source:  core.OpUpdateNode,
-		Summary: fmt.Sprintf("update %s", in.NodeID),
-		Ops: []core.StageOp{{
-			Op:     core.OpUpdateNode,
-			NodeID: core.NodeID(in.NodeID),
-			Update: patch,
-		}},
-	})
-	return nil, out, err
+	return patch, nil
 }
 
 type deleteNodeIn struct {
@@ -212,6 +239,22 @@ func (e *toolEnv) handleSetRelationship(ctx context.Context, _ *sdkmcp.CallToolR
 			To:    core.NodeID(in.To),
 			Label: in.Label,
 			Kind:  in.Kind,
+			RelID: core.RelID(in.RelationshipID),
+		}},
+	})
+	return nil, out, err
+}
+
+type deleteRelationshipIn struct {
+	RelationshipID string `json:"relationship_id" jsonschema:"required"`
+}
+
+func (e *toolEnv) handleDeleteRelationship(ctx context.Context, _ *sdkmcp.CallToolRequest, in deleteRelationshipIn) (*sdkmcp.CallToolResult, stageResponse, error) {
+	_, out, err := e.stage(ctx, core.StageInput{
+		Source:  core.OpDeleteRelationship,
+		Summary: fmt.Sprintf("delete relationship %s", in.RelationshipID),
+		Ops: []core.StageOp{{
+			Op:    core.OpDeleteRelationship,
 			RelID: core.RelID(in.RelationshipID),
 		}},
 	})

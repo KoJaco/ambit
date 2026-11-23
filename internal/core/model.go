@@ -123,8 +123,10 @@ func (d Diagnostic) String() string {
 	return string(d.Severity) + ": " + d.Path + ": " + d.Message
 }
 
-// CreateInput is the caller-supplied content for a new node. ID is derived.
+// CreateInput is the caller-supplied content for a new node. ID is optional: when empty it
+// is derived from Name; when set it must be a free slug.
 type CreateInput struct {
+	ID             NodeID
 	Name           string
 	Type           string
 	Spec           string

@@ -105,3 +105,80 @@ func (e *toolEnv) handleUpdateNodeStatus(_ context.Context, _ *sdkmcp.CallToolRe
 	}
 	return nil, updateStatusOut{NodeID: in.NodeID, Status: in.Status}, nil
 }
+
+type getGraphIn struct{}
+
+type pendingProposal struct {
+	ProposalID string `json:"proposal_id"`
+	Source     string `json:"source,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	Operations int    `json:"operations"`
+	Unreadable bool   `json:"unreadable,omitempty"`
+}
+
+type getGraphOut struct {
+	Nodes         []core.GraphNode  `json:"nodes"`
+	Relationships []core.GraphEdge  `json:"relationships"`
+	Pending       []pendingProposal `json:"pending_proposals"`
+}
+
+func pendingSummaries(idx *core.Index) ([]pendingProposal, error) {
+	list, err := idx.ListProposals()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]pendingProposal, 0, len(list))
+	for _, p := range list {
+		out = append(out, pendingProposal{
+			ProposalID: p.ID, Source: p.Source, Summary: p.Summary,
+			Operations: len(p.Operations), Unreadable: p.Unreadable,
+		})
+	}
+	return out, nil
+}
+
+func (e *toolEnv) handleGetGraph(_ context.Context, _ *sdkmcp.CallToolRequest, _ getGraphIn) (*sdkmcp.CallToolResult, getGraphOut, error) {
+	nodes, edges := e.idx.Graph()
+	pending, err := pendingSummaries(e.idx)
+	if err != nil {
+		return nil, getGraphOut{}, err
+	}
+	return nil, getGraphOut{Nodes: nodes, Relationships: edges, Pending: pending}, nil
+}
+
+type listProposalsIn struct{}
+
+type listProposalsOut struct {
+	Proposals []core.ProposalSummary `json:"proposals"`
+}
+
+func (e *toolEnv) handleListProposals(_ context.Context, _ *sdkmcp.CallToolRequest, _ listProposalsIn) (*sdkmcp.CallToolResult, listProposalsOut, error) {
+	list, err := e.idx.ListProposals()
+	if err != nil {
+		return nil, listProposalsOut{}, err
+	}
+	if list == nil {
+		list = []core.ProposalSummary{}
+	}
+	return nil, listProposalsOut{Proposals: list}, nil
+}
+
+type listIconsIn struct{}
+
+type listIconsOut struct {
+	Icons []core.IconInfo `json:"icons"`
+}
+
+func (e *toolEnv) handleListIcons(_ context.Context, _ *sdkmcp.CallToolRequest, _ listIconsIn) (*sdkmcp.CallToolResult, listIconsOut, error) {
+	return nil, listIconsOut{Icons: core.Icons()}, nil
+}
+
+type checkDriftIn struct{}
+
+func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest, _ checkDriftIn) (*sdkmcp.CallToolResult, core.DriftReport, error) {
+	report, err := core.Drift(e.idx, e.dir)
+	if err != nil {
+		return nil, core.DriftReport{}, err
+	}
+	return nil, report, nil
+}

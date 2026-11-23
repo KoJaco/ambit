@@ -15,7 +15,7 @@ Two distinct consumers use this surface for different things, and the split matt
 
 ## Scope
 
-**In scope:** all eight tools, their arguments, return shapes, staging behaviour, and the
+**In scope:** all thirteen tools, their arguments, return shapes, staging behaviour, and the
 framing requirements for `get_context`.
 
 **Out of scope:** the MCP protocol itself, the proposal file format (see
@@ -48,7 +48,7 @@ Code expect to launch a local MCP server: a direct command, not a running HTTP s
 The process is **independent of `ambit start`**. MCP works whether or not the UI server is
 running. See [ADR-0003](../adr/0003-runtime-and-distribution.md).
 
-All eight tools are thin wrappers over `ambit-core`, sharing the identical validation and
+All thirteen tools are thin wrappers over `ambit-core`, sharing the identical validation and
 write path as the HTTP API. There is never a second implementation of what a valid mutation
 is.
 
@@ -56,7 +56,7 @@ is.
 
 ### Authoring tools (staged)
 
-All five write to `.arch/.proposals/<proposal-id>/` and return the proposal ID. **None of
+All six write to `.arch/.proposals/<proposal-id>/` and return the proposal ID. **None of
 them modify the canonical model.** Every one of them must say so in its returned message, so
 an agent does not report to its user that a change has been made when it has only been
 proposed.
@@ -74,7 +74,7 @@ sentence, the one exception to the "no graph doctrine in the brief" rule. The to
 unchanged: group and ungroup are canvas operations that stage ordinary create/update/delete
 proposals.
 
-#### `seed_model(transcript, parent_id?, nodes, relationships?)`
+#### `seed_model(transcript, parent_id?, nodes?, relationships?, updates?, delete_relationships?, delete_nodes?)`
 
 Propose a model from a client transcript. The headline authoring tool: the architect pastes
 or points their harness at a transcript, and the harness produces a set of nodes and
@@ -83,10 +83,22 @@ relationships. ambit does not call a model provider; the harness supplies the gr
 - `transcript` — the transcript text. Required.
 - `parent_id` — optional. When present, proposed nodes without their own `parent_id` or
   `relationship_id` become children of that node.
-- `nodes` — required array of node payloads (`name`, `type`, optional `parent_id`,
-  `relationship_id`, `implementation`, `scope`, `protected`, `spec`). At least one node.
+- `nodes` — array of node payloads (`name`, `type`, optional `id`, `parent_id`,
+  `relationship_id`, `implementation`, `scope`, `protected`, `spec`, `icon`). An optional
+  `id` is a caller-chosen slug (see `create_node`); other nodes and `relationships` in the
+  same call may reference it.
 - `relationships` — optional array of edges (`from`, `to`, optional `label`, `kind`,
   optional `relationship_id` when updating an existing edge).
+- `updates` — optional array of `update_node` payloads (same fields and rules as
+  `update_node`).
+- `delete_relationships` — optional array of relationship ids to delete.
+- `delete_nodes` — optional array of node ids to delete (leaf nodes only, as `delete_node`).
+
+At least one of `nodes`, `updates`, `delete_relationships`, `delete_nodes` is required.
+Operations are staged in the order creates, updates, relationships, relationship deletes,
+node deletes, so a restructure (reparent children, then delete the old container) is one
+proposal. Accept-all on a proposal is all-or-nothing for failures (see
+[`proposals.md`](proposals.md)).
 
 Returns the proposal ID and a summary of what was proposed — node count, names.
 
@@ -98,13 +110,15 @@ This tool exists **only** for transcript-seeded generation. Freeform
 natural-language-to-architecture is explicitly out of scope for v1; see
 [`docs/planning/spec-v1.md`](../planning/spec-v1.md) Section 12.
 
-#### `create_node(name, type, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?, icon?)`
+#### `create_node(name, type, id?, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?, icon?)`
 
 Propose one new node. `spec` is the markdown prose that becomes the node's sibling `.md`.
 Optional `icon` must be an id from the closed registry in
 [`arch-model-format.md`](arch-model-format.md). Colour, canvas `renderer`, and `schema` rows are architect-only (HTTP inspector).
-The node's `id` is derived from `name` by `ambit-core` at apply time, not supplied by the
-caller. Optional `relationship_id` attaches the node to a relationship interior (mutually
+The node's `id` is derived from `name` by `ambit-core` unless the caller supplies `id`: a
+lowercase slug (letters, digits, single hyphens). A supplied `id` is rejected when it is not a
+slug, when a node already has it, or when a pending proposal reserves it, so agents can name
+a node and reference it later in `parent_id` or edges. Optional `relationship_id` attaches the node to a relationship interior (mutually
 exclusive with `parent_id`).
 
 #### `update_node(node_id, ...fields)`
@@ -123,6 +137,12 @@ Propose deleting a node. Deleting a node with children is rejected at proposal t
 than at apply time, so the agent gets the error while it still has context, instead of the
 architect discovering it at review.
 
+#### `delete_relationship(relationship_id)`
+
+Propose deleting one edge. Rejected at proposal time when the edge does not exist. Goes stale
+if the edge's `from` node is edited before review. Applying it also removes any nodes inside
+the edge (relationship interior); the endpoint nodes are kept.
+
 #### `set_relationship(from, to, label?, kind?, relationship_id?)`
 
 Propose creating or modifying a cross-cutting relationship. Directed. `kind` is one of
@@ -135,6 +155,11 @@ to see control or data flow. Endpoints must reference existing node ids.
 ---
 
 ### Read and report tools (direct)
+
+Authoring guidance carried in tool descriptions and the `get_context` brief: model high-level
+first; containers are deployment zones; nest about two levels; ask the user how they want the
+top-level view before drilling down; add no edge that carries no information; set explicit ids
+on created nodes; call `list_icons` before choosing icons.
 
 #### `get_context(node_id)`
 
@@ -180,6 +205,31 @@ This costs almost nothing to build — it is the same underlying function reache
 instead of from a diff — and it converts end-of-task failure into mid-task correction for any
 agent that uses it.
 
+#### `get_graph()`
+
+Reads the whole model compactly and directly (no staging): `nodes` (id, name, type, parent,
+relationship_id, status; no specs), `relationships` (id, from, to, label, kind) and
+`pending_proposals` (id, source, summary, operation count). Call it before authoring so ids
+are reused and duplicates avoided.
+
+#### `list_proposals()`
+
+Returns the same proposal summaries as `GET /proposals` (id, source, summary, operations,
+unreadable flag).
+
+#### `list_icons()`
+
+Returns `icons`: the closed icon registry as `{id, label}` rows, label being a one-line
+description. Same list as `GET /icons`. Use these ids for the `icon` field.
+
+#### `check_drift()`
+
+Compares model globs with `git ls-files` (same implementation as `ambit drift`). Returns
+`unowned_files` (tracked files no node's `implementation` matches; `.arch/` is excluded),
+`unmatched_globs` (`{node, field, glob}` for `implementation`/`scope` globs matching no
+tracked file) and `overlaps` (`{path, owners}` for files owned by two or more nodes of which
+at least two are not in an ancestor/descendant relationship). Read-only.
+
 #### `update_node_status(node_id, status)`
 
 Sets a node's `status` to one of `draft`, `specified`, `assigned`, `in_progress`, `done`,
@@ -193,7 +243,7 @@ does not carry that risk, and it is trivially revertable.
 
 ## Invariants (Must Always Hold)
 
-1. **No authoring tool modifies the canonical model.** All five write only to
+1. **No authoring tool modifies the canonical model.** All six write only to
    `.arch/.proposals/`.
 2. **Every staged tool's response states that the change is proposed, not applied.**
 3. **Only `update_node_status` writes canonically.** Any future tool that writes directly

@@ -40,6 +40,7 @@ func apiRoutes(idx *core.Index, h *hub) []route {
 		{"GET /layout/{key}", getLayout(idx)},
 		{"PUT /layout/{key}", putLayout(idx)},
 		{"GET /integrity", getIntegrity(idx)},
+		{"GET /icons", getIcons},
 		{"GET /proposals", getProposals(idx)},
 		{"GET /proposals/{id}", getProposal(idx)},
 		{"POST /proposals/group", postGroupProposal(idx)},

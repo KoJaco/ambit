@@ -9,6 +9,15 @@ import (
 // authoring tool descriptions (decision 0010).
 const ShallowModelGuidance = "Prefer shallow models. Use a container node to group related nodes. Nest more than two levels only for genuinely separate subsystems."
 
+// AuthoringGuidance is the model-first workflow guidance shared by the brief and the MCP
+// authoring tool descriptions.
+const AuthoringGuidance = "Model high-level first: start with the few top-level parts, then drill down only where asked. " +
+	"Treat container nodes as deployment zones (for example browser, edge, API, data) and keep nesting to about two levels. " +
+	"Before drilling down, ask the user how they want the top-level view organised. " +
+	"Do not add an edge that carries no information (every-pair wiring, or what the hierarchy already says). " +
+	"Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. " +
+	"Call list_icons to pick icon ids and get_graph to see what already exists."
+
 // Brief returns an imperative task description for an assigned agent working on id.
 func (idx *Index) Brief(id NodeID) (string, error) {
 	idx.mu.Lock()
@@ -67,6 +76,7 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	fmt.Fprintf(&b, "\nCall the check_scope tool with node_id %q periodically while you work, and again before you finish.\n", id)
 
 	fmt.Fprintf(&b, "\nIf you propose changes to the architecture model: %s\n", ShallowModelGuidance)
+	fmt.Fprintf(&b, "%s\n", AuthoringGuidance)
 
 	if len(n.Spec) > 0 {
 		fmt.Fprintf(&b, "\nSpecification for your node:\n%s\n", strings.TrimSpace(n.Spec))

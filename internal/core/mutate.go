@@ -8,7 +8,7 @@ import (
 )
 
 // Create derives an id from the name, writes the node pair, and records membership.
-// The caller cannot supply an id.
+// A caller-supplied in.ID must be a free slug (no node, no pending create reserves it).
 func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -43,11 +43,19 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if err := validateCreatePresentation(in.Icon, in.Color, in.Renderer, schema); err != nil {
 		return "", err
 	}
-	base, err := slugify(in.Name)
-	if err != nil {
-		return "", err
+	var id NodeID
+	if in.ID != "" {
+		if err := idx.checkExplicitID(in.ID, nil); err != nil {
+			return "", err
+		}
+		id = in.ID
+	} else {
+		base, err := slugify(in.Name)
+		if err != nil {
+			return "", err
+		}
+		id = idx.allocate(base)
 	}
-	id := idx.allocate(base)
 	node := &Node{
 		ID:             id,
 		Name:           in.Name,
@@ -270,6 +278,10 @@ func (idx *Index) SetRelationship(in SetRelationshipInput) (Relationship, error)
 func (idx *Index) DeleteRelationship(id RelID) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.deleteRelationshipLocked(id)
+}
+
+func (idx *Index) deleteRelationshipLocked(id RelID) error {
 	if _, i := idx.relByID(id); i < 0 {
 		return fmt.Errorf("%w: %q", ErrRelationshipNotFound, id)
 	}

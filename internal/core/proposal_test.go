@@ -679,3 +679,175 @@ func nodeFileNames(t *testing.T, dir string) []string {
 	}
 	return names
 }
+
+func TestDeleteRelationshipStagesAndApplies(t *testing.T) {
+	idx, dir := newModel(t)
+	a, _ := idx.Create(CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(CreateInput{Name: "B", Type: "service"})
+	rel, err := idx.SetRelationship(SetRelationshipInput{From: a, To: b, Label: "calls"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := idx.Stage(StageInput{Source: OpDeleteRelationship, Ops: []StageOp{{Op: OpDeleteRelationship, RelID: rel.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(idx.Relationships) != 1 {
+		t.Fatal("stage mutated the model")
+	}
+	diff, err := idx.ProposalDiff(pid)
+	if err != nil || diff.Operations[0].Relationship == nil || diff.Operations[0].Relationship.ID != string(rel.ID) {
+		t.Fatalf("diff %+v %v", diff, err)
+	}
+	if err := idx.AcceptOperation(pid, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := reopen(t, dir); len(got.Relationships) != 0 || got.Nodes[a] == nil || got.Nodes[b] == nil {
+		t.Fatalf("after accept rels %+v", got.Relationships)
+	}
+	if _, err := idx.Stage(StageInput{Source: OpDeleteRelationship, Ops: []StageOp{{Op: OpDeleteRelationship, RelID: rel.ID}}}); !errors.Is(err, ErrRelationshipNotFound) {
+		t.Fatalf("stage of missing relationship: %v", err)
+	}
+}
+
+func TestDeleteRelationshipIsStaleWhenFromNodeChanges(t *testing.T) {
+	idx, _ := newModel(t)
+	a, _ := idx.Create(CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(CreateInput{Name: "B", Type: "service"})
+	rel, _ := idx.SetRelationship(SetRelationshipInput{From: a, To: b})
+	pid, err := idx.Stage(StageInput{Source: OpDeleteRelationship, Ops: []StageOp{{Op: OpDeleteRelationship, RelID: rel.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := "edited"
+	if err := idx.Update(a, UpdateInput{Spec: &spec}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.AcceptOperation(pid, 0, false); !errors.Is(err, ErrStale) {
+		t.Fatalf("expected stale, got %v", err)
+	}
+	res, err := idx.AcceptAll(pid)
+	if err != nil || len(res.Applied) != 0 || len(res.Skipped) != 1 {
+		t.Fatalf("accept all %+v %v", res, err)
+	}
+	if len(idx.Relationships) != 1 {
+		t.Fatal("stale delete was applied")
+	}
+}
+
+func TestExplicitIDOnCreate(t *testing.T) {
+	idx, _ := newModel(t)
+	if _, err := idx.Create(CreateInput{ID: "Not Slug", Name: "X", Type: "service"}); !errors.Is(err, ErrBadOperation) {
+		t.Fatalf("bad slug: %v", err)
+	}
+	id, err := idx.Create(CreateInput{ID: "chosen", Name: "Whatever", Type: "service"})
+	if err != nil || id != "chosen" {
+		t.Fatalf("id %q err %v", id, err)
+	}
+	if _, err := idx.Create(CreateInput{ID: "chosen", Name: "Other", Type: "service"}); !errors.Is(err, ErrExists) {
+		t.Fatalf("collision: %v", err)
+	}
+	// reserved by a pending create in another proposal
+	if _, err := idx.Stage(StageInput{Source: OpCreateNode, Ops: []StageOp{{Op: OpCreateNode, Create: CreateInput{ID: "later", Name: "L", Type: "service"}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Create(CreateInput{ID: "later", Name: "L2", Type: "service"}); !errors.Is(err, ErrExists) {
+		t.Fatalf("reserved id: %v", err)
+	}
+	if _, err := idx.Stage(StageInput{Source: OpCreateNode, Ops: []StageOp{{Op: OpCreateNode, Create: CreateInput{ID: "later", Name: "L3", Type: "service"}}}}); !errors.Is(err, ErrExists) {
+		t.Fatalf("reserved id on stage: %v", err)
+	}
+	// duplicate inside one proposal
+	_, err = idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{ID: "dup", Name: "D1", Type: "service"}},
+		{Op: OpCreateNode, Create: CreateInput{ID: "dup", Name: "D2", Type: "service"}},
+	}})
+	if !errors.Is(err, ErrExists) {
+		t.Fatalf("duplicate in proposal: %v", err)
+	}
+}
+
+func TestAcceptSingleOpsRespectStagedCreateDependencies(t *testing.T) {
+	idx, _ := newModel(t)
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{ID: "zone", Name: "Zone", Type: "boundary"}},
+		{Op: OpCreateNode, Create: CreateInput{ID: "api", Name: "API", Type: "service", ParentID: "zone"}},
+		{Op: OpSetRelationship, From: "api", To: "zone", Label: "in"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, i := range []int{1, 2} {
+		if err := idx.AcceptOperation(pid, i, false); !errors.Is(err, ErrStale) {
+			t.Fatalf("op %d accepted before its staged dependency: %v", i, err)
+		}
+	}
+	for _, i := range []int{0, 1, 2} {
+		if err := idx.AcceptOperation(pid, i, false); err != nil {
+			t.Fatalf("op %d: %v", i, err)
+		}
+	}
+}
+
+func TestAcceptAllSkipsDependentsOfRejectedCreate(t *testing.T) {
+	idx, _ := newModel(t)
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{ID: "zone", Name: "Zone", Type: "boundary"}},
+		{Op: OpCreateNode, Create: CreateInput{ID: "api", Name: "API", Type: "service", ParentID: "zone"}},
+		{Op: OpCreateNode, Create: CreateInput{ID: "db", Name: "DB", Type: "service"}},
+		{Op: OpSetRelationship, From: "db", To: "zone", Label: "in"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.RejectOperation(pid, 0); err != nil {
+		t.Fatal(err)
+	}
+	res, err := idx.AcceptAll(pid)
+	if err != nil || len(res.Failed) != 0 || len(res.Applied) != 1 || len(res.Skipped) != 2 {
+		t.Fatalf("result %+v %v", res, err)
+	}
+	if !idx.HasNode("db") || idx.HasNode("api") {
+		t.Fatal("wrong nodes applied")
+	}
+}
+
+func TestAcceptAllRollsBackWhenAnOperationFails(t *testing.T) {
+	idx, dir := newModel(t)
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{Name: "Billing", Type: "service", Spec: "b"}},
+		{Op: OpCreateNode, Create: CreateInput{Name: "Orders", Type: "service", Spec: "o"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An architect creates "orders" directly, so the second create fails at apply time.
+	if _, err := idx.Create(CreateInput{Name: "Orders", Type: "service", Spec: "mine"}); err != nil {
+		t.Fatal(err)
+	}
+	before := nodeFileNames(t, dir)
+	res, err := idx.AcceptAll(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 0 || len(res.Failed) != 1 || res.Failed[0].Index != 1 {
+		t.Fatalf("result %+v", res)
+	}
+	got := reopen(t, dir)
+	if _, ok := got.Nodes["billing"]; ok {
+		t.Fatal("billing survived the rollback")
+	}
+	if got.Nodes["orders"].Spec != "mine" {
+		t.Fatalf("architect node changed: %q", got.Nodes["orders"].Spec)
+	}
+	if after := nodeFileNames(t, dir); strings.Join(after, ",") != strings.Join(before, ",") {
+		t.Fatalf("files %v -> %v", before, after)
+	}
+	listed, err := idx.ListProposals()
+	if err != nil || len(listed) != 1 || listed[0].Operations[0].Status != opStatusPending || listed[0].Operations[1].Status != opStatusPending {
+		t.Fatalf("manifest not restored %+v %v", listed, err)
+	}
+	if _, ok := idx.Nodes["billing"]; ok {
+		t.Fatal("in-memory index still has billing")
+	}
+}

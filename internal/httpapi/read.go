@@ -17,6 +17,10 @@ func getIntegrity(idx *core.Index) http.HandlerFunc {
 	}
 }
 
+func getIcons(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"icons": core.Icons()})
+}
+
 func getRootLevel(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		writeLevel(w, idx, "", expandParam(r))

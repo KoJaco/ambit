@@ -55,6 +55,30 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Print(report)
+	case "drift":
+		strict := false
+		if len(os.Args) == 3 && os.Args[2] == "--strict" {
+			strict = true
+		} else if len(os.Args) != 2 {
+			usage(os.Stderr)
+			os.Exit(1)
+		}
+		idx, err := core.Open(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambit drift: %v\n", err)
+			os.Exit(1)
+		}
+		report, err := core.Drift(idx, ".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ambit drift: %v\n", err)
+			os.Exit(1)
+		}
+		if text := core.FormatDrift(report); text != "" {
+			fmt.Print(text)
+			if strict {
+				os.Exit(1)
+			}
+		}
 	case "hook":
 		if len(os.Args) != 3 || os.Args[2] != "install" {
 			usage(os.Stderr)
@@ -121,5 +145,5 @@ func parseStartArgs(args []string) (string, error) {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
+	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit drift [--strict]\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
 }

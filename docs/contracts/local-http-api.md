@@ -125,6 +125,9 @@ hard refresh.
   references. The same list rides on `GET /levels` and `GET /levels/{nodeId}` as
   `warnings`. Warnings never block a read. Each warning names the node or the file.
 
+- **List icons** — `GET /icons` returns `{"icons": [{"id", "label"}]}`, the closed icon
+  registry in display order with a one-line label each.
+
 ### Graph mutations
 
 These **write directly** to the canonical model through `ambit-core`. Architect edits made

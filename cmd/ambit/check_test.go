@@ -109,3 +109,20 @@ func writeRepoFile(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+func TestDriftStrictExitsNonZeroOnFindings(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	run(t, dir, binPath, "init", dir)
+	writeRepoFile(t, filepath.Join(dir, "src", "stray.ts"), "x\n")
+	git(t, dir, "add", "-A")
+
+	out := run(t, dir, binPath, "drift")
+	if !strings.Contains(out, "src/stray.ts") {
+		t.Fatalf("report:\n%s", out)
+	}
+	out = runFail(t, dir, binPath, "drift", "--strict")
+	if !strings.Contains(out, "src/stray.ts") {
+		t.Fatalf("strict report:\n%s", out)
+	}
+}
