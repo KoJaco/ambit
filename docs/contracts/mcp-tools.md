@@ -15,7 +15,7 @@ Two distinct consumers use this surface for different things, and the split matt
 
 ## Scope
 
-**In scope:** all thirteen tools, their arguments, return shapes, staging behaviour, and the
+**In scope:** all fifteen tools, their arguments, return shapes, staging behaviour, and the
 framing requirements for `get_context`.
 
 **Out of scope:** the MCP protocol itself, the proposal file format (see
@@ -48,7 +48,7 @@ Code expect to launch a local MCP server: a direct command, not a running HTTP s
 The process is **independent of `ambit start`**. MCP works whether or not the UI server is
 running. See [ADR-0003](../adr/0003-runtime-and-distribution.md).
 
-All thirteen tools are thin wrappers over `ambit-core`, sharing the identical validation and
+All fifteen tools are thin wrappers over `ambit-core`, sharing the identical validation and
 write path as the HTTP API. There is never a second implementation of what a valid mutation
 is.
 
@@ -56,7 +56,7 @@ is.
 
 ### Authoring tools (staged)
 
-All six write to `.arch/.proposals/<proposal-id>/` and return the proposal ID. **None of
+All seven write to `.arch/.proposals/<proposal-id>/` and return the proposal ID. **None of
 them modify the canonical model.** Every one of them must say so in its returned message, so
 an agent does not report to its user that a change has been made when it has only been
 proposed.
@@ -84,11 +84,12 @@ relationships. ambit does not call a model provider; the harness supplies the gr
 - `parent_id` — optional. When present, proposed nodes without their own `parent_id` or
   `relationship_id` become children of that node.
 - `nodes` — array of node payloads (`name`, `type`, optional `id`, `parent_id`,
-  `relationship_id`, `implementation`, `scope`, `protected`, `spec`, `icon`). An optional
+  `relationship_id`, `implementation`, `scope`, `protected`, `spec`, `icon`, `depends_on`,
+  `contract`). An optional
   `id` is a caller-chosen slug (see `create_node`); other nodes and `relationships` in the
   same call may reference it.
 - `relationships` — optional array of edges (`from`, `to`, optional `label`, `kind`,
-  optional `relationship_id` when updating an existing edge).
+  `contract`, optional `relationship_id` when updating an existing edge).
 - `updates` — optional array of `update_node` payloads (same fields and rules as
   `update_node`).
 - `delete_relationships` — optional array of relationship ids to delete.
@@ -110,7 +111,7 @@ This tool exists **only** for transcript-seeded generation. Freeform
 natural-language-to-architecture is explicitly out of scope for v1; see
 [`docs/planning/spec-v1.md`](../planning/spec-v1.md) Section 12.
 
-#### `create_node(name, type, id?, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?, icon?)`
+#### `create_node(name, type, id?, parent_id?, relationship_id?, implementation?, scope?, protected?, spec?, icon?, depends_on?, contract?)`
 
 Propose one new node. `spec` is the markdown prose that becomes the node's sibling `.md`.
 Optional `icon` must be an id from the closed registry in
@@ -121,14 +122,22 @@ slug, when a node already has it, or when a pending proposal reserves it, so age
 a node and reference it later in `parent_id` or edges. Optional `relationship_id` attaches the node to a relationship interior (mutually
 exclusive with `parent_id`).
 
+Optional `depends_on` is an array of node ids that must be built first. Set it only for real
+build ordering, never to mirror flow direction (relationships express flow). Ids must exist (or
+be created earlier in the same proposal); a cycle is rejected. Optional `contract` is
+`{payloads?: string, invariants?: string[], errors?: string[], owns_data?: string[]}`: put
+interfaces here rather than in `spec` prose. Limits and validation are in
+[`arch-model-format.md`](arch-model-format.md); violations are rejected at proposal time.
+
 #### `update_node(node_id, ...fields)`
 
 Propose changes to an existing node. Any subset of mutable fields: `name`, `type`,
-`parent_id`, `relationship_id`, `implementation`, `scope`, `protected`, `spec`, `icon`.
-Registry ids are documented in [`arch-model-format.md`](arch-model-format.md). `color`,
+`parent_id`, `relationship_id`, `implementation`, `scope`, `protected`, `spec`, `icon`,
+`depends_on`, `contract`. Registry ids are documented in [`arch-model-format.md`](arch-model-format.md). `color`,
 `renderer`, and `schema` are not settable via MCP.
 
-`id` is immutable and cannot be updated. `status` is not settable here — use
+`depends_on` and `contract` are pointers in effect: omitted means unchanged, a present value
+replaces, and `[]` / `{}` clears. `id` is immutable and cannot be updated. `status` is not settable here — use
 `update_node_status`.
 
 #### `delete_node(node_id)`
@@ -143,11 +152,16 @@ Propose deleting one edge. Rejected at proposal time when the edge does not exis
 if the edge's `from` node is edited before review. Applying it also removes any nodes inside
 the edge (relationship interior); the endpoint nodes are kept.
 
-#### `set_relationship(from, to, label?, kind?, relationship_id?)`
+#### `set_relationship(from, to, label?, kind?, relationship_id?, contract?)`
 
 Propose creating or modifying a cross-cutting relationship. Directed. `kind` is one of
 `sync`, `async`, `data`. Omit `relationship_id` to create a new edge (stage 05 stable ids).
 Provide `relationship_id` to update label/kind on an existing edge.
+
+Optional `contract` is `{format?: "openapi"|"jsonschema"|"text", ref?: string, text?: string}`:
+what is on the wire, stored as opaque text. Omitted leaves an existing edge's contract
+unchanged; `{}` clears it. The op goes stale if the edge's own JSON (including its contract)
+changed since staging.
 
 Do not add relationships merely to connect every sibling; add them where the architect needs
 to see control or data flow. Endpoints must reference existing node ids.
@@ -205,11 +219,31 @@ This costs almost nothing to build — it is the same underlying function reache
 instead of from a diff — and it converts end-of-task failure into mid-task correction for any
 agent that uses it.
 
+#### `set_constraints(constraints)`
+
+Staged, replace-all. `constraints` is the full list of project rules, each
+`{id, text, severity?}` (`id` a unique slug, `text` 1..300 characters, `severity` `must`
+(default) or `should`; at most 24). Applying it rewrites `config.json` `constraints`. The
+response says the change is proposed and NOT applied. The architect edits constraints
+directly in the UI (`PUT /constraints`); agents never write them directly.
+
+#### `get_build_order(scope_node_id?)`
+
+Direct, read-only. Returns the advisory build order derived from `depends_on`:
+`{scope?, order: [{id, name, status, done, wave, depends_on, blocked_by}], waves: string[][],
+cycles: string[][], unordered: string[]}`. Only buildable nodes (leaves, or containers with
+`implementation` globs) are ordered; `wave` is 1-based and nodes in one wave can be built in
+parallel; `blocked_by` lists unmet dependencies. Optional `scope_node_id` limits it to a
+subtree (unknown id is an error). Advisory only: it never blocks `update_node_status`. Call it
+before building.
+
 #### `get_graph()`
 
 Reads the whole model compactly and directly (no staging): `nodes` (id, name, type, parent,
-relationship_id, status; no specs), `relationships` (id, from, to, label, kind) and
-`pending_proposals` (id, source, summary, operation count). Call it before authoring so ids
+relationship_id, status, `depends_on` when set; no specs), `relationships` (id, from, to,
+label, kind, `has_contract` when the edge has one; no contract bodies) and
+`pending_proposals` (id, source, summary, operation count; a `set_constraints` proposal has an operation with an
+empty `node_id`). Call it before authoring so ids
 are reused and duplicates avoided.
 
 #### `list_proposals()`
@@ -243,7 +277,7 @@ does not carry that risk, and it is trivially revertable.
 
 ## Invariants (Must Always Hold)
 
-1. **No authoring tool modifies the canonical model.** All six write only to
+1. **No authoring tool modifies the canonical model.** All seven write only to
    `.arch/.proposals/`.
 2. **Every staged tool's response states that the change is proposed, not applied.**
 3. **Only `update_node_status` writes canonically.** Any future tool that writes directly

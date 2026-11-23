@@ -182,3 +182,15 @@ func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest,
 	}
 	return nil, report, nil
 }
+
+type getBuildOrderIn struct {
+	ScopeNodeID string `json:"scope_node_id,omitempty"`
+}
+
+func (e *toolEnv) handleGetBuildOrder(_ context.Context, _ *sdkmcp.CallToolRequest, in getBuildOrderIn) (*sdkmcp.CallToolResult, core.BuildOrderResult, error) {
+	res, err := core.BuildOrder(e.idx, core.NodeID(in.ScopeNodeID))
+	if err != nil {
+		return nil, core.BuildOrderResult{}, err
+	}
+	return nil, res, nil
+}

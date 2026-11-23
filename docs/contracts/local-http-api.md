@@ -80,7 +80,9 @@ hard refresh.
   group. `expanded` is true on a node shown as an open group. `internal_rel_count` is the
   number of active relationships hidden inside a collapsed node that has children.
   `type_mix` is the node's direct children as `[{"type","count"}]`, sorted by count
-  descending then type name (omitted for leaves).
+  descending then type name (omitted for leaves). Summaries also carry `depends_on` (array of
+  node ids, always present, `[]` when none) and `contract` (omitted when none), see decision
+  0012.
 
   **Roll-up.** Let V be the visible nodes on the level. Each relationship endpoint resolves
   to its anchor: the nearest ancestor-or-self in V. For each active relationship:
@@ -107,7 +109,12 @@ hard refresh.
   empty interior is 404.
 
 - `PUT /relationships` — create when `id` is omitted (returns the new id), or update
-  `label` and `kind` when `id` is set. `from` and `to` are required on create.
+  `label` and `kind` when `id` is set. `from` and `to` are required on create. Optional
+  `contract` `{format?, ref?, text?}`: omitted leaves an existing edge's contract unchanged,
+  `{}` clears it. Relationship reads (level `relationships`, relationship-level
+  `relationship`/`relationships`, and this response) expose `contract` when set and omit it
+  otherwise; aggregated edges never carry one. Crossings do not carry it (fetch via the
+  relationship id).
 
 - `DELETE /relationships/{id}` — removes the edge and cascades interior members.
 
@@ -125,6 +132,14 @@ hard refresh.
   references. The same list rides on `GET /levels` and `GET /levels/{nodeId}` as
   `warnings`. Warnings never block a read. Each warning names the node or the file.
 
+- **Get project constraints** — `GET /constraints` returns
+  `{"constraints": [{"id","text","severity"}]}` in file order (`[]` when none).
+
+- **Get the build order** — `GET /build-order` (optional `?scope=<nodeId>`, unknown id is 404)
+  returns `{"scope"?, "order": [{"id","name","status","done","wave","depends_on","blocked_by"}],
+  "waves": [[id]], "cycles": [[id]], "unordered": [id]}`. Advisory, read-only. See decision
+  0012.
+
 - **List icons** — `GET /icons` returns `{"icons": [{"id", "label"}]}`, the closed icon
   registry in display order with a one-line label each.
 
@@ -139,10 +154,20 @@ with MCP, where the same operations are staged.
   other create conflict. Undo of a node delete relies on this to restore the same id.
 - `PATCH /nodes/{id}` — update. `status` is a normal field. Omitted fields are left
   unchanged.
+- `POST`/`PATCH /nodes` bodies also take `depends_on` (array of node ids) and `contract`
+  (`{payloads?, invariants?, errors?, owns_data?}`). On PATCH, omitted means unchanged,
+  `[]` / `{}` clears. Node responses and level summaries return `depends_on` (always an
+  array) and `contract` (omitted when none). A dependency cycle or deleting a node that
+  others depend on is 409; an invalid contract or unknown/duplicate/self dependency is 400.
+- `PUT /constraints` — body `{"constraints": [{"id","text","severity"?}]}` replaces the whole
+  list directly (the architect's own surface; agents stage `set_constraints` instead).
+  Validates (unique slug ids, text 1..300, severity `must`|`should` defaulting to `must`, at
+  most 24; failures are 400) and returns the stored list as `GET /constraints` does.
 - `DELETE /nodes/{id}` — delete.
 - `PUT /relationships` — set the directed edge `from` → `to`, with `label` and `kind`.
 
-A validation failure is 409 and the message is the core error, which names the node and
+A validation failure is 409 (or 400 for `ErrBadOperation`, bad contract, bad constraint, bad
+dependency) and the message is the core error, which names the node and
 the rule. There is no HTTP-specific validator.
 
 - `GET /assignment` — the active assignment, always 200. `{"node_id": "<id>",

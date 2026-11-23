@@ -166,7 +166,7 @@ accept-all applies a proposal, every operation that call already applied is roll
 operations and the failing one under `failed`, and the remaining operations are not
 attempted. Stale operations are different: they are still skipped and reported under
 `skipped` while the rest apply, as described under Staleness. Cached layouts invalidated by
-rolled-back operations are not restored.
+rolled-back operations are restored too.
 
 **Accepting an operation is atomic.** The node's `.json` and `.md` move from the proposal
 into `.arch/nodes/`, and `index.json` is updated, as one unit. A node never lands with its

@@ -123,3 +123,10 @@ func (idx *Index) setConstraintsLocked(in []Constraint) error {
 	}
 	return idx.reload()
 }
+
+// ConstraintList returns a copy of the project constraints in file order.
+func (idx *Index) ConstraintList() []Constraint {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	return append([]Constraint{}, idx.Constraints...)
+}

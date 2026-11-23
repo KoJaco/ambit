@@ -19,6 +19,8 @@ type RelView struct {
 	To    NodeID
 	Label string
 	Kind  string
+	// Contract is nil when the relationship has none.
+	Contract *EdgeContract
 }
 
 // RelationshipLevel returns the drill-down for a relationship with members. Empty interior is ErrEmptyRelationship.
@@ -90,12 +92,12 @@ func (idx *Index) RelationshipLevel(relID RelID) (RelationshipLevel, error) {
 }
 
 func relView(rel Relationship) RelView {
-	return RelView{ID: rel.ID, From: rel.From, To: rel.To, Label: rel.Label, Kind: rel.Kind}
+	return RelView{ID: rel.ID, From: rel.From, To: rel.To, Label: rel.Label, Kind: rel.Kind, Contract: normalizeEdgeContract(rel.Contract)}
 }
 
 func edgeView(rel Relationship) EdgeView {
 	return EdgeView{
 		ID: rel.ID, From: rel.From, To: rel.To, Label: rel.Label, Kind: rel.Kind,
-		Drillable: false,
+		Drillable: false, Contract: normalizeEdgeContract(rel.Contract),
 	}
 }

@@ -55,7 +55,10 @@ type NodeView struct {
 	Color          string
 	Renderer       string
 	Schema         []SchemaColumn
-	ChildCount     int
+	// DependsOn and Contract are copies of the node fields (nil when none).
+	DependsOn  []NodeID
+	Contract   *NodeContract
+	ChildCount int
 	// GroupID is the parent when this node is shown as a member of an expanded group.
 	GroupID NodeID
 	// Expanded is true on a node shown as an open group.
@@ -78,6 +81,8 @@ type EdgeView struct {
 	Aggregated bool
 	Members    []RelID
 	Kinds      []string
+	// Contract is the relationship contract (nil when none; never set on aggregated edges).
+	Contract *EdgeContract
 }
 
 // Crossing is a relationship with exactly one endpoint on the current level.
@@ -330,5 +335,7 @@ func snapshot(n *Node) NodeView {
 		Color:          n.Color,
 		Renderer:       n.Renderer,
 		Schema:         append([]SchemaColumn(nil), n.Schema...),
+		DependsOn:      append([]NodeID(nil), n.DependsOn...),
+		Contract:       normalizeNodeContract(n.Contract),
 	}
 }
