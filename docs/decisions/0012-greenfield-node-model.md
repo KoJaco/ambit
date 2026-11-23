@@ -35,6 +35,14 @@ External testing showed ambit models structure well but cannot yet drive a green
 -   Invalid constraint entries on load are skipped with a warning, not a load error.
 -   Brief sections, in order: scope/protected/siblings (siblings show contract payloads and errors, capped ~800 chars each); **Project rules** (always present when any exist, `must` first); **Interfaces you must honour** (per touching relationship, marked provider/consumer); **Your node's contract** (never truncated); **Build order** (depends on X (status); stop and report if unmet; dependents relying on you); the `check_scope` instruction plus a closing line to run `check_drift` and `update_node_status` when done.
 
+## Refinements (review follow-up)
+
+-   **Interfaces section lists only relationships that carry a contract.** An edge with no contract says nothing the agent can honour; omitting it keeps the brief short. The section is capped at about 4000 characters with a pointer to `get_graph` / the HTTP API for the rest.
+-   **A buildable container counts as done from its children alone** (confirmed intended): its own `status` is ignored. The same rule and cascade drive the brief's build-order fallback and "dependents relying on you".
+-   **Cycle checks use the expanded graph.** A dependency on a pure container means its buildable descendants, and a container's `depends_on` applies to each descendant, so mutations are validated on the same graph `get_build_order` uses.
+-   **`SetConstraints` rewrites `config.json`** with keys sorted alphabetically and the constraints array on one compact line. Unknown keys inside contracts and constraints are preserved. Saved JSON is not HTML-escaped.
+-   A running `ambit mcp` reloads on `config.json` changes so constraints edited via `ambit start` reach its briefs.
+
 ## Rationale
 
 -   Additive, so no migration and no version bump.

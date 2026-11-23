@@ -1,10 +1,12 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -48,6 +50,8 @@ type NodeContract struct {
 	Invariants []string `json:"invariants,omitempty"`
 	Errors     []string `json:"errors,omitempty"`
 	OwnsData   []string `json:"owns_data,omitempty"`
+	// Unknown holds keys this version does not know, preserved on rewrite.
+	Unknown map[string]jsonRaw `json:"-"`
 }
 
 // EdgeContract describes what is on the wire for a relationship. Stored as opaque text.
@@ -55,6 +59,8 @@ type EdgeContract struct {
 	Format string `json:"format,omitempty"`
 	Ref    string `json:"ref,omitempty"`
 	Text   string `json:"text,omitempty"`
+	// Unknown holds keys this version does not know, preserved on rewrite.
+	Unknown map[string]jsonRaw `json:"-"`
 }
 
 // Constraint is one project-wide rule from config.json.
@@ -62,16 +68,18 @@ type Constraint struct {
 	ID       string `json:"id"`
 	Text     string `json:"text"`
 	Severity string `json:"severity"`
+	// Unknown holds keys this version does not know, preserved on rewrite.
+	Unknown map[string]jsonRaw `json:"-"`
 }
 
 // IsEmpty reports whether the contract carries no content (nil is empty).
 func (c *NodeContract) IsEmpty() bool {
-	return c == nil || (c.Payloads == "" && len(c.Invariants) == 0 && len(c.Errors) == 0 && len(c.OwnsData) == 0)
+	return c == nil || (c.Payloads == "" && len(c.Invariants) == 0 && len(c.Errors) == 0 && len(c.OwnsData) == 0 && len(c.Unknown) == 0)
 }
 
 // IsEmpty reports whether the contract carries no content (nil is empty).
 func (c *EdgeContract) IsEmpty() bool {
-	return c == nil || (c.Format == "" && c.Ref == "" && c.Text == "")
+	return c == nil || (c.Format == "" && c.Ref == "" && c.Text == "" && len(c.Unknown) == 0)
 }
 
 // normalizeNodeContract returns a deep copy, or nil when empty.
@@ -79,7 +87,7 @@ func normalizeNodeContract(c *NodeContract) *NodeContract {
 	if c.IsEmpty() {
 		return nil
 	}
-	out := &NodeContract{Payloads: c.Payloads}
+	out := &NodeContract{Payloads: c.Payloads, Unknown: cloneRaw(c.Unknown)}
 	if len(c.Invariants) > 0 {
 		out.Invariants = cloneStrings(c.Invariants)
 	}
@@ -97,6 +105,7 @@ func normalizeEdgeContract(c *EdgeContract) *EdgeContract {
 		return nil
 	}
 	cp := *c
+	cp.Unknown = cloneRaw(c.Unknown)
 	return &cp
 }
 
@@ -171,6 +180,9 @@ func validateEdgeContract(c *EdgeContract) error {
 // value differs from current, so an unchanged over-limit value from disk can be re-sent.
 func patchNodeContract(in, current *NodeContract) (*NodeContract, error) {
 	next := normalizeNodeContract(in)
+	if next != nil && next.Unknown == nil && current != nil {
+		next.Unknown = cloneRaw(current.Unknown)
+	}
 	if !reflect.DeepEqual(next, current) {
 		if err := validateNodeContract(next); err != nil {
 			return nil, err
@@ -181,6 +193,9 @@ func patchNodeContract(in, current *NodeContract) (*NodeContract, error) {
 
 func patchEdgeContract(in, current *EdgeContract) (*EdgeContract, error) {
 	next := normalizeEdgeContract(in)
+	if next != nil && next.Unknown == nil && current != nil {
+		next.Unknown = cloneRaw(current.Unknown)
+	}
 	if !reflect.DeepEqual(next, current) {
 		if err := validateEdgeContract(next); err != nil {
 			return nil, err
@@ -203,4 +218,119 @@ func decodeEdgeContract(raw jsonRaw) (*EdgeContract, error) {
 		return nil, err
 	}
 	return normalizeEdgeContract(&c), nil
+}
+
+var (
+	nodeContractKeys = []string{"payloads", "invariants", "errors", "owns_data"}
+	edgeContractKeys = []string{"format", "ref", "text"}
+	constraintKeys   = []string{"id", "text", "severity"}
+)
+
+// marshalWithUnknown appends unknown keys (sorted) to an encoded object of known keys.
+func marshalWithUnknown(known any, unknown map[string]jsonRaw) ([]byte, error) {
+	base, err := marshalNoEscape(known)
+	if err != nil {
+		return nil, err
+	}
+	if len(unknown) == 0 {
+		return base, nil
+	}
+	keys := make([]string, 0, len(unknown))
+	for k := range unknown {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var buf bytes.Buffer
+	buf.Write(base[:len(base)-1])
+	for i, k := range keys {
+		if i > 0 || len(base) > 2 {
+			buf.WriteByte(',')
+		}
+		kb, err := marshalNoEscape(k)
+		if err != nil {
+			return nil, err
+		}
+		buf.Write(kb)
+		buf.WriteByte(':')
+		buf.Write(bytes.TrimSpace(unknown[k]))
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
+
+// unknownKeys returns the keys of data not in known, or nil.
+func unknownKeys(data []byte, known []string) (map[string]jsonRaw, error) {
+	var obj map[string]jsonRaw
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return nil, err
+	}
+	for _, k := range known {
+		delete(obj, k)
+	}
+	if len(obj) == 0 {
+		return nil, nil
+	}
+	return obj, nil
+}
+
+// MarshalJSON writes known keys then unknown keys sorted, without HTML escaping.
+func (c NodeContract) MarshalJSON() ([]byte, error) {
+	type plain NodeContract
+	return marshalWithUnknown(plain(c), c.Unknown)
+}
+
+// UnmarshalJSON reads known keys and keeps the rest in Unknown.
+func (c *NodeContract) UnmarshalJSON(data []byte) error {
+	type plain NodeContract
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	u, err := unknownKeys(data, nodeContractKeys)
+	if err != nil {
+		return err
+	}
+	p.Unknown = u
+	*c = NodeContract(p)
+	return nil
+}
+
+func (c EdgeContract) MarshalJSON() ([]byte, error) {
+	type plain EdgeContract
+	return marshalWithUnknown(plain(c), c.Unknown)
+}
+
+func (c *EdgeContract) UnmarshalJSON(data []byte) error {
+	type plain EdgeContract
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	u, err := unknownKeys(data, edgeContractKeys)
+	if err != nil {
+		return err
+	}
+	p.Unknown = u
+	*c = EdgeContract(p)
+	return nil
+}
+
+func (c Constraint) MarshalJSON() ([]byte, error) {
+	type plain Constraint
+	return marshalWithUnknown(plain(c), c.Unknown)
+}
+
+func (c *Constraint) UnmarshalJSON(data []byte) error {
+	type plain Constraint
+	var p plain
+	if err := json.Unmarshal(data, &p); err != nil {
+		return err
+	}
+	u, err := unknownKeys(data, constraintKeys)
+	if err != nil {
+		return err
+	}
+	p.Unknown = u
+	*c = Constraint(p)
+	return nil
 }

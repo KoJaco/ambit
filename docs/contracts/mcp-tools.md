@@ -200,6 +200,15 @@ the agent infer its constraints, and inference is exactly what should not be hap
 - **Instruct the agent to call `check_scope`** periodically during the task and before
   finishing.
 
+**Brief sections, in order** (decision 0012): scope, protected paths and siblings; **Project
+rules** (the `config.json` constraints, `must` first, present whenever any exist);
+**Interfaces you must honour** (only relationships that carry a contract, marked provider or
+consumer; edges without one are omitted, an explicit refinement recorded in decision 0012;
+the section is capped at about 4000 characters with a pointer to `get_graph` or the HTTP API
+for the rest); **your node's contract** (never truncated); **Build order** (unmet
+dependencies, container-aware done rule, dependents relying on you); and a closing line to
+run `check_drift` and `update_node_status` when done, after the `check_scope` instruction.
+
 **This framing needs real iteration against actual harnesses, not a one-shot template.**
 Build step 9 budgets time for it. Treat the wording as a tuned artifact and record what was
 learned when it changes.

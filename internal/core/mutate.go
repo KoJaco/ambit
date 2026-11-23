@@ -60,7 +60,7 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 		}
 		id = idx.allocate(base)
 	}
-	if err := idx.validateDependsOn(id, in.DependsOn); err != nil {
+	if err := idx.validateDependsOn(id, in.ParentID, in.DependsOn); err != nil {
 		return "", err
 	}
 	node := &Node{
@@ -192,7 +192,7 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 		return err
 	}
 	if in.DependsOn != nil {
-		if err := idx.validateDependsOn(id, *in.DependsOn); err != nil {
+		if err := idx.validateDependsOn(id, next.ParentID, *in.DependsOn); err != nil {
 			return err
 		}
 		next.DependsOn = sortedDeps(*in.DependsOn)

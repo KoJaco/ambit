@@ -19,12 +19,12 @@ const watchDebounce = 150 * time.Millisecond
 // is true only when the warning set changed. ProposalsChanged means a proposal
 // directory was staged, updated, or removed. Proposal paths do not reload the model.
 type WatchNotice struct {
-	Err               error
-	ModelChanged      bool
-	NodeIDs           []NodeID
-	RelationshipIDs   []RelID
-	IntegrityChanged  bool
-	ProposalsChanged  bool
+	Err              error
+	ModelChanged     bool
+	NodeIDs          []NodeID
+	RelationshipIDs  []RelID
+	IntegrityChanged bool
+	ProposalsChanged bool
 }
 
 // Watch rebuilds the index through Open when a node file or index.json changes.
@@ -151,7 +151,7 @@ func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
 			indexChanged = true
 			continue
 		}
-		if base == "local.json" {
+		if base == "local.json" || base == "config.json" {
 			continue
 		}
 		name := strings.TrimSuffix(base, filepath.Ext(base))
@@ -334,7 +334,7 @@ func (idx *Index) relevantWatch(path string) bool {
 		return true
 	}
 	arch := filepath.Clean(idx.arch())
-	if (base == "index.json" || base == "local.json") && filepath.Clean(filepath.Dir(path)) == arch {
+	if (base == "index.json" || base == "local.json" || base == "config.json") && filepath.Clean(filepath.Dir(path)) == arch {
 		return true
 	}
 	nodes := filepath.Join(arch, "nodes")

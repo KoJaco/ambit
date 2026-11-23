@@ -35,7 +35,7 @@ type Index struct {
 	// Constraints are the valid project rules from config.json, in file order.
 	Constraints []Constraint
 
-	indexUnknown     map[string]jsonRaw
+	indexUnknown      map[string]jsonRaw
 	configUnknown     map[string]jsonRaw
 	localUnknown      map[string]jsonRaw
 	assignmentUnknown map[string]jsonRaw

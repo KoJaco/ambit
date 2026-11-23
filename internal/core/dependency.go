@@ -17,13 +17,13 @@ func sortedDeps(in []NodeID) []NodeID {
 
 // validateDependsOn checks a proposed depends_on list for self. self may not be in
 // idx.Nodes yet (create). Ids must exist, no self-reference, no duplicates, no cycle.
-func (idx *Index) validateDependsOn(self NodeID, deps []NodeID) error {
-	return validateDependsOnIn(idx.Nodes, self, deps)
+func (idx *Index) validateDependsOn(self, parent NodeID, deps []NodeID) error {
+	return validateDependsOnIn(idx.Nodes, self, parent, deps)
 }
 
 // validateDependsOnIn is validateDependsOn against an explicit node map, so staging can
 // validate against a scratch copy that already holds earlier operations of a proposal.
-func validateDependsOnIn(nodes map[NodeID]*Node, self NodeID, deps []NodeID) error {
+func validateDependsOnIn(nodes map[NodeID]*Node, self, parent NodeID, deps []NodeID) error {
 	seen := map[NodeID]bool{}
 	for _, d := range deps {
 		switch {
@@ -66,6 +66,59 @@ func validateDependsOnIn(nodes map[NodeID]*Node, self NodeID, deps []NodeID) err
 				parts[i] = string(id)
 			}
 			return fmt.Errorf("%w: %s", ErrDependencyCycle, strings.Join(parts, " -> "))
+		}
+	}
+	return expandedCycleCheck(nodes, self, parent, deps)
+}
+
+// expandedCycleCheck rejects deps when, with pure containers expanded exactly as the build
+// order does, they put self (or a node under it) in a dependency cycle. A dependency on a
+// pure container means its descendants, so x -> container -> child -> x is a cycle even
+// though the raw depends_on lists are acyclic.
+func expandedCycleCheck(nodes map[NodeID]*Node, self, parent NodeID, deps []NodeID) error {
+	scratch := make(map[NodeID]*Node, len(nodes)+1)
+	for id, n := range nodes {
+		scratch[id] = n
+	}
+	sn := &Node{ID: self}
+	if cur := nodes[self]; cur != nil {
+		cp := *cur
+		sn = &cp
+	}
+	sn.ParentID = parent
+	sn.DependsOn = deps
+	scratch[self] = sn
+	g := newDepGraphFromNodes(scratch)
+
+	mine := map[NodeID]bool{}
+	var collect func(id NodeID)
+	collect = func(id NodeID) {
+		mine[id] = true
+		for _, k := range g.children[id] {
+			collect(k)
+		}
+	}
+	collect(self)
+
+	var members []NodeID
+	inScope := map[NodeID]bool{}
+	for id := range scratch {
+		if scratch[id] != nil && g.buildable(id) {
+			members = append(members, id)
+			inScope[id] = true
+		}
+	}
+	sortNodeIDs(members)
+	succ, _, _, _ := g.succ(members, inScope, nil)
+	for _, comp := range sccCycles(members, succ) {
+		for _, id := range comp {
+			if mine[id] {
+				names := make([]string, len(comp))
+				for i, c := range comp {
+					names[i] = string(c)
+				}
+				return fmt.Errorf("%w: through containers among %s", ErrDependencyCycle, strings.Join(names, ", "))
+			}
 		}
 	}
 	return nil

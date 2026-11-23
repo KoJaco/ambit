@@ -150,9 +150,16 @@ func TestStageDeleteRejectedWhileDependedOn(t *testing.T) {
 	// A dependent created after staging blocks accept.
 	pid := nmStage(t, idx, StageOp{Op: OpDeleteNode, NodeID: "api"})
 	nmMake(t, idx, CreateInput{ID: "web", Name: "Web", Type: "service", DependsOn: []NodeID{"api"}})
-	// api's file did not change, so the op is not stale but applying it must fail.
-	if err := idx.AcceptOperation(pid, 0, false); !errors.Is(err, ErrHasDependents) {
+	// The op is now stale (reported, not applied) rather than failing a whole accept.
+	if err := idx.AcceptOperation(pid, 0, true); !errors.Is(err, ErrStale) || !strings.Contains(err.Error(), "dependents") {
 		t.Fatalf("accept err %v", err)
+	}
+	res, err := idx.AcceptAll(pid)
+	if err != nil || len(res.Applied) != 0 || len(res.Failed) != 0 || len(res.Skipped) != 1 || res.Skipped[0].Reason != staleHasDependents {
+		t.Fatalf("accept all %+v %v", res, err)
+	}
+	if idx.Nodes["api"] == nil {
+		t.Fatal("api was deleted")
 	}
 }
 

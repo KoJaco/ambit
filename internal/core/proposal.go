@@ -168,6 +168,9 @@ type RelSnapshot struct {
 	Label    string        `json:"label"`
 	Kind     string        `json:"kind"`
 	Contract *EdgeContract `json:"contract,omitempty"`
+	// ContractCleared is true on a set_relationship row whose staged contract is
+	// explicitly empty (it clears the edge's contract). Contract is then absent.
+	ContractCleared bool `json:"contract_cleared,omitempty"`
 }
 
 // SkippedOp is an operation accept-all did not apply because it was stale.
@@ -334,7 +337,7 @@ func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[Node
 	case OpSetRelationship:
 		return idx.stageRelationship(in, nodes, material, stagedRels)
 	case OpDeleteRelationship:
-		return idx.stageDeleteRelationship(in, material)
+		return idx.stageDeleteRelationship(in, nodes, material, stagedRels)
 	case OpSetConstraints:
 		return idx.stageConstraints(in)
 	default:
@@ -399,7 +402,7 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 	if err != nil {
 		return operation{}, nil, err
 	}
-	if err := validateDependsOnIn(nodes, id, in.Create.DependsOn); err != nil {
+	if err := validateDependsOnIn(nodes, id, in.Create.ParentID, in.Create.DependsOn); err != nil {
 		return operation{}, nil, err
 	}
 	node := &Node{
@@ -623,7 +626,7 @@ func (idx *Index) stageConstraints(in StageOp) (operation, *materialBody, error)
 	return operation{Op: OpSetConstraints, BaseHash: &hash, Constraints: &list, Status: opStatusPending}, nil, nil
 }
 
-func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materialBody) (operation, *materialBody, error) {
+func (idx *Index) stageDeleteRelationship(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody, stagedRels *[]Relationship) (operation, *materialBody, error) {
 	if in.RelID == "" {
 		return operation{}, nil, fmt.Errorf("%w: delete_relationship needs relationship_id", ErrBadOperation)
 	}
@@ -631,11 +634,30 @@ func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materi
 	if rel == nil {
 		return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelID)
 	}
-	hash, err := idx.deleteRelHash(rel, func(id NodeID) (string, error) { return idx.hashFor(id, material) }, true)
+	if interior := idx.removedByRelationship(rel); len(interior) > 0 {
+		remove := map[NodeID]bool{}
+		for _, nid := range interior {
+			remove[NodeID(nid)] = true
+		}
+		if err := checkNoDependentsIn(nodes, remove); err != nil {
+			return operation{}, nil, err
+		}
+	}
+	// An earlier op of this proposal that touched the edge means its on-disk JSON is no
+	// longer what the proposal started from, so the hash must not cover it (as in
+	// stageRelationship).
+	covered := true
+	label, kind := rel.Label, rel.Kind
+	for _, staged := range *stagedRels {
+		if staged.ID == rel.ID {
+			covered = false
+			label, kind = staged.Label, staged.Kind
+		}
+	}
+	hash, err := idx.deleteRelHash(rel, func(id NodeID) (string, error) { return idx.hashFor(id, material) }, covered)
 	if err != nil {
 		return operation{}, nil, err
 	}
-	label, kind := rel.Label, rel.Kind
 	op := operation{
 		Op:         OpDeleteRelationship,
 		NodeID:     string(rel.From),
@@ -645,7 +667,7 @@ func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materi
 		RelID:      string(rel.ID),
 		Label:      &label,
 		Kind:       &kind,
-		RelCovered: true,
+		RelCovered: covered,
 		Status:     opStatusPending,
 	}
 	return op, nil, nil
@@ -1021,6 +1043,9 @@ func (idx *Index) rejectIfStale(ops []operation, op operation, confirm bool) err
 	if reason == staleMissing {
 		return fmt.Errorf("%w: %s %s is stale because the node is missing and cannot be applied", ErrStale, op.Op, op.NodeID)
 	}
+	if reason == staleHasDependents {
+		return fmt.Errorf("%w: %s %s is stale because %s and cannot be applied", ErrStale, op.Op, op.NodeID, reason)
+	}
 	if !confirm {
 		return fmt.Errorf("%w: %s %s is stale; confirm_stale is required to apply over the architect's newer edit", ErrStale, op.Op, op.NodeID)
 	}
@@ -1030,6 +1055,8 @@ func (idx *Index) rejectIfStale(ops []operation, op operation, confirm bool) err
 const (
 	staleMissing  = "node is missing"
 	staleMismatch = "base_hash mismatch"
+
+	staleHasDependents = "node now has dependents"
 
 	staleCreateNotAccepted   = "container create_node was not accepted"
 	staleEndpointNotAccepted = "edge endpoint create_node was not accepted"
@@ -1113,6 +1140,15 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 		if rel == nil {
 			return true, staleMissing
 		}
+		if interior := idx.removedByRelationship(rel); len(interior) > 0 {
+			remove := map[NodeID]bool{}
+			for _, nid := range interior {
+				remove[NodeID(nid)] = true
+			}
+			if idx.checkNoDependents(remove) != nil {
+				return true, staleHasDependents
+			}
+		}
 		if rel.Label != deref(op.Label) || rel.Kind != deref(op.Kind) {
 			return true, staleMismatch
 		}
@@ -1130,6 +1166,20 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 			return true, staleMismatch
 		}
 		return false, ""
+	}
+	if op.Op == OpDeleteNode && idx.Nodes[NodeID(op.NodeID)] != nil {
+		// Applying would also remove the interior of every edge touching the node.
+		remove := map[NodeID]bool{NodeID(op.NodeID): true}
+		for _, rel := range idx.Relationships {
+			if string(rel.From) == op.NodeID || string(rel.To) == op.NodeID {
+				for nid := range idx.relationshipClosure(rel.ID).nodes {
+					remove[nid] = true
+				}
+			}
+		}
+		if idx.checkNoDependents(remove) != nil {
+			return true, staleHasDependents
+		}
 	}
 	hash, ok, err := idx.hashOnDisk(NodeID(op.NodeID))
 	if err != nil || !ok {
@@ -1436,7 +1486,7 @@ func (idx *Index) validateMaterialised(n *Node, creating bool) error {
 	// Re-validate only a changed list so an unrelated update is not blocked by a
 	// dangling entry the architect already has on disk.
 	if cur := idx.Nodes[n.ID]; creating || cur == nil || !slicesEqualIDs(cur.DependsOn, n.DependsOn) {
-		if err := idx.validateDependsOn(n.ID, n.DependsOn); err != nil {
+		if err := idx.validateDependsOn(n.ID, n.ParentID, n.DependsOn); err != nil {
 			return err
 		}
 	}
@@ -1565,6 +1615,7 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		}
 		if op.Contract != nil {
 			row.Relationship.Contract = normalizeEdgeContract(op.Contract)
+			row.Relationship.ContractCleared = row.Relationship.Contract == nil
 		} else if cur != nil {
 			row.Relationship.Contract = row.CurrentRelationship.Contract
 		}
@@ -1828,7 +1879,7 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 		fields = append(fields, "schema")
 	}
 	if in.DependsOn != nil {
-		if err := validateDependsOnIn(nodes, n.ID, *in.DependsOn); err != nil {
+		if err := validateDependsOnIn(nodes, n.ID, n.ParentID, *in.DependsOn); err != nil {
 			return nil, err
 		}
 		n.DependsOn = sortedDeps(*in.DependsOn)
@@ -1907,12 +1958,14 @@ func allResolved(ops []operation) bool {
 }
 
 func writeManifest(dir string, m manifest) error {
-	data, err := json.MarshalIndent(m, "", "    ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "    ")
+	if err := enc.Encode(m); err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	return writeAtomic(filepath.Join(dir, "manifest.json"), data)
+	return writeAtomic(filepath.Join(dir, "manifest.json"), buf.Bytes())
 }
 
 func readManifest(dir string) (manifest, error) {

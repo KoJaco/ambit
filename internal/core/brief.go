@@ -144,43 +144,68 @@ func (idx *Index) writeProjectRules(b *strings.Builder) {
 	}
 }
 
+// interfacesCap is the character budget for the whole Interfaces section.
+const interfacesCap = 4000
+
 // writeInterfaces lists each relationship touching n that carries a contract. The edge
 // A -> B reads "A calls B": B provides the interface and A consumes it.
 func (idx *Index) writeInterfaces(b *strings.Builder, n *Node) {
-	wrote := false
+	var sec strings.Builder
+	omitted, truncated := 0, false
 	for _, rel := range idx.Relationships {
 		if rel.Contract.IsEmpty() || (rel.From != n.ID && rel.To != n.ID) {
 			continue
 		}
-		if !wrote {
-			b.WriteString("\nInterfaces you must honour:\n")
-			wrote = true
-		}
+		var e strings.Builder
 		other := rel.To
 		role := "you CONSUME this interface; the provider is"
 		if rel.To == n.ID {
 			other = rel.From
 			role = "you PROVIDE this interface; the consumer is"
 		}
-		fmt.Fprintf(b, "  - %s %q (%s):", role, idx.nodeName(other), other)
+		fmt.Fprintf(&e, "  - %s %q (%s):", role, idx.nodeName(other), other)
 		if rel.Label != "" {
-			fmt.Fprintf(b, " %s", rel.Label)
+			fmt.Fprintf(&e, " %s", rel.Label)
 		}
 		if rel.Kind != "" {
-			fmt.Fprintf(b, " [%s]", rel.Kind)
+			fmt.Fprintf(&e, " [%s]", rel.Kind)
 		}
-		b.WriteByte('\n')
+		e.WriteByte('\n')
 		c := rel.Contract
 		if c.Format != "" {
-			fmt.Fprintf(b, "    format: %s\n", c.Format)
+			fmt.Fprintf(&e, "    format: %s\n", c.Format)
 		}
 		if c.Ref != "" {
-			fmt.Fprintf(b, "    ref (repo path): %s\n", c.Ref)
+			fmt.Fprintf(&e, "    ref (repo path): %s\n", c.Ref)
 		}
 		if strings.TrimSpace(c.Text) != "" {
-			b.WriteString(indentLines(strings.TrimSpace(c.Text), "    "))
-			b.WriteByte('\n')
+			e.WriteString(indentLines(strings.TrimSpace(c.Text), "    "))
+			e.WriteByte('\n')
 		}
+		entry := e.String()
+		if sec.Len()+utf8.RuneCountInString(entry) > interfacesCap {
+			if sec.Len() > 0 {
+				omitted++
+				continue
+			}
+			// The first interface alone is over budget: cut it rather than drop it.
+			cut, _ := capText(entry, interfacesCap)
+			entry = cut + "\n"
+			sec.WriteString(entry)
+			truncated = true
+			continue
+		}
+		sec.WriteString(entry)
+	}
+	if sec.Len() == 0 {
+		return
+	}
+	b.WriteString("\nInterfaces you must honour:\n")
+	b.WriteString(sec.String())
+	if omitted > 0 {
+		fmt.Fprintf(b, "  (%d more interface(s) omitted to keep this brief short; more via get_graph or the HTTP API)\n", omitted)
+	} else if truncated {
+		b.WriteString("  (interface truncated to keep this brief short; more via get_graph or the HTTP API)\n")
 	}
 }
 
@@ -220,6 +245,7 @@ func writeOwnContract(b *strings.Builder, n *Node) {
 // writeBuildOrder reports unmet dependencies (advisory, with a stop-and-report line) and
 // the nodes that rely on n.
 func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
+	g := depGraph{nodes: idx.Nodes, children: idx.Children}
 	var unmet []NodeID
 	if res, err := idx.buildOrderLocked(""); err == nil {
 		found := false
@@ -230,21 +256,31 @@ func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
 			}
 		}
 		if !found {
-			for _, d := range n.DependsOn {
-				if o := idx.Nodes[d]; o != nil && o.Status != StatusDone {
+			// A pure container is not in the build order: use the same declared set
+			// (own plus cascaded from non-buildable ancestors) and done rule.
+			done := g.doneFn()
+			pos := map[NodeID]int{}
+			for i, id := range idx.Order {
+				pos[id] = i
+			}
+			for _, d := range sortByPos(g.declared(n.ID), pos) {
+				if !done(d) {
 					unmet = append(unmet, d)
 				}
 			}
 		}
 	}
+	// Buildable nodes that rely on n: a declared dependency is n, or a pure container
+	// that expands to n. Dependencies cascade from containers to their descendants.
 	var dependents []NodeID
 	for _, id := range idx.Order {
-		if o := idx.Nodes[id]; o != nil && id != n.ID {
-			for _, d := range o.DependsOn {
-				if d == n.ID {
-					dependents = append(dependents, id)
-					break
-				}
+		if idx.Nodes[id] == nil || id == n.ID || !g.buildable(id) {
+			continue
+		}
+		for _, d := range g.declared(id) {
+			if d == n.ID || containsNodeID(g.targets(d), n.ID) {
+				dependents = append(dependents, id)
+				break
 			}
 		}
 	}
@@ -276,6 +312,15 @@ func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
 			fmt.Fprintf(b, "    - %q (%s)\n", idx.nodeName(d), d)
 		}
 	}
+}
+
+func containsNodeID(list []NodeID, id NodeID) bool {
+	for _, x := range list {
+		if x == id {
+			return true
+		}
+	}
+	return false
 }
 
 func nodeStatus(idx *Index, id NodeID) Status {

@@ -120,10 +120,17 @@ staged node file (decision 0012). `update_node` lists `depends_on` and `contract
 earlier operations of the same proposal leave it, so a cycle formed across two operations is
 rejected with `ErrDependencyCycle`; they are validated again at accept time against the
 canonical model. A staged `delete_node` is rejected with `ErrHasDependents` (naming the
-dependents) while a node outside the deleted set still lists it in `depends_on`.
+dependents) while a node outside the deleted set still lists it in `depends_on`. If a
+dependent appears after staging, the `delete_node` becomes **stale** with reason `node now has
+dependents` (accept-all skips and reports it; single accept refuses even with
+`confirm_stale`) instead of failing apply and rolling back the whole accept. A staged
+`delete_relationship` is likewise rejected with `ErrHasDependents` when an interior node it
+would remove has dependents, and goes stale with the same reason later.
 
 Diff snapshots. `NodeSnapshot` gains `depends_on` (sorted ids) and `contract`; `RelSnapshot`
-gains `contract`. A `set_constraints` diff row carries `current_constraints` and
+gains `contract` and, on a `set_relationship` row, `contract_cleared` (`true`, omitted
+otherwise) when the staged contract is explicitly empty so the edge's contract is cleared
+(`contract` is then absent, which alone would read as unchanged). A `set_constraints` diff row carries `current_constraints` and
 `proposed_constraints` (an absent key means an empty list).
 
 `delete_relationship` carries `relationship_id`, plus `from`, `to`, `label`, `kind` of the
@@ -190,7 +197,9 @@ recomputes the node's current hash. A mismatch marks the operation **stale**.
 A relationship operation's `base_hash` also covers the relationship's own JSON (decision
 0012, item 7), so two agents editing one edge's contract cannot silently overwrite each
 other. It is the sha256 of the `from` node hash plus the edge JSON when the edge existed on
-disk at staging and no earlier operation in the same proposal touched it (`rel_covered`);
+disk at staging and no earlier operation in the same proposal touched it (`rel_covered`;
+this applies to `delete_relationship` too, so `set_relationship` then `delete_relationship`
+on one edge does not go stale against itself);
 otherwise it is the `from` node hash alone, so a proposal that creates or repeatedly edits an
 edge does not go stale against itself. Proposals staged before this field existed have
 `rel_covered` absent and keep the old from-node-only hash.

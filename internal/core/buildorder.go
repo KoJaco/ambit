@@ -57,72 +57,10 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 			order = append(order, id)
 		}
 	}
-	buildable := func(id NodeID) bool {
-		return len(idx.Children[id]) == 0 || len(idx.Nodes[id].Implementation) > 0
-	}
+	g := depGraph{nodes: idx.Nodes, children: idx.Children}
+	buildable := g.buildable
 
-	doneMemo := map[NodeID]bool{}
-	var done func(id NodeID) bool
-	done = func(id NodeID) bool {
-		if v, ok := doneMemo[id]; ok {
-			return v
-		}
-		kids := idx.Children[id]
-		v := idx.Nodes[id].Status == StatusDone
-		if len(kids) > 0 {
-			v = true
-			for _, k := range kids {
-				if !done(k) {
-					v = false
-					break
-				}
-			}
-		}
-		doneMemo[id] = v
-		return v
-	}
-
-	// targets(d): the buildable nodes that must finish for a dependency on d.
-	var targets func(id NodeID) []NodeID
-	targets = func(id NodeID) []NodeID {
-		var out []NodeID
-		if buildable(id) {
-			out = append(out, id)
-		}
-		for _, k := range idx.Children[id] {
-			out = append(out, targets(k)...)
-		}
-		return out
-	}
-
-	// declared(b): own depends_on plus depends_on of non-buildable ancestors, existing nodes only.
-	declared := func(b NodeID) []NodeID {
-		seen := map[NodeID]bool{}
-		var out []NodeID
-		add := func(list []NodeID) {
-			for _, d := range list {
-				if _, ok := idx.Nodes[d]; ok && !seen[d] {
-					seen[d] = true
-					out = append(out, d)
-				}
-			}
-		}
-		add(idx.Nodes[b].DependsOn)
-		visited := map[NodeID]bool{b: true}
-		for cur := idx.Nodes[b].ParentID; cur != ""; {
-			p := idx.Nodes[cur]
-			if p == nil || visited[cur] {
-				break
-			}
-			visited[cur] = true
-			if !buildable(cur) {
-				add(p.DependsOn)
-			}
-			cur = p.ParentID
-		}
-		sort.Slice(out, func(i, j int) bool { return pos[out[i]] < pos[out[j]] })
-		return out
-	}
+	done := g.doneFn()
 
 	// Scope set.
 	inScope := map[NodeID]bool{}
@@ -152,25 +90,7 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 	}
 
 	// Edges t -> b (t before b), restricted to the scope.
-	succ := map[NodeID][]NodeID{}
-	preds := map[NodeID][]NodeID{}
-	indeg := map[NodeID]int{}
-	decl := map[NodeID][]NodeID{}
-	for _, b := range members {
-		decl[b] = declared(b)
-		seen := map[NodeID]bool{}
-		for _, d := range decl[b] {
-			for _, t := range targets(d) {
-				if !inScope[t] || seen[t] || (t == b && d != b) {
-					continue
-				}
-				seen[t] = true
-				succ[t] = append(succ[t], b)
-				preds[b] = append(preds[b], t)
-				indeg[b]++
-			}
-		}
-	}
+	succ, preds, indeg, decl := g.succ(members, inScope, func(l []NodeID) []NodeID { return sortByPos(l, pos) })
 
 	res.Cycles = append(res.Cycles, sccCycles(members, succ)...)
 
@@ -231,6 +151,133 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 		}
 	}
 	return res, nil
+}
+
+// depGraph is the depends_on graph with pure containers expanded: a dependency on a pure
+// container means its buildable descendants, and a pure container's depends_on applies to
+// each buildable node under it. Build order and mutation-time cycle checks share it.
+type depGraph struct {
+	nodes    map[NodeID]*Node
+	children map[NodeID][]NodeID
+}
+
+// newDepGraphFromNodes derives children from ParentID, ordered by id.
+func newDepGraphFromNodes(nodes map[NodeID]*Node) depGraph {
+	ids := make([]NodeID, 0, len(nodes))
+	for id := range nodes {
+		ids = append(ids, id)
+	}
+	sortNodeIDs(ids)
+	children := map[NodeID][]NodeID{}
+	for _, id := range ids {
+		n := nodes[id]
+		if n == nil || n.ParentID == "" {
+			continue
+		}
+		if _, ok := nodes[n.ParentID]; ok {
+			children[n.ParentID] = append(children[n.ParentID], id)
+		}
+	}
+	return depGraph{nodes: nodes, children: children}
+}
+
+// buildable: a leaf, or a container with implementation globs.
+func (g depGraph) buildable(id NodeID) bool {
+	return len(g.children[id]) == 0 || len(g.nodes[id].Implementation) > 0
+}
+
+// targets lists the buildable nodes that must finish for a dependency on id.
+func (g depGraph) targets(id NodeID) []NodeID {
+	var out []NodeID
+	if g.buildable(id) {
+		out = append(out, id)
+	}
+	for _, k := range g.children[id] {
+		out = append(out, g.targets(k)...)
+	}
+	return out
+}
+
+// doneFn returns the done rule: a node with children is done when all its children are
+// (its own status is ignored), otherwise when its status is done.
+func (g depGraph) doneFn() func(NodeID) bool {
+	memo := map[NodeID]bool{}
+	var done func(id NodeID) bool
+	done = func(id NodeID) bool {
+		if v, ok := memo[id]; ok {
+			return v
+		}
+		kids := g.children[id]
+		v := g.nodes[id].Status == StatusDone
+		if len(kids) > 0 {
+			v = true
+			for _, k := range kids {
+				if !done(k) {
+					v = false
+					break
+				}
+			}
+		}
+		memo[id] = v
+		return v
+	}
+	return done
+}
+
+// declared is b's own depends_on plus that of its non-buildable ancestors (existing nodes
+// only, unordered).
+func (g depGraph) declared(b NodeID) []NodeID {
+	seen := map[NodeID]bool{}
+	var out []NodeID
+	add := func(list []NodeID) {
+		for _, d := range list {
+			if _, ok := g.nodes[d]; ok && !seen[d] {
+				seen[d] = true
+				out = append(out, d)
+			}
+		}
+	}
+	add(g.nodes[b].DependsOn)
+	visited := map[NodeID]bool{b: true}
+	for cur := g.nodes[b].ParentID; cur != ""; {
+		p := g.nodes[cur]
+		if p == nil || visited[cur] {
+			break
+		}
+		visited[cur] = true
+		if !g.buildable(cur) {
+			add(p.DependsOn)
+		}
+		cur = p.ParentID
+	}
+	return out
+}
+
+// succ returns edges t -> b (t must be built before b) over the given buildable nodes.
+func (g depGraph) succ(members []NodeID, inScope map[NodeID]bool, sortDeclared func([]NodeID) []NodeID) (succ, preds map[NodeID][]NodeID, indeg map[NodeID]int, decl map[NodeID][]NodeID) {
+	succ = map[NodeID][]NodeID{}
+	preds = map[NodeID][]NodeID{}
+	indeg = map[NodeID]int{}
+	decl = map[NodeID][]NodeID{}
+	for _, b := range members {
+		decl[b] = g.declared(b)
+		if sortDeclared != nil {
+			decl[b] = sortDeclared(decl[b])
+		}
+		seen := map[NodeID]bool{}
+		for _, d := range decl[b] {
+			for _, t := range g.targets(d) {
+				if !inScope[t] || seen[t] || (t == b && d != b) {
+					continue
+				}
+				seen[t] = true
+				succ[t] = append(succ[t], b)
+				preds[b] = append(preds[b], t)
+				indeg[b]++
+			}
+		}
+	}
+	return
 }
 
 // sortByPos returns the existing ids of in ordered by model position.

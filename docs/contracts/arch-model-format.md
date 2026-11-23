@@ -164,7 +164,11 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   schema header only. MCP does not set `schema` in v1.
 - `depends_on` — list of node ids this node must be built after. Explicit only; never
   inferred from relationships. Written sorted. Ids must exist, no self-reference, no
-  duplicates, and the graph must be acyclic. Drives the derived build order
+  duplicates, and the graph must be acyclic. Unknown keys inside a node or edge `contract` object are preserved on write. A buildable
+  container (one with `implementation` globs) counts as done from its children alone; its
+  own `status` is ignored for the done rule. Cycles are checked on the expanded graph (a
+  dependency on a pure container means its descendants), so `x -> container` with a child
+  that depends on `x` is rejected like any cycle. Drives the derived build order
   ([decision 0012](../decisions/0012-greenfield-node-model.md)); advisory, never blocks a
   status change.
 - `contract` — optional object `{ "payloads": string, "invariants": string[], "errors":
@@ -270,7 +274,12 @@ Recognised keys (all optional; unknown keys are preserved on write):
   a unique lowercase slug; `text` is 1 to 300 characters; `severity` is `must` (default
   when absent) or `should`. At most 24 entries on write. An invalid or duplicate entry on
   load is skipped with a warning, not a load error. Global only
-  ([decision 0012](../decisions/0012-greenfield-node-model.md)).
+  ([decision 0012](../decisions/0012-greenfield-node-model.md)). Unknown keys inside a
+  constraint entry are preserved on write. `SetConstraints` (the UI, or an accepted
+  `set_constraints`) rewrites `config.json` with its keys sorted alphabetically and the
+  constraints array on one compact line; other keys and their values are kept. Saved JSON
+  is not HTML-escaped (`List<Order>` stays readable). A running `ambit mcp` reloads when
+  `config.json` changes on disk, so rules edited through `ambit start` reach its briefs.
 
 `group_max` and `level_budget` are view defaults only (decision 0010). A missing key uses the default. A value that is
 not a positive integer falls back to the default and produces a warning, not a load error.

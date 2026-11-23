@@ -101,6 +101,17 @@ func (idx *Index) setConstraintsLocked(in []Constraint) error {
 	if err != nil {
 		return err
 	}
+	// A replace-all list that omits a known id's unknown keys keeps the ones on disk.
+	for i := range out {
+		if out[i].Unknown != nil {
+			continue
+		}
+		for _, cur := range idx.Constraints {
+			if cur.ID == out[i].ID {
+				out[i].Unknown = cloneRaw(cur.Unknown)
+			}
+		}
+	}
 	obj := cloneRaw(idx.configUnknown)
 	if obj == nil {
 		obj = map[string]jsonRaw{}

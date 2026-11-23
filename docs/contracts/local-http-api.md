@@ -215,7 +215,9 @@ file and its `~<hash>` variants so the client recomputes. A field edit does not.
   computed against current state. Staleness is computed server-side at read time, not stored
   in the manifest, because the node can change after the manifest is written.
 - **Get a proposal diff** — for each operation, the current state and the proposed state,
-  ready to render.
+  ready to render. A `set_relationship` row's `relationship` carries `contract_cleared: true`
+  (omitted otherwise) when the staged contract is explicitly empty and clears the edge's
+  contract.
 - **Accept an operation** — applies it atomically. Requires an explicit confirmation flag
   when the operation is stale.
 - **Reject an operation** — marks it rejected.

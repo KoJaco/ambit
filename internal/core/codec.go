@@ -93,11 +93,19 @@ func isNull(raw jsonRaw) bool {
 }
 
 func rawOf(v any) (jsonRaw, error) {
-	b, err := json.Marshal(v)
-	if err != nil {
+	return marshalNoEscape(v)
+}
+
+// marshalNoEscape is json.Marshal without HTML escaping, so saved files keep < > & readable
+// (for example "List<Order>"). The trailing newline the encoder adds is removed.
+func marshalNoEscape(v any) ([]byte, error) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
 		return nil, err
 	}
-	return b, nil
+	return bytes.TrimRight(buf.Bytes(), "\n"), nil
 }
 
 // encodeObject writes a JSON object with known keys in order, then unknown keys sorted.
