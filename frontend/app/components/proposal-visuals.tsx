@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { ArrowRight, Lock, Trash2 } from "lucide-react";
+import { ArrowRight, Lock, Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { edgeKindStyle } from "../kind-style";
 import { nodeDotClass, nodeGlyphClass, resolveIconComponent } from "../node-presentation";
@@ -152,6 +152,40 @@ export function ProposalVisual({ view }: { view: DetailView }) {
                     <Badge tone="new">New node</Badge>
                     <NodePreviewCard node={view.node} tone="new" />
                     <InsideLine node={view.node} />
+                    {view.notes.length ? (
+                        <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                            {view.notes.map((note) => (
+                                <li key={note}>{note}</li>
+                            ))}
+                        </ul>
+                    ) : null}
+                </Preview>
+            );
+        case "rules":
+            return (
+                <Preview description={view.description}>
+                    <Badge tone="changed">Project rules</Badge>
+                    {view.lines.length === 0 ? <p className="text-xs text-muted-foreground">{view.summary}</p> : null}
+                    <ul className="flex flex-col gap-1.5 text-xs">
+                        {view.lines.map((line, index) => (
+                            <li key={index} className="flex items-start gap-1.5">
+                                {line.kind === "added" ? (
+                                    <Plus className="mt-0.5 size-3 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />
+                                ) : line.kind === "removed" ? (
+                                    <Minus className="mt-0.5 size-3 shrink-0 text-red-700 dark:text-red-300" aria-hidden />
+                                ) : (
+                                    <Pencil className="mt-0.5 size-3 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />
+                                )}
+                                <span className="min-w-0">
+                                    <span className="font-medium text-foreground">
+                                        {line.kind === "added" ? "Added" : line.kind === "removed" ? "Removed" : "Changed"}:
+                                    </span>{" "}
+                                    <span className={clsx("text-foreground", line.kind === "removed" && "line-through decoration-destructive")}>{line.text}</span>
+                                    {line.was ? <span className="block text-muted-foreground">was {line.was}</span> : null}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
                 </Preview>
             );
         case "connect":
@@ -161,9 +195,11 @@ export function ProposalVisual({ view }: { view: DetailView }) {
                     <NodePreviewCard node={view.from} compact />
                     <EdgePreviewView edge={view.edge} />
                     <NodePreviewCard node={view.to} compact />
+                    {view.edge.contract ? <p className="text-xs text-foreground">Contract: {view.edge.contract}</p> : null}
                     {view.previous ? (
                         <p className="text-xs text-muted-foreground">
                             Was: {view.previous.label || "(no label)"} · {edgeKindStyle(view.previous.kind).label}
+                            {view.previous.contract ? ` · contract ${view.previous.contract}` : ""}
                         </p>
                     ) : null}
                 </Preview>

@@ -7,6 +7,7 @@ import {
     ClipboardCheckIcon,
     HandGrabIcon,
     KeyboardIcon,
+    ListChecksIcon,
     MinusIcon,
     MousePointer2Icon,
     PlusIcon,
@@ -17,6 +18,7 @@ import {
 import { StructurePanel } from "./structure-panel";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { DocsSheet } from "./docs-sheet";
+import { ProjectRulesSheet } from "./project-rules";
 import { groupButtonLabel } from "../canvas-structure";
 import { barStore, escapeAction, focusAfterTransition, resolveBarMode } from "../bottom-bar";
 import { useShortcuts } from "../hooks/use-shortcuts";
@@ -171,10 +173,11 @@ export function ControlBar({
 }) {
     const session = useSyncExternalStore(barStore.subscribe, barStore.get, barStore.getServerSnapshot);
     const mode = resolveBarMode(session);
-    const [panel, setPanel] = useState<null | "shortcuts" | "docs">(null);
+    const [panel, setPanel] = useState<null | "shortcuts" | "docs" | "rules">(null);
     const [platform, setPlatform] = useState<Platform>("other");
     const shortcutsButtonRef = useRef<HTMLButtonElement>(null);
     const docsButtonRef = useRef<HTMLButtonElement>(null);
+    const rulesButtonRef = useRef<HTMLButtonElement>(null);
     const groupButtonRef = useRef<HTMLButtonElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const prevMode = useRef(mode);
@@ -220,7 +223,7 @@ export function ControlBar({
         }
     }
 
-    function openPanel(next: "shortcuts" | "docs", opener: HTMLButtonElement | null) {
+    function openPanel(next: "shortcuts" | "docs" | "rules", opener: HTMLButtonElement | null) {
         lastPanelOpener.current = opener;
         setPanel(next);
     }
@@ -329,6 +332,15 @@ export function ControlBar({
                         </span>
                     ) : null}
                     <BarButton
+                        label="Project rules"
+                        tooltip="Project rules"
+                        buttonRef={rulesButtonRef}
+                        haspopup="dialog"
+                        onClick={() => openPanel("rules", rulesButtonRef.current)}
+                    >
+                        <ListChecksIcon className="h-4 w-4" />
+                    </BarButton>
+                    <BarButton
                         label="Keyboard shortcuts"
                         tooltip={withShortcut("Keyboard shortcuts", "open-shortcuts", platform)}
                         buttonRef={shortcutsButtonRef}
@@ -365,6 +377,9 @@ export function ControlBar({
                     onClose={() => setPanel(null)}
                     returnFocusRef={lastPanelOpener}
                 />
+            ) : null}
+            {panel === "rules" ? (
+                <ProjectRulesSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} />
             ) : null}
             {panel === "docs" ? (
                 <DocsSheet

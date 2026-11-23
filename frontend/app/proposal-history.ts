@@ -23,7 +23,7 @@ export type Step =
     | { kind: "delete-rel"; id: string };
 
 // Fields an update operation may list that history knows how to restore. "spec" is the markdown.
-const RESTORABLE = ["name", "type", "status", "parent_id", "implementation", "scope", "protected", "spec", "icon", "color"];
+const RESTORABLE = ["name", "type", "status", "parent_id", "implementation", "scope", "protected", "spec", "icon", "color", "depends_on", "contract"];
 
 function patchFrom(node: NodeSnapshot, fields: string[]): NodePatch | null {
     const patch: NodePatch = {};
@@ -41,6 +41,12 @@ function patchFrom(node: NodeSnapshot, fields: string[]): NodePatch | null {
                 break;
             case "color":
                 patch.color = node.color ?? "";
+                break;
+            case "depends_on":
+                patch.depends_on = node.depends_on ?? [];
+                break;
+            case "contract":
+                patch.contract = node.contract ?? {};
                 break;
             default:
                 (patch as Record<string, unknown>)[field] = node[field as keyof NodeSnapshot];
@@ -80,8 +86,9 @@ function opSteps(op: OpDiff): { forward: Step[]; backward: Step[] } | null {
             const before = op.current_relationship;
             return {
                 forward: [{ kind: "set-rel", rel: op.relationship }],
+                // An edge contract left out of a set keeps the old one, so undo clears it explicitly.
                 backward: before
-                    ? [{ kind: "set-rel", rel: before }]
+                    ? [{ kind: "set-rel", rel: op.relationship.contract && !before.contract ? { ...before, contract: {} } : before }]
                     : op.relationship.id
                       ? [{ kind: "delete-rel", id: op.relationship.id }]
                       : [],
@@ -128,6 +135,8 @@ export async function runSteps(steps: Step[], api: StepApi = liveApi): Promise<v
                     markdown: n.markdown,
                     icon: n.icon,
                     color: n.color,
+                    ...(n.depends_on?.length ? { depends_on: n.depends_on } : {}),
+                    ...(n.contract ? { contract: n.contract } : {}),
                     ...(n.relationship_id ? { relationship_id: n.relationship_id } : { parent_id: n.parent_id ?? "" }),
                 });
                 // Ids come from the name; a collision would yield a different id and break later steps.

@@ -1,4 +1,16 @@
 import type { NodeSnapshot, OpDiff, ProposalDiff, RelSnapshot } from "./api";
+import {
+    constraintsChangeText,
+    constraintsDiff,
+    contractChangeSummary,
+    contractIsEmpty,
+    contractSummary,
+    dependsText,
+    edgeContractLine,
+    normalizeContract,
+    normalizeDependsOn,
+    type ConstraintLine,
+} from "./node-contract";
 import { resolveNodeColor, statusLabel, type ColorToken } from "./node-presentation";
 
 export type DetailBlock =
@@ -35,7 +47,7 @@ export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, str
     switch (op.op) {
         case "create_node":
             if (op.proposed) {
-                blocks.push(...nodeSnapshotBlocks("Proposed", op.proposed));
+                blocks.push(...nodeSnapshotBlocks("Proposed", op.proposed, nm));
                 if (op.proposed.relationship_id) {
                     blocks.push({ kind: "line", text: `Interior: ${op.proposed.relationship_id}` });
                 }
@@ -50,6 +62,23 @@ export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, str
                         before: op.current?.markdown ?? "—",
                         after: op.proposed?.markdown ?? "—",
                     });
+                } else if (field === "depends_on") {
+                    blocks.push({
+                        kind: "pair",
+                        label: "Depends on",
+                        before: dependsText(op.current?.depends_on, nm),
+                        after: dependsText(op.proposed?.depends_on, nm),
+                    });
+                } else if (field === "contract") {
+                    blocks.push({
+                        kind: "pair",
+                        label: "Contract",
+                        before: contractSummary(op.current?.contract),
+                        after: `${contractSummary(op.proposed?.contract)} (${contractChangeSummary(op.current?.contract, op.proposed?.contract)})`,
+                    });
+                    const before = normalizeContract(op.current?.contract).payloads ?? "";
+                    const after = normalizeContract(op.proposed?.contract).payloads ?? "";
+                    if (before !== after) blocks.push({ kind: "prose", label: "Contract payloads", before, after: after || "(empty)" });
                 } else {
                     blocks.push({
                         kind: "pair",
@@ -58,6 +87,15 @@ export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, str
                         after: fieldText(op.proposed, field),
                     });
                 }
+            }
+            break;
+        case "set_constraints":
+            blocks.push({ kind: "heading", text: "Project rules" });
+            for (const line of constraintsDiff(op.current_constraints, op.proposed_constraints)) {
+                blocks.push({ kind: "line", text: constraintLineText(line) });
+            }
+            if (constraintsDiff(op.current_constraints, op.proposed_constraints).length === 0) {
+                blocks.push({ kind: "line", text: constraintsChangeText(op.current_constraints, op.proposed_constraints) });
             }
             break;
         case "delete_node":
@@ -118,6 +156,7 @@ function summarizeOp(op: OpDiff, names?: ReadonlyMap<string, string>): string {
         const fields = op.fields?.length ? ` (${op.fields.join(", ")})` : "";
         return `Update ${nm(op.node_id)}${fields}`;
     }
+    if (op.op === "set_constraints") return "Update project rules";
     if (op.op === "set_relationship" && op.relationship) {
         return `Set relationship · ${nm(op.relationship.from)} → ${nm(op.relationship.to)}`;
     }
@@ -127,7 +166,21 @@ function summarizeOp(op: OpDiff, names?: ReadonlyMap<string, string>): string {
     return `${op.op} ${nm(op.node_id)}`;
 }
 
-function nodeSnapshotBlocks(title: string, node: NodeSnapshot): DetailBlock[] {
+function constraintLineText(line: ConstraintLine): string {
+    const verb = line.kind === "added" ? "Added" : line.kind === "removed" ? "Removed" : "Changed";
+    return line.was ? `${verb}: ${line.text} (was ${line.was})` : `${verb}: ${line.text}`;
+}
+
+function nodeSnapshotBlocks(title: string, node: NodeSnapshot, nm: (id: string) => string = (id) => id): DetailBlock[] {
+    const extras: DetailBlock[] = [];
+    if (normalizeDependsOn(node.depends_on).length) {
+        extras.push({ kind: "pair", label: "Depends on", before: "—", after: dependsText(node.depends_on, nm) });
+    }
+    if (!contractIsEmpty(node.contract)) {
+        extras.push({ kind: "pair", label: "Contract", before: "—", after: contractSummary(node.contract) });
+        const payloads = normalizeContract(node.contract).payloads;
+        if (payloads) extras.push({ kind: "prose", label: "Contract payloads", before: "", after: payloads });
+    }
     return [
         { kind: "heading", text: title },
         { kind: "pair", label: "name", before: "—", after: node.name },
@@ -164,6 +217,7 @@ function nodeSnapshotBlocks(title: string, node: NodeSnapshot): DetailBlock[] {
             after: node.protected ? "yes" : "no",
         },
         { kind: "prose", label: "Spec", before: "", after: node.markdown || "(empty)" },
+        ...extras,
     ];
 }
 
@@ -192,6 +246,12 @@ function relationshipBlocks(proposed: RelSnapshot, current: RelSnapshot | null, 
         blocks.push({ kind: "pair", label: "label", before: "—", after: proposed.label || "(empty)" });
         blocks.push({ kind: "pair", label: "kind", before: "—", after: proposed.kind || "(empty)" });
     }
+    const was = edgeContractLine(current?.contract);
+    const now = edgeContractLine(proposed.contract);
+    if (was || now) {
+        blocks.push({ kind: "pair", label: "contract", before: was || (current ? "(none)" : "—"), after: now || "(unchanged)" });
+        if (proposed.contract?.text) blocks.push({ kind: "prose", label: "Contract text", before: current?.contract?.text ?? "", after: proposed.contract.text });
+    }
     return blocks;
 }
 
@@ -216,6 +276,10 @@ function fieldText(node: NodeSnapshot | null, field: string): string {
             return node.icon || "(default)";
         case "color":
             return node.color || "(from type)";
+        case "depends_on":
+            return dependsText(node.depends_on);
+        case "contract":
+            return contractSummary(node.contract);
         default:
             return field;
     }
@@ -246,10 +310,11 @@ export type PreviewField = "name" | "type" | "status" | "icon" | "color" | "pare
 
 export type FieldChange = { field: string; label: string; before: string; after: string };
 
-export type EdgePreview = { label: string; kind: string };
+export type EdgePreview = { label: string; kind: string; contract?: string };
 
 export type DetailView =
-    | { kind: "create"; node: NodePreview; description: string }
+    | { kind: "create"; node: NodePreview; description: string; notes: string[] }
+    | { kind: "rules"; lines: ConstraintLine[]; summary: string; description: string }
     | { kind: "connect"; from: NodePreview; to: NodePreview; edge: EdgePreview; previous: EdgePreview | null; description: string }
     | { kind: "update"; before: NodePreview; after: NodePreview; changes: FieldChange[]; specSummary: string; description: string }
     | { kind: "remove-node"; node: NodePreview; description: string }
@@ -364,6 +429,7 @@ export function unresolvedNodeIds(diff: ProposalDiff, op: OpDiff, fetched?: Read
         shown.add(rel.to);
     }
     for (const n of op.removes_nodes ?? []) shown.add(n.id);
+    for (const snap of [op.current, op.proposed]) for (const id of snap?.depends_on ?? []) shown.add(id);
     const missing = new Set<string>();
     const snaps: (NodeSnapshot | null | undefined)[] = [op.current, op.proposed];
     for (const id of shown) {
@@ -382,8 +448,14 @@ export function proposalDetailView(diff: ProposalDiff, op: OpDiff, fetched?: Rea
     switch (op.op) {
         case "create_node": {
             const node = preview(op.proposed, op.node_id, lookup);
+            const nm = (id: string) => lookup.get(id)?.name ?? id;
+            const notes = [
+                normalizeDependsOn(op.proposed?.depends_on).length ? `Depends on ${dependsText(op.proposed?.depends_on, nm)}` : "",
+                contractIsEmpty(op.proposed?.contract) ? "" : `Contract: ${contractSummary(op.proposed?.contract)}`,
+            ].filter(Boolean);
             return {
                 kind: "create",
+                notes,
                 node,
                 description: `New node ${node.name}, type ${node.type || "unspecified"}, status ${node.statusText || "unspecified"}, ${insideText(node)}.`,
             };
@@ -399,7 +471,7 @@ export function proposalDetailView(diff: ProposalDiff, op: OpDiff, fetched?: Rea
                 .filter((f) => f !== "spec")
                 .map((field) => ({
                     field,
-                    label: field === "parent_id" ? "parent" : field,
+                    label: field === "parent_id" ? "parent" : field === "depends_on" ? "depends on" : field,
                     before: fieldValue(op.current, field, lookup),
                     after: fieldValue(op.proposed, field, lookup),
                 }));
@@ -424,9 +496,9 @@ export function proposalDetailView(diff: ProposalDiff, op: OpDiff, fetched?: Rea
             if (!op.relationship) break;
             const from = preview(lookup.get(op.relationship.from), op.relationship.from, lookup);
             const to = preview(lookup.get(op.relationship.to), op.relationship.to, lookup);
-            const edge = { label: op.relationship.label, kind: op.relationship.kind };
+            const edge = { label: op.relationship.label, kind: op.relationship.kind, contract: edgeContractLine(op.relationship.contract) };
             const previous = op.current_relationship
-                ? { label: op.current_relationship.label, kind: op.current_relationship.kind }
+                ? { label: op.current_relationship.label, kind: op.current_relationship.kind, contract: edgeContractLine(op.current_relationship.contract) }
                 : null;
             return {
                 kind: "connect",
@@ -458,6 +530,11 @@ export function proposalDetailView(diff: ProposalDiff, op: OpDiff, fetched?: Rea
                 description: `Removed connection ${edgeText(from, to, edge)}.${also}`,
             };
         }
+        case "set_constraints": {
+            const lines = constraintsDiff(op.current_constraints, op.proposed_constraints);
+            const summary = constraintsChangeText(op.current_constraints, op.proposed_constraints);
+            return { kind: "rules", lines, summary, description: `${summary}.` };
+        }
     }
     return { kind: "other", description: `${op.op} ${op.node_id}` };
 }
@@ -467,5 +544,6 @@ function fieldValue(node: NodeSnapshot | null, field: string, lookup: Map<string
         if (!node) return "—";
         return node.parent_id ? (lookup.get(node.parent_id)?.name ?? node.parent_id) : "(root)";
     }
+    if (field === "depends_on") return dependsText(node?.depends_on, (id) => lookup.get(id)?.name ?? id);
     return fieldText(node, field);
 }

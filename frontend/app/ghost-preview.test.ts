@@ -149,3 +149,35 @@ describe("placeGhosts", () => {
         expect(layout.positions.z).toEqual({ x: 0, y: 0 });
     });
 });
+
+describe("set_constraints operations", () => {
+    it("are ignored by the canvas preview", () => {
+        const preview = buildGhostPreview({
+            diffs: [
+                {
+                    proposal_id: "p1",
+                    created_at: "",
+                    source: "mcp",
+                    operations: [
+                        {
+                            index: 0,
+                            op: "set_constraints",
+                            node_id: "",
+                            status: "pending",
+                            stale: false,
+                            current: null,
+                            proposed: null,
+                            relationship: null,
+                            current_relationship: null,
+                            proposed_constraints: [{ id: "a", text: "x", severity: "must" }],
+                        },
+                    ],
+                },
+            ],
+            parentId: null,
+            nodeIds: ["n"],
+            edgeIds: [],
+        });
+        expect(preview).toEqual({ ghostNodes: [], ghostEdges: [], nodeMarks: {}, edgeMarks: {} });
+    });
+});

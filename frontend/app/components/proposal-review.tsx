@@ -495,7 +495,7 @@ export function ProposalReview({
                                     {skipped[proposal.proposal_id]?.length ? (
                                         <p className="px-3 pt-2 text-xs text-amber-700 dark:text-amber-400">
                                             Skipped{" "}
-                                            {skipped[proposal.proposal_id].map((op) => `${op.node_id} (${op.reason})`).join(", ")}
+                                            {skipped[proposal.proposal_id].map((op) => `${op.node_id || op.op} (${op.reason})`).join(", ")}
                                         </p>
                                     ) : null}
                                     {proposal.unreadable ? null : (
@@ -555,6 +555,7 @@ const VERB_STYLE: Record<RowVerb, string> = {
     Delete: "bg-red-500/15 text-red-800 dark:text-red-300",
     Connect: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
     "Remove connection": "bg-red-500/15 text-red-800 dark:text-red-300",
+    Rules: "bg-amber-500/15 text-amber-900 dark:text-amber-300",
     Other: "bg-muted text-muted-foreground",
 };
 
