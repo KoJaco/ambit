@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { floatingToggleMode, isEditableElement, shouldAutoOpenReview } from "./right-rail-state";
+import { floatingToggleMode, isEditableElement, reviewEscapeAction, shouldAutoOpenReview } from "./right-rail-state";
 
 describe("floatingToggleMode", () => {
     it("hides, shifts or leaves the floating toggle", () => {
@@ -33,5 +33,13 @@ describe("isEditableElement", () => {
         expect(isEditableElement({ tagName: "DIV", isContentEditable: true })).toBe(true);
         expect(isEditableElement({ tagName: "BUTTON" })).toBe(false);
         expect(isEditableElement(null)).toBe(false);
+    });
+});
+
+describe("reviewEscapeAction", () => {
+    it("steps back from detail, then closes, and ignores typing", () => {
+        expect(reviewEscapeAction({ detailOpen: true, editingFocus: false })).toBe("back");
+        expect(reviewEscapeAction({ detailOpen: false, editingFocus: false })).toBe("close");
+        expect(reviewEscapeAction({ detailOpen: true, editingFocus: true })).toBe("none");
     });
 });

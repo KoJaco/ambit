@@ -25,8 +25,9 @@ const missingNode = "node is missing";
 
 // proposalRows shapes a server diff into one compact row per operation.
 // Stale is copied from the payload. This function does not compare hashes.
-export function proposalRows(diff: ProposalDiff): ReviewRow[] {
-    const names = nameLookup(diff);
+// `existingNames` (id -> name of nodes outside the proposal) is a fallback before raw ids.
+export function proposalRows(diff: ProposalDiff, existingNames?: ReadonlyMap<string, string>): ReviewRow[] {
+    const names = nameLookup(diff, existingNames);
     return diff.operations.map((op) => {
         const missing = op.stale_reason === missingNode;
         const pending = op.status === "pending" && !op.error;
@@ -38,7 +39,7 @@ export function proposalRows(diff: ProposalDiff): ReviewRow[] {
             status: op.status,
             stale: op.stale,
             staleReason: op.stale_reason ?? "",
-            summary: summarize(op),
+            summary: summarize(op, existingNames),
             detail: detailOf(op),
             canAccept: pending && !missing,
             needsConfirm: op.stale && !missing && pending,
@@ -50,21 +51,23 @@ export function proposalRows(diff: ProposalDiff): ReviewRow[] {
     });
 }
 
-function summarize(op: OpDiff): string {
+// Only looked-up names replace ids here; the summary otherwise stays the raw operation.
+function summarize(op: OpDiff, names?: ReadonlyMap<string, string>): string {
+    const name = (id: string) => names?.get(id) ?? id;
     if (op.op === "create_node") {
         return `Create ${op.proposed?.name ?? op.node_id}`;
     }
     if (op.op === "delete_node") {
-        return `Delete ${op.node_id}`;
+        return `Delete ${name(op.node_id)}`;
     }
     if (op.op === "update_node") {
         const fields = op.fields?.length ? ` (${op.fields.join(", ")})` : "";
-        return `Update ${op.node_id}${fields}`;
+        return `Update ${name(op.node_id)}${fields}`;
     }
     if (op.op === "set_relationship" && op.relationship) {
-        return `${op.relationship.from} → ${op.relationship.to}`;
+        return `${name(op.relationship.from)} → ${name(op.relationship.to)}`;
     }
-    return `${op.op} ${op.node_id}`;
+    return `${op.op} ${name(op.node_id)}`;
 }
 
 function detailOf(op: OpDiff): string {
@@ -131,12 +134,30 @@ export function humanField(field: string): string {
 }
 
 // id -> display name, from every snapshot in the proposal.
-function nameLookup(diff: ProposalDiff): Map<string, string> {
-    const names = new Map<string, string>();
+// `existing` fills in ids the proposal does not describe; the proposal's own names win.
+function nameLookup(diff: ProposalDiff, existing?: ReadonlyMap<string, string>): Map<string, string> {
+    const names = new Map<string, string>(existing ?? []);
     for (const op of diff.operations) {
         for (const snap of [op.current, op.proposed]) if (snap) names.set(snap.id || op.node_id, snap.name);
     }
     return names;
+}
+
+// Ids shown in row titles (connection endpoints, update/delete targets) that neither the proposal
+// nor `known` can name yet.
+export function unresolvedRowIds(diff: ProposalDiff, known?: ReadonlyMap<string, unknown>): string[] {
+    const names = nameLookup(diff);
+    const out = new Set<string>();
+    const want = (id: string | undefined) => {
+        if (id && !names.has(id) && !known?.has(id)) out.add(id);
+    };
+    for (const op of diff.operations) {
+        if (op.op === "set_relationship" || op.op === "delete_relationship") {
+            want(op.relationship?.from);
+            want(op.relationship?.to);
+        } else if (op.op === "update_node" || op.op === "delete_node") want(op.node_id);
+    }
+    return [...out];
 }
 
 function verbOf(op: OpDiff): RowVerb {
@@ -287,7 +308,7 @@ export type HierarchySection = {
 // descendants, with the nodes and connections inside it), each existing zone that gets other
 // changes (named from the proposal, else from `existingNames`), then one Connections section for edges that reach outside a new zone.
 export function hierarchySections(diff: ProposalDiff, existingNames?: ReadonlyMap<string, string>): HierarchySection[] {
-    const rows = proposalRows(diff);
+    const rows = proposalRows(diff, existingNames);
     const names = nameLookup(diff);
     const nameOf = (id: string) => names.get(id) ?? existingNames?.get(id) ?? id;
     const opByIndex = new Map(diff.operations.map((op) => [op.index, op]));

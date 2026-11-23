@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { hierarchySections, proposalRows, summarizeProposal, unresolvedParentIds } from "./proposal-rows";
+import { hierarchySections, proposalRows, summarizeProposal, unresolvedParentIds, unresolvedRowIds } from "./proposal-rows";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -254,5 +254,49 @@ describe("hierarchySections", () => {
         const d = diff([create(0, "lone", "Cache", "root1")]);
         expect(hierarchySections(d, new Map([["root1", "Platform"]]))[0].title).toBe("In Platform");
         expect(hierarchySections(d)[0].title).toBe("In root1");
+    });
+});
+
+describe("existing node names in rows", () => {
+    const op = (partial: Partial<OpDiff>): OpDiff => ({
+        index: 0,
+        op: "update_node",
+        node_id: "runbook",
+        status: "pending",
+        stale: false,
+        fields: ["spec"],
+        current: null,
+        proposed: null,
+        relationship: null,
+        current_relationship: null,
+        ...partial,
+    });
+    const names = new Map([
+        ["runbook", "Operational runbook"],
+        ["a", "Platform"],
+        ["b", "Media boundary"],
+    ]);
+
+    it("names update, delete and connection rows from the lookup, falling back to ids", () => {
+        const d = diff([
+            op({}),
+            op({ index: 1, op: "delete_node", node_id: "runbook", fields: [] }),
+            op({ index: 2, op: "set_relationship", node_id: "a", fields: [], relationship: { id: "r", from: "a", to: "b", label: "", kind: "" } }),
+        ]);
+        const named = proposalRows(d, names);
+        expect(named[0].title).toBe("Operational runbook");
+        expect(named[0].summary).toBe("Update Operational runbook (spec)");
+        expect(named[1].summary).toBe("Delete Operational runbook");
+        expect(named[2].title).toBe("Platform → Media boundary");
+        expect(proposalRows(d)[2].title).toBe("a → b");
+    });
+
+    it("lists the ids no name covers yet", () => {
+        const d = diff([
+            op({}),
+            op({ index: 1, op: "set_relationship", node_id: "a", fields: [], relationship: { id: "r", from: "a", to: "b", label: "", kind: "" } }),
+        ]);
+        expect(unresolvedRowIds(d).sort()).toEqual(["a", "b", "runbook"]);
+        expect(unresolvedRowIds(d, names)).toEqual([]);
     });
 });

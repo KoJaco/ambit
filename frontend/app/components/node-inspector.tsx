@@ -262,7 +262,7 @@ export default function NodeInspector({
     );
 
     return (
-        <RightRailPanel className="overflow-hidden" onPointerDown={() => onFocus?.()}>
+        <RightRailPanel label="Inspector" className="overflow-hidden" onPointerDown={() => onFocus?.()}>
             {header}
             {error ? <p className="shrink-0 text-destructive">{error}</p> : null}
             {node && preview ? (

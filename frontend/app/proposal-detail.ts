@@ -10,9 +10,10 @@ export type DetailBlock =
 const missingNode = "node is missing";
 
 // Heading, status and any error or stale notice: always shown above the visual.
-export function proposalDetailHead(op: OpDiff): DetailBlock[] {
+// `names` (id -> name) replaces raw ids once resolved.
+export function proposalDetailHead(op: OpDiff, names?: ReadonlyMap<string, string>): DetailBlock[] {
     const blocks: DetailBlock[] = [];
-    blocks.push({ kind: "heading", text: summarizeOp(op) });
+    blocks.push({ kind: "heading", text: summarizeOp(op, names) });
     blocks.push({ kind: "line", text: `Status: ${op.status}` });
     if (op.error) {
         blocks.push({ kind: "line", text: op.error });
@@ -27,8 +28,9 @@ export function proposalDetailHead(op: OpDiff): DetailBlock[] {
 }
 
 // The full text form of an operation: head plus every field.
-export function proposalDetailBlocks(op: OpDiff): DetailBlock[] {
-    const blocks: DetailBlock[] = proposalDetailHead(op);
+export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, string>): DetailBlock[] {
+    const blocks: DetailBlock[] = proposalDetailHead(op, names);
+    const nm = (id: string) => names?.get(id) ?? id;
 
     switch (op.op) {
         case "create_node":
@@ -65,12 +67,12 @@ export function proposalDetailBlocks(op: OpDiff): DetailBlock[] {
             break;
         case "set_relationship":
             if (op.relationship) {
-                blocks.push(...relationshipBlocks(op.relationship, op.current_relationship));
+                blocks.push(...relationshipBlocks(op.relationship, op.current_relationship, nm));
             }
             break;
         case "delete_relationship":
             if (op.relationship) {
-                blocks.push(...relationshipBlocks(op.relationship, op.current_relationship));
+                blocks.push(...relationshipBlocks(op.relationship, op.current_relationship, nm));
             }
             if (op.removes_nodes?.length) {
                 blocks.push({ kind: "heading", text: "Also removes" });
@@ -78,7 +80,7 @@ export function proposalDetailBlocks(op: OpDiff): DetailBlock[] {
             }
             break;
         default:
-            blocks.push({ kind: "line", text: `${op.op} ${op.node_id}` });
+            blocks.push({ kind: "line", text: `${op.op} ${nm(op.node_id)}` });
     }
 
     return blocks;
@@ -104,24 +106,25 @@ function staleMessage(op: OpDiff): string {
     return `Stale: ${op.stale_reason ?? "unknown reason"}`;
 }
 
-function summarizeOp(op: OpDiff): string {
+function summarizeOp(op: OpDiff, names?: ReadonlyMap<string, string>): string {
+    const nm = (id: string) => names?.get(id) ?? id;
     if (op.op === "create_node") {
         return `Create ${op.proposed?.name ?? op.node_id}`;
     }
     if (op.op === "delete_node") {
-        return `Delete ${op.node_id}`;
+        return `Delete ${nm(op.node_id)}`;
     }
     if (op.op === "update_node") {
         const fields = op.fields?.length ? ` (${op.fields.join(", ")})` : "";
-        return `Update ${op.node_id}${fields}`;
+        return `Update ${nm(op.node_id)}${fields}`;
     }
     if (op.op === "set_relationship" && op.relationship) {
-        return `Set relationship · ${op.relationship.from} → ${op.relationship.to}`;
+        return `Set relationship · ${nm(op.relationship.from)} → ${nm(op.relationship.to)}`;
     }
     if (op.op === "delete_relationship" && op.relationship) {
-        return `Remove connection · ${op.relationship.from} → ${op.relationship.to}`;
+        return `Remove connection · ${nm(op.relationship.from)} → ${nm(op.relationship.to)}`;
     }
-    return `${op.op} ${op.node_id}`;
+    return `${op.op} ${nm(op.node_id)}`;
 }
 
 function nodeSnapshotBlocks(title: string, node: NodeSnapshot): DetailBlock[] {
@@ -164,10 +167,10 @@ function nodeSnapshotBlocks(title: string, node: NodeSnapshot): DetailBlock[] {
     ];
 }
 
-function relationshipBlocks(proposed: RelSnapshot, current: RelSnapshot | null): DetailBlock[] {
+function relationshipBlocks(proposed: RelSnapshot, current: RelSnapshot | null, nm: (id: string) => string = (id) => id): DetailBlock[] {
     const blocks: DetailBlock[] = [
         { kind: "heading", text: "Relationship" },
-        { kind: "line", text: `${proposed.from} → ${proposed.to}` },
+        { kind: "line", text: `${nm(proposed.from)} → ${nm(proposed.to)}` },
     ];
     if (proposed.id) {
         blocks.push({ kind: "line", text: `Id: ${proposed.id}` });
@@ -252,6 +255,11 @@ export type DetailView =
     | { kind: "remove-node"; node: NodePreview; description: string }
     | { kind: "remove-connection"; from: NodePreview; to: NodePreview; edge: EdgePreview; interior: NodePreview[]; description: string }
     | { kind: "other"; description: string };
+
+// id -> name for every node `proposalDetailView` can name: proposal snapshots over fetched ones.
+export function detailNames(diff: ProposalDiff, fetched?: ReadonlyMap<string, NodeSnapshot>): Map<string, string> {
+    return new Map([...mergedLookup(diff, fetched)].map(([id, snap]) => [id, snap.name || id]));
+}
 
 // Names for every node the proposal mentions, from the snapshots the API provides.
 export function snapshotLookup(diff: ProposalDiff): Map<string, NodeSnapshot> {

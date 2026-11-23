@@ -247,7 +247,7 @@ export function EdgeActions({
     }
 
     return (
-        <RightRailPanel onPointerDown={onFocus}>
+        <RightRailPanel label="Inspector" onPointerDown={onFocus}>
             <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-foreground">Relationship</h2>
                 <PanelHeaderActions onClose={onClose} closeLabel="Close relationship panel" />

@@ -70,3 +70,9 @@ export function shouldAutoOpenReview(input: {
     if (input.editingFocus || input.inspectorDirty) return false;
     return input.pendingIds.some((id) => !input.seenIds.has(id));
 }
+
+// What Escape does inside the Review panel: leave a detail view first, then close the panel.
+export function reviewEscapeAction(input: { detailOpen: boolean; editingFocus: boolean }): "back" | "close" | "none" {
+    if (input.editingFocus) return "none";
+    return input.detailOpen ? "back" : "close";
+}

@@ -121,12 +121,12 @@ export function EdgePreviewView({ edge, removed }: { edge: EdgePreview; removed?
             </svg>
             <span
                 className={clsx(
-                    "inline-flex max-w-[12rem] items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 text-xs",
+                    "inline-flex max-w-full items-center gap-1.5 rounded-full border bg-card px-2 py-0.5 text-xs",
                     removed ? "border-destructive/60 text-foreground line-through decoration-destructive" : "border-border text-foreground",
                 )}
             >
                 <KindGlyphIcon glyph={style.glyph} className="size-3.5 shrink-0" />
-                {edge.label ? <span className="truncate">{edge.label}</span> : null}
+                {edge.label ? <span className="min-w-0 break-words">{edge.label}</span> : null}
                 <span className="shrink-0 text-muted-foreground">{style.label}</span>
             </span>
         </div>

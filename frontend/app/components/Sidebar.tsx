@@ -149,6 +149,7 @@ export function Sidebar({
 
     return (
         <aside
+            aria-label="Canvas sidebar"
             className={clsx(
                 "pointer-events-auto absolute top-0 left-0 flex flex-col overflow-hidden border border-border bg-card shadow-md",
                 collapsed ? "size-10 rounded-full" : "relative max-h-full min-h-[25vh] w-64 rounded-xl"

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { detailNeedsConfirm, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
+import { detailNames, detailNeedsConfirm, proposalDetailHead, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -217,5 +217,24 @@ describe("fetched node snapshots", () => {
         if (view.kind !== "update") throw new Error("kind");
         expect(view.after.parentName).toBe("Core");
         expect(view.changes[0].after).toBe("Core");
+    });
+});
+
+describe("detail head names", () => {
+    const rel = { id: "r", from: "a", to: "b", label: "", kind: "" };
+    const op = { index: 0, op: "set_relationship", node_id: "a", status: "pending", stale: false, fields: [], current: null, proposed: null, relationship: rel, current_relationship: null } as OpDiff;
+    const names = new Map([["a", "Walkflow"], ["b", "Payments API"]]);
+
+    it("uses names when known and ids otherwise", () => {
+        expect(proposalDetailHead(op, names)[0]).toEqual({ kind: "heading", text: "Set relationship · Walkflow → Payments API" });
+        expect(proposalDetailHead(op)[0]).toEqual({ kind: "heading", text: "Set relationship · a → b" });
+        expect(proposalDetailBlocks(op, names).find((b) => b.kind === "line" && b.text.includes("→"))).toEqual({ kind: "line", text: "Walkflow → Payments API" });
+        expect(proposalDetailHead({ ...op, op: "delete_node", relationship: null }, names)[0]).toEqual({ kind: "heading", text: "Delete Walkflow" });
+    });
+
+    it("builds a name lookup from fetched nodes", () => {
+        const fetched = new Map([["x", { id: "x", name: "Ex" } as never]]);
+        const d = { proposal_id: "p", created_at: "", source: "", operations: [op] } as ProposalDiff;
+        expect(detailNames(d, fetched).get("x")).toBe("Ex");
     });
 });

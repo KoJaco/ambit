@@ -83,6 +83,12 @@ export default function Home() {
         setRefreshKey((value) => value + 1);
     }
     const [frontPanel, setFrontPanel] = useState<RightRailFront>("review");
+    // Whether the Review panel is shown. Closing it keeps the proposals; the toolbar badge reopens it.
+    const [reviewOpen, setReviewOpen] = useState(true);
+    function showReview() {
+        setReviewOpen(true);
+        setFrontPanel("review");
+    }
     const [pendingReviewIds, setPendingReviewIds] = useState<string[]>([]);
     // Proposals already offered to the user. null until the first load, so proposals that were
     // waiting when the page opened do not count as new.
@@ -100,7 +106,7 @@ export default function Home() {
             inspectorDirty: isInspectorDirty(),
         });
         ids.forEach((id) => seenProposals.current?.add(id));
-        if (open) setFrontPanel("review");
+        if (open) showReview();
     }
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
@@ -138,7 +144,7 @@ export default function Home() {
                         }}
                         onProposalStaged={() => {
                             setProposalRefreshKey((value) => value + 1);
-                            setFrontPanel("review");
+                            showReview();
                         }}
                         onRequestRecenterRef={(fn) => {
                             recenterRef.current = fn;
@@ -191,7 +197,7 @@ export default function Home() {
                         redoLabel={historyView.redoLabel}
                         reviewCount={pendingReviewIds.length}
                         onOpenReview={() => {
-                            setFrontPanel("review");
+                            showReview();
                             window.requestAnimationFrame(() => document.getElementById("review-heading")?.focus());
                         }}
                     />
@@ -251,6 +257,14 @@ export default function Home() {
                         <ProposalReview
                             refreshKey={refreshKey + proposalRefreshKey}
                             onFocus={() => setFrontPanel("review")}
+                            open={reviewOpen}
+                            onClose={() => {
+                                setReviewOpen(false);
+                                setFrontPanel("inspector");
+                                window.requestAnimationFrame(() =>
+                                    document.querySelector<HTMLElement>('[aria-label^="Review, "]')?.focus(),
+                                );
+                            }}
                             onPendingChange={onPendingReview}
                         />
                     }

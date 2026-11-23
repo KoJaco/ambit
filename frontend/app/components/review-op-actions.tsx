@@ -27,7 +27,7 @@ export function ReviewOpActions({
                 <button
                     type="button"
                     className={clsx(
-                        "inline-flex size-7 items-center justify-center rounded-md hover:bg-foreground/10",
+                        "inline-flex size-7 items-center justify-center rounded-md hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
                         needsConfirm
                             ? "text-amber-700 dark:text-amber-400"
                             : "text-emerald-600",
@@ -46,7 +46,7 @@ export function ReviewOpActions({
             <Tooltip label="Reject">
             <button
                 type="button"
-                className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10"
+                className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                 disabled={busy}
                 aria-label={`Reject: ${label}`}
                 onClick={(event) => {

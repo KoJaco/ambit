@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
-import { ChevronLeft, ListChecks, TriangleAlert, XCircle } from "lucide-react";
+import { Check, ChevronLeft, ListChecks, TriangleAlert, XCircle } from "lucide-react";
 import {
     acceptAll,
     acceptOperation,
@@ -14,7 +14,8 @@ import {
     type ProposalDiff,
     type ProposalSummary,
 } from "../api";
-import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks, proposalDetailHead, proposalDetailView, unresolvedNodeIds } from "../proposal-detail";
+import { detailCanAccept, detailNames, detailNeedsConfirm, proposalDetailBlocks, proposalDetailHead, proposalDetailView, unresolvedNodeIds } from "../proposal-detail";
+import { isEditableElement, reviewEscapeAction } from "../right-rail-state";
 import { useNodeSnapshots } from "../use-node-snapshots";
 import { ProposalVisual } from "./proposal-visuals";
 import { history } from "../history";
@@ -25,6 +26,7 @@ import {
     proposalRows,
     summarizeProposal,
     unresolvedParentIds,
+    unresolvedRowIds,
     type HierarchyItem,
     type ReviewRow,
     type RowVerb,
@@ -37,10 +39,15 @@ type DetailSelection = { proposalId: string; index: number };
 export function ProposalReview({
     refreshKey,
     onFocus,
+    open = true,
+    onClose,
     onPendingChange,
 }: {
     refreshKey: number;
     onFocus?: () => void;
+    // When false the panel is hidden but proposals keep loading so the pending count stays current.
+    open?: boolean;
+    onClose?: () => void;
     // Ids of proposals that still have pending operations; called after each load.
     onPendingChange?: (ids: string[]) => void;
 }) {
@@ -53,6 +60,12 @@ export function ProposalReview({
     // Proposals whose per-change accept/reject controls are shown; collapsed by default.
     const [individual, setIndividual] = useState<Record<string, boolean>>({});
     const [loaded, setLoaded] = useState(false);
+    // Row that opened the detail view, so Back can return focus to it.
+    const openedFrom = useRef<string | null>(null);
+    const detailHeading = useRef<HTMLHeadingElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+    const detailKey = detail ? `${detail.proposalId}:${detail.index}` : null;
+    const wasDetail = useRef(false);
     const pendingCallback = useRef(onPendingChange);
     pendingCallback.current = onPendingChange;
 
@@ -149,15 +162,17 @@ export function ProposalReview({
                 <button
                     type="button"
                     className={clsx("flex w-full cursor-pointer items-start gap-2.5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", showActions && row.status === "pending" && "pr-[4.5rem]")}
+                    data-row-key={`${proposalId}:${row.key}`}
                     onClick={() => {
                         onFocus?.();
+                        openedFrom.current = `${proposalId}:${row.key}`;
                         setDetail({ proposalId, index: row.index });
                     }}
                 >
                     <VerbChip verb={row.verb} done={row.status !== "pending"} />
                     <span className="flex min-w-0 flex-1 flex-col">
                         <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
-                            <span className="truncate">{label}</span>
+                            <span className="truncate" title={label}>{label}</span>
                             {row.stale ? (
                                 <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
                                     Stale
@@ -167,7 +182,7 @@ export function ProposalReview({
                                 <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.status}</span>
                             ) : null}
                         </span>
-                        {row.change ? <span className="truncate text-xs text-muted-foreground">{row.change}</span> : null}
+                        {row.change ? <span className="truncate text-xs text-muted-foreground" title={row.change}>{row.change}</span> : null}
                     </span>
                 </button>
                 {showActions && row.status === "pending" ? (
@@ -190,17 +205,40 @@ export function ProposalReview({
     const fetchedNodes = useNodeSnapshots((known) =>
         detail && detailOp && diffs[detail.proposalId]
             ? unresolvedNodeIds(diffs[detail.proposalId], detailOp, known)
-            : Object.values(diffs).flatMap((d) => unresolvedParentIds(d, known)),
+            : Object.values(diffs).flatMap((d) => [...unresolvedParentIds(d, known), ...unresolvedRowIds(d, known)]),
     );
 
     const fetchedNodeNames = new Map([...fetchedNodes].map(([id, node]) => [id, node.name]));
 
-    if (summaries.length === 0 && !error) return null;
+    // Focus follows the view: heading on entering detail, the opening row (or list heading) on leaving it.
+    useLayoutEffect(() => {
+        if (detailKey) {
+            wasDetail.current = true;
+            detailHeading.current?.focus();
+            return;
+        }
+        if (!wasDetail.current) return;
+        wasDetail.current = false;
+        const key = openedFrom.current;
+        const row = key ? Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-row-key]") ?? []).find((el) => el.dataset.rowKey === key) : null;
+        (row ?? document.getElementById("review-heading"))?.focus();
+    }, [detailKey]);
+
+    if (!open || (summaries.length === 0 && !error)) return null;
 
     return (
         <RightRailPanel
+            label="Review"
             onPointerDown={() => {
                 onFocus?.();
+            }}
+            onKeyDown={(event) => {
+                if (event.key !== "Escape" || event.defaultPrevented) return;
+                const action = reviewEscapeAction({ detailOpen: !!detail, editingFocus: isEditableElement(event.target as HTMLElement) });
+                if (action === "none") return;
+                event.stopPropagation();
+                if (action === "back") setDetail(null);
+                else onClose?.();
             }}
         >
             {detail && detailOp ? (
@@ -208,7 +246,7 @@ export function ProposalReview({
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
-                            className="inline-flex items-center gap-1 text-xs text-foreground/80"
+                            className="inline-flex min-h-6 items-center gap-1 rounded text-xs text-foreground/80 focus-visible:outline-2 focus-visible:outline-ring"
                             onClick={() => setDetail(null)}
                         >
                             <ChevronLeft className="size-4" aria-hidden />
@@ -220,13 +258,14 @@ export function ProposalReview({
                     </div>
                     <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
                         {(() => {
-                            const head = proposalDetailHead(detailOp);
-                            const rest = proposalDetailBlocks(detailOp).slice(head.length);
+                            const names = detailNames(diffs[detail.proposalId], fetchedNodes);
+                            const head = proposalDetailHead(detailOp, names);
+                            const rest = proposalDetailBlocks(detailOp, names).slice(head.length);
                             const view = proposalDetailView(diffs[detail.proposalId], detailOp, fetchedNodes);
                             return (
                                 <>
                                     {head.map((block, i) => (
-                                        <DetailBlockView key={i} block={block} />
+                                        <DetailBlockView key={i} block={block} headingRef={i === 0 ? detailHeading : undefined} />
                                     ))}
                                     <ProposalVisual view={view} />
                                     <details className="text-xs">
@@ -245,7 +284,7 @@ export function ProposalReview({
                     </div>
                     {detailOp.status === "pending" ? (
                         <ReviewOpActions
-                            label={proposalRows({ ...diffs[detail.proposalId], operations: [detailOp] })[0]?.title ?? detailOp.node_id}
+                            label={proposalRows({ ...diffs[detail.proposalId], operations: [detailOp] }, fetchedNodeNames)[0]?.title ?? detailOp.node_id}
                             canAccept={detailCanAccept(detailOp)}
                             needsConfirm={detailNeedsConfirm(detailOp)}
                             busy={busy}
@@ -272,17 +311,17 @@ export function ProposalReview({
                     <div className="flex shrink-0 items-center justify-between" onPointerDown={() => onFocus?.()}>
                         <h2 id="review-heading" tabIndex={-1} className="flex items-center gap-2 font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
                             Review
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            <span className={clsx("rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium", accentText)}>
                                 {summaries.length} {summaries.length === 1 ? "proposal" : "proposals"}
                             </span>
                         </h2>
-                        <PanelHeaderActions />
+                        <PanelHeaderActions onClose={onClose} closeLabel="Close Review" />
                     </div>
                     {error ? <p className="shrink-0 text-destructive">{error}</p> : null}
-                    <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-1">
+                    <div ref={listRef} className="-mx-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-1">
                         {summaries.map((proposal) => {
                             const diff = diffs[proposal.proposal_id];
-                            const rows = proposalRows(diff ?? emptyDiff(proposal));
+                            const rows = proposalRows(diff ?? emptyDiff(proposal), fetchedNodeNames);
                             const pending = rows.filter((row) => row.status === "pending").length;
                             const origin = proposalOrigin(proposal.source);
                             const line = summarizeProposal(diff ?? emptyDiff(proposal));
@@ -296,11 +335,11 @@ export function ProposalReview({
                                 >
                                     <header className="sticky top-0 z-10 flex flex-col gap-2.5 rounded-t-2xl border-b border-border bg-card/95 p-3 backdrop-blur">
                                         <div className="flex flex-col gap-1">
-                                            <p id={`proposal-title-${proposal.proposal_id}`} className="text-sm leading-snug font-semibold">
+                                            <h3 id={`proposal-title-${proposal.proposal_id}`} className="text-sm leading-snug font-semibold">
                                                 {proposal.unreadable
                                                     ? `Unreadable ${proposal.proposal_id}`
                                                     : proposal.summary || `${proposal.source} ${proposal.proposal_id}`}
-                                            </p>
+                                            </h3>
                                             {proposal.error ? (
                                                 <p className="text-xs text-destructive">{proposal.error}</p>
                                             ) : (
@@ -310,7 +349,7 @@ export function ProposalReview({
                                                         <span
                                                             className={clsx(
                                                                 "rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                                                                origin === "You" ? "bg-muted" : "bg-primary/10 text-primary",
+                                                                origin === "You" ? "bg-muted" : clsx("bg-primary/10", accentText),
                                                             )}
                                                         >
                                                             {origin}
@@ -394,8 +433,8 @@ export function ProposalReview({
                                                 type="button"
                                                 aria-pressed={showIndividual}
                                                 className={clsx(
-                                                    "inline-flex w-fit items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
-                                                    showIndividual ? "bg-accent text-foreground" : "text-foreground/80",
+                                                    "inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
+                                                    showIndividual ? "border-foreground/70 bg-accent text-foreground" : "border-transparent text-foreground/80",
                                                 )}
                                                 onClick={() =>
                                                     setIndividual((current) => ({
@@ -404,13 +443,13 @@ export function ProposalReview({
                                                     }))
                                                 }
                                             >
-                                                <ListChecks className="size-4" aria-hidden />
+                                                {showIndividual ? <Check className="size-4" aria-hidden /> : <ListChecks className="size-4" aria-hidden />}
                                                 Review individually
                                             </button>
                                             <div className="flex flex-col gap-3">
                                                 {sections.map((section) => (
                                                     <section key={section.key} aria-labelledby={`sec-${proposal.proposal_id}-${section.key}`} className="flex flex-col gap-1.5">
-                                                        <h3 id={`sec-${proposal.proposal_id}-${section.key}`} className="text-xs font-semibold text-muted-foreground">{section.title}</h3>
+                                                        <h4 id={`sec-${proposal.proposal_id}-${section.key}`} className="text-xs font-semibold text-muted-foreground">{section.title}</h4>
                                                         <ul className="flex flex-col">
                                                             {section.items.map((item) =>
                                                                 renderRow(proposal.proposal_id, diff, item, showIndividual),
@@ -430,6 +469,9 @@ export function ProposalReview({
         </RightRailPanel>
     );
 }
+
+// Accent text that holds 4.5:1 on the primary tint in light mode; the dark primary already does.
+const accentText = "text-[color-mix(in_oklab,var(--primary)_75%,black)] dark:text-primary";
 
 const buttonBase =
     "inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50";
@@ -463,9 +505,19 @@ function emptySummary(id: string): ProposalSummary {
     return { proposal_id: id, unreadable: false };
 }
 
-function DetailBlockView({ block }: { block: ReturnType<typeof proposalDetailBlocks>[number] }) {
+function DetailBlockView({
+    block,
+    headingRef,
+}: {
+    block: ReturnType<typeof proposalDetailBlocks>[number];
+    headingRef?: Ref<HTMLHeadingElement>;
+}) {
     if (block.kind === "heading") {
-        return <h3 className="text-sm font-semibold">{block.text}</h3>;
+        return (
+            <h3 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-sm font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
+                {block.text}
+            </h3>
+        );
     }
     if (block.kind === "line") {
         return <p className="text-xs text-foreground/80">{block.text}</p>;
