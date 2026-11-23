@@ -3,7 +3,14 @@ package core
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 )
+
+// siblingContractCap is the per-sibling character budget for contract text in a brief.
+const siblingContractCap = 800
+
+// BriefClosing is the last line of every brief.
+const BriefClosing = "When you are done, call check_drift to confirm the model and code agree, then call update_node_status for your node."
 
 // ShallowModelGuidance is the one-line modeling rule shared by the brief and the MCP
 // authoring tool descriptions (decision 0010).
@@ -70,8 +77,17 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 				b.WriteString(indentLines(spec, "    "))
 				b.WriteByte('\n')
 			}
+			if text := siblingContractText(s.Contract); text != "" {
+				b.WriteString(indentLines(text, "    "))
+				b.WriteByte('\n')
+			}
 		}
 	}
+
+	idx.writeProjectRules(&b)
+	idx.writeInterfaces(&b, n)
+	writeOwnContract(&b, n)
+	idx.writeBuildOrder(&b, n)
 
 	fmt.Fprintf(&b, "\nCall the check_scope tool with node_id %q periodically while you work, and again before you finish.\n", id)
 
@@ -81,7 +97,192 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	if len(n.Spec) > 0 {
 		fmt.Fprintf(&b, "\nSpecification for your node:\n%s\n", strings.TrimSpace(n.Spec))
 	}
+	fmt.Fprintf(&b, "\n%s\n", BriefClosing)
 	return b.String(), nil
+}
+
+// capText trims s to at most max characters, marking the cut.
+func capText(s string, max int) (string, bool) {
+	if utf8.RuneCountInString(s) <= max {
+		return s, false
+	}
+	r := []rune(s)
+	return strings.TrimRight(string(r[:max]), " \n") + "...", true
+}
+
+// siblingContractText renders a sibling's contract payloads and errors, capped, with a
+// pointer to the full text. Empty when the sibling has no such content.
+func siblingContractText(c *NodeContract) string {
+	if c == nil || (strings.TrimSpace(c.Payloads) == "" && len(c.Errors) == 0) {
+		return ""
+	}
+	var parts []string
+	if p := strings.TrimSpace(c.Payloads); p != "" {
+		parts = append(parts, "Contract payloads: "+p)
+	}
+	if len(c.Errors) > 0 {
+		parts = append(parts, "Contract errors: "+strings.Join(c.Errors, "; "))
+	}
+	text, cut := capText(strings.Join(parts, "\n"), siblingContractCap)
+	if cut {
+		text += "\n(contract truncated; full text via get_graph or the HTTP API)"
+	}
+	return text
+}
+
+func (idx *Index) writeProjectRules(b *strings.Builder) {
+	if len(idx.Constraints) == 0 {
+		return
+	}
+	b.WriteString("\nProject rules (apply to everything you write):\n")
+	for _, sev := range []string{ConstraintMust, ConstraintShould} {
+		for _, c := range idx.Constraints {
+			if c.Severity == sev {
+				fmt.Fprintf(b, "  - [%s] %s: %s\n", c.Severity, c.ID, c.Text)
+			}
+		}
+	}
+}
+
+// writeInterfaces lists each relationship touching n that carries a contract. The edge
+// A -> B reads "A calls B": B provides the interface and A consumes it.
+func (idx *Index) writeInterfaces(b *strings.Builder, n *Node) {
+	wrote := false
+	for _, rel := range idx.Relationships {
+		if rel.Contract.IsEmpty() || (rel.From != n.ID && rel.To != n.ID) {
+			continue
+		}
+		if !wrote {
+			b.WriteString("\nInterfaces you must honour:\n")
+			wrote = true
+		}
+		other := rel.To
+		role := "you CONSUME this interface; the provider is"
+		if rel.To == n.ID {
+			other = rel.From
+			role = "you PROVIDE this interface; the consumer is"
+		}
+		fmt.Fprintf(b, "  - %s %q (%s):", role, idx.nodeName(other), other)
+		if rel.Label != "" {
+			fmt.Fprintf(b, " %s", rel.Label)
+		}
+		if rel.Kind != "" {
+			fmt.Fprintf(b, " [%s]", rel.Kind)
+		}
+		b.WriteByte('\n')
+		c := rel.Contract
+		if c.Format != "" {
+			fmt.Fprintf(b, "    format: %s\n", c.Format)
+		}
+		if c.Ref != "" {
+			fmt.Fprintf(b, "    ref (repo path): %s\n", c.Ref)
+		}
+		if strings.TrimSpace(c.Text) != "" {
+			b.WriteString(indentLines(strings.TrimSpace(c.Text), "    "))
+			b.WriteByte('\n')
+		}
+	}
+}
+
+func (idx *Index) nodeName(id NodeID) string {
+	if o := idx.Nodes[id]; o != nil {
+		return o.Name
+	}
+	return string(id)
+}
+
+// writeOwnContract prints the node's own contract in full (never truncated).
+func writeOwnContract(b *strings.Builder, n *Node) {
+	c := n.Contract
+	if c.IsEmpty() {
+		return
+	}
+	b.WriteString("\nYour node's contract (you must satisfy it):\n")
+	if p := strings.TrimSpace(c.Payloads); p != "" {
+		b.WriteString("  Payloads:\n")
+		b.WriteString(indentLines(p, "    "))
+		b.WriteByte('\n')
+	}
+	for _, l := range []struct {
+		title string
+		items []string
+	}{{"Invariants", c.Invariants}, {"Errors", c.Errors}, {"Owns data", c.OwnsData}} {
+		if len(l.items) == 0 {
+			continue
+		}
+		fmt.Fprintf(b, "  %s:\n", l.title)
+		for _, it := range l.items {
+			fmt.Fprintf(b, "    - %s\n", it)
+		}
+	}
+}
+
+// writeBuildOrder reports unmet dependencies (advisory, with a stop-and-report line) and
+// the nodes that rely on n.
+func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
+	var unmet []NodeID
+	if res, err := idx.buildOrderLocked(""); err == nil {
+		found := false
+		for _, it := range res.Order {
+			if it.ID == n.ID {
+				unmet, found = it.BlockedBy, true
+				break
+			}
+		}
+		if !found {
+			for _, d := range n.DependsOn {
+				if o := idx.Nodes[d]; o != nil && o.Status != StatusDone {
+					unmet = append(unmet, d)
+				}
+			}
+		}
+	}
+	var dependents []NodeID
+	for _, id := range idx.Order {
+		if o := idx.Nodes[id]; o != nil && id != n.ID {
+			for _, d := range o.DependsOn {
+				if d == n.ID {
+					dependents = append(dependents, id)
+					break
+				}
+			}
+		}
+	}
+	if len(n.DependsOn) == 0 && len(unmet) == 0 && len(dependents) == 0 {
+		return
+	}
+	b.WriteString("\nBuild order:\n")
+	if len(n.DependsOn) > 0 {
+		b.WriteString("  You depend on:\n")
+		for _, d := range sortedDeps(n.DependsOn) {
+			if o := idx.Nodes[d]; o != nil {
+				fmt.Fprintf(b, "    - %q (%s) (%s)\n", o.Name, d, o.Status)
+			} else {
+				fmt.Fprintf(b, "    - %s (missing)\n", d)
+			}
+		}
+	}
+	if len(unmet) > 0 {
+		names := make([]string, len(unmet))
+		for i, d := range unmet {
+			names[i] = fmt.Sprintf("%q (%s) (%s)", idx.nodeName(d), d, nodeStatus(idx, d))
+		}
+		fmt.Fprintf(b, "  Not done yet: %s.\n", strings.Join(names, ", "))
+		b.WriteString("  If your work needs one of these, stop and report back rather than guessing its interface.\n")
+	}
+	if len(dependents) > 0 {
+		b.WriteString("  These nodes rely on you, so keep your contract and interfaces stable:\n")
+		for _, d := range dependents {
+			fmt.Fprintf(b, "    - %q (%s)\n", idx.nodeName(d), d)
+		}
+	}
+}
+
+func nodeStatus(idx *Index, id NodeID) Status {
+	if o := idx.Nodes[id]; o != nil {
+		return o.Status
+	}
+	return ""
 }
 
 func siblingNodes(idx *Index, self *Node) []*Node {

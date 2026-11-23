@@ -18,6 +18,12 @@ func sortedDeps(in []NodeID) []NodeID {
 // validateDependsOn checks a proposed depends_on list for self. self may not be in
 // idx.Nodes yet (create). Ids must exist, no self-reference, no duplicates, no cycle.
 func (idx *Index) validateDependsOn(self NodeID, deps []NodeID) error {
+	return validateDependsOnIn(idx.Nodes, self, deps)
+}
+
+// validateDependsOnIn is validateDependsOn against an explicit node map, so staging can
+// validate against a scratch copy that already holds earlier operations of a proposal.
+func validateDependsOnIn(nodes map[NodeID]*Node, self NodeID, deps []NodeID) error {
 	seen := map[NodeID]bool{}
 	for _, d := range deps {
 		switch {
@@ -27,7 +33,7 @@ func (idx *Index) validateDependsOn(self NodeID, deps []NodeID) error {
 			return fmt.Errorf("%w: %q listed more than once", ErrBadDependency, d)
 		}
 		seen[d] = true
-		if _, ok := idx.Nodes[d]; !ok {
+		if _, ok := nodes[d]; !ok {
 			return fmt.Errorf("%w: %q does not exist", ErrBadDependency, d)
 		}
 	}
@@ -42,7 +48,7 @@ func (idx *Index) validateDependsOn(self NodeID, deps []NodeID) error {
 			return nil
 		}
 		visited[cur] = true
-		n := idx.Nodes[cur]
+		n := nodes[cur]
 		if n == nil {
 			return nil
 		}
@@ -68,8 +74,12 @@ func (idx *Index) validateDependsOn(self NodeID, deps []NodeID) error {
 // dependentsOutside returns "Name (id)" for every node outside remove whose depends_on
 // names a node in remove, sorted by id.
 func (idx *Index) dependentsOutside(remove map[NodeID]bool) []string {
+	return dependentsOutsideIn(idx.Nodes, remove)
+}
+
+func dependentsOutsideIn(nodes map[NodeID]*Node, remove map[NodeID]bool) []string {
 	var ids []NodeID
-	for id, n := range idx.Nodes {
+	for id, n := range nodes {
 		if n == nil || remove[id] {
 			continue
 		}
@@ -83,13 +93,17 @@ func (idx *Index) dependentsOutside(remove map[NodeID]bool) []string {
 	sortNodeIDs(ids)
 	out := make([]string, len(ids))
 	for i, id := range ids {
-		out[i] = fmt.Sprintf("%s (%s)", idx.Nodes[id].Name, id)
+		out[i] = fmt.Sprintf("%s (%s)", nodes[id].Name, id)
 	}
 	return out
 }
 
 func (idx *Index) checkNoDependents(remove map[NodeID]bool) error {
-	deps := idx.dependentsOutside(remove)
+	return checkNoDependentsIn(idx.Nodes, remove)
+}
+
+func checkNoDependentsIn(nodes map[NodeID]*Node, remove map[NodeID]bool) error {
+	deps := dependentsOutsideIn(nodes, remove)
 	if len(deps) == 0 {
 		return nil
 	}

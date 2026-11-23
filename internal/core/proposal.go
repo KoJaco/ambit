@@ -28,6 +28,9 @@ const (
 	// OpDeleteRelationship removes one edge by id (and, like DeleteRelationship, any
 	// interior nodes the edge owns). node_id is the edge's from node.
 	OpDeleteRelationship = "delete_relationship"
+	// OpSetConstraints replaces the project constraints in config.json (full list).
+	// It carries no node id; its base_hash is the hash of the config.json bytes.
+	OpSetConstraints = "set_constraints"
 
 	// SourceSeedModel is the proposal source used when many operations arrive together.
 	SourceSeedModel = "seed_model"
@@ -63,6 +66,11 @@ type StageOp struct {
 	To     NodeID
 	Label  string
 	Kind   string
+	// Contract is the edge contract for set_relationship: nil leaves an existing edge's
+	// contract unchanged, a non-nil empty contract clears it.
+	Contract *EdgeContract
+	// Constraints is the full replacement list for set_constraints (nil or empty clears).
+	Constraints []Constraint
 }
 
 // StageInput is one authoring call: a source tool name, an optional summary, and
@@ -117,6 +125,10 @@ type OpDiff struct {
 	Proposed            *NodeSnapshot `json:"proposed"`
 	Relationship        *RelSnapshot  `json:"relationship"`
 	CurrentRelationship *RelSnapshot  `json:"current_relationship"`
+	// CurrentConstraints and ProposedConstraints are set only for set_constraints
+	// (absent means an empty list).
+	CurrentConstraints  []Constraint `json:"current_constraints,omitempty"`
+	ProposedConstraints []Constraint `json:"proposed_constraints,omitempty"`
 	// RemovesNodes lists the interior nodes a delete_relationship also deletes.
 	RemovesNodes []RemovedNode `json:"removes_nodes,omitempty"`
 	Error        string        `json:"error,omitempty"`
@@ -144,15 +156,18 @@ type NodeSnapshot struct {
 	Color          string         `json:"color,omitempty"`
 	Renderer       string         `json:"renderer,omitempty"`
 	Schema         []SchemaColumn `json:"schema,omitempty"`
+	DependsOn      []string       `json:"depends_on,omitempty"`
+	Contract       *NodeContract  `json:"contract,omitempty"`
 }
 
 // RelSnapshot is one directed edge.
 type RelSnapshot struct {
-	ID    string `json:"id,omitempty"`
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Label string `json:"label"`
-	Kind  string `json:"kind"`
+	ID       string        `json:"id,omitempty"`
+	From     string        `json:"from"`
+	To       string        `json:"to"`
+	Label    string        `json:"label"`
+	Kind     string        `json:"kind"`
+	Contract *EdgeContract `json:"contract,omitempty"`
 }
 
 // SkippedOp is an operation accept-all did not apply because it was stale.
@@ -197,7 +212,15 @@ type operation struct {
 	RelID    string   `json:"relationship_id,omitempty"`
 	Label    *string  `json:"label,omitempty"`
 	Kind     *string  `json:"kind,omitempty"`
-	Status   string   `json:"status"`
+	// Contract is the staged edge contract (set_relationship); nil means unchanged and a
+	// non-nil empty contract clears it.
+	Contract *EdgeContract `json:"contract,omitempty"`
+	// RelCovered is true when base_hash also covers the relationship's own JSON (the edge
+	// existed on disk at stage time and was not already touched by an earlier op).
+	RelCovered bool `json:"rel_covered,omitempty"`
+	// Constraints is the full replacement list for set_constraints (non-nil, possibly empty).
+	Constraints *[]Constraint `json:"constraints,omitempty"`
+	Status      string        `json:"status"`
 }
 
 type materialBody struct {
@@ -244,7 +267,14 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 	files := map[NodeID]materialBody{}
 	stagedRels := []Relationship{}
 
+	sawConstraints := false
 	for _, inOp := range in.Ops {
+		if inOp.Op == OpSetConstraints {
+			if sawConstraints {
+				return "", fmt.Errorf("%w: set_constraints may appear once per proposal", ErrBadOperation)
+			}
+			sawConstraints = true
+		}
 		op, body, err := idx.stageOne(inOp, nodes, material, &stagedRels)
 		if err != nil {
 			return "", err
@@ -305,6 +335,8 @@ func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[Node
 		return idx.stageRelationship(in, nodes, material, stagedRels)
 	case OpDeleteRelationship:
 		return idx.stageDeleteRelationship(in, material)
+	case OpSetConstraints:
+		return idx.stageConstraints(in)
 	default:
 		return operation{}, nil, fmt.Errorf("%w: unknown operation %q", ErrBadOperation, in.Op)
 	}
@@ -363,6 +395,13 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 	if _, ok := material[id]; ok {
 		return operation{}, nil, fmt.Errorf("%w: %s already has materialised files in this proposal", ErrBadOperation, id)
 	}
+	contract, err := patchNodeContract(in.Create.Contract, nil)
+	if err != nil {
+		return operation{}, nil, err
+	}
+	if err := validateDependsOnIn(nodes, id, in.Create.DependsOn); err != nil {
+		return operation{}, nil, err
+	}
 	node := &Node{
 		ID:             id,
 		Name:           in.Create.Name,
@@ -378,6 +417,8 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 		Color:          strings.TrimSpace(in.Create.Color),
 		Renderer:       strings.TrimSpace(in.Create.Renderer),
 		Schema:         normalizeSchema(in.Create.Schema),
+		DependsOn:      sortedDeps(in.Create.DependsOn),
+		Contract:       contract,
 	}
 	if err := validateCreatePresentation(node.Icon, node.Color, node.Renderer, node.Schema); err != nil {
 		return operation{}, nil, err
@@ -431,6 +472,9 @@ func (idx *Index) stageDelete(in StageOp, nodes map[NodeID]*Node, material map[N
 	if len(names) > 0 {
 		return operation{}, nil, fmt.Errorf("%w: delete_node %s has %d children: %s", ErrHasChildren, in.NodeID, len(names), strings.Join(names, ", "))
 	}
+	if err := checkNoDependentsIn(nodes, map[NodeID]bool{in.NodeID: true}); err != nil {
+		return operation{}, nil, err
+	}
 	hash, err := idx.hashFor(in.NodeID, material)
 	if err != nil {
 		return operation{}, nil, err
@@ -479,26 +523,104 @@ func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material
 	}
 	label, kind := in.Label, in.Kind
 	relID := in.RelID
+
+	// The contract in effect before this op: an earlier op of this proposal, else disk.
+	var current *EdgeContract
+	var onDisk *Relationship
+	touched := false
+	if relID != "" {
+		onDisk, _ = idx.relByID(relID)
+		if onDisk != nil {
+			current = onDisk.Contract
+		}
+		for _, rel := range *stagedRels {
+			if rel.ID == relID {
+				touched = true
+				current = rel.Contract
+			}
+		}
+	}
+	var opContract *EdgeContract
+	effective := current
+	if in.Contract != nil {
+		next, err := patchEdgeContract(in.Contract, current)
+		if err != nil {
+			return operation{}, nil, err
+		}
+		effective = next
+		opContract = next
+		if opContract == nil {
+			opContract = &EdgeContract{}
+		}
+	}
+	covered := onDisk != nil && !touched
+	if covered {
+		hash = relBaseHash(hash, onDisk)
+	}
 	if relID == "" {
 		id, err := idx.allocateRelationshipIDStaged(label, *stagedRels)
 		if err != nil {
 			return operation{}, nil, err
 		}
 		relID = id
-		*stagedRels = append(*stagedRels, Relationship{ID: relID, From: in.From, To: in.To, Label: label, Kind: kind})
+	}
+	if relID != in.RelID || onDisk != nil {
+		*stagedRels = append(*stagedRels, Relationship{ID: relID, From: in.From, To: in.To, Label: label, Kind: kind, Contract: effective})
+	} else {
+		for i := range *stagedRels {
+			if (*stagedRels)[i].ID == relID {
+				(*stagedRels)[i].Contract = effective
+			}
+		}
 	}
 	op := operation{
-		Op:       OpSetRelationship,
-		NodeID:   string(in.From),
-		BaseHash: &hash,
-		From:     string(in.From),
-		To:       string(in.To),
-		RelID:    string(relID),
-		Label:    &label,
-		Kind:     &kind,
-		Status:   opStatusPending,
+		Op:         OpSetRelationship,
+		NodeID:     string(in.From),
+		BaseHash:   &hash,
+		From:       string(in.From),
+		To:         string(in.To),
+		RelID:      string(relID),
+		Label:      &label,
+		Kind:       &kind,
+		Contract:   opContract,
+		RelCovered: covered,
+		Status:     opStatusPending,
 	}
 	return op, nil, nil
+}
+
+// relBaseHash folds a relationship's own JSON into a node hash (decision 7).
+func relBaseHash(nodeHash string, rel *Relationship) string {
+	raw, err := encodeRelationship(*rel)
+	if err != nil {
+		raw = nil
+	}
+	sum := sha256.New()
+	sum.Write([]byte(nodeHash + "\x00rel\x00"))
+	sum.Write(raw)
+	return "sha256:" + hex.EncodeToString(sum.Sum(nil))
+}
+
+// configHash is the sha256 of the config.json bytes (empty when the file is absent).
+func (idx *Index) configHash() (string, error) {
+	data, _, err := readOptional(filepath.Join(idx.arch(), "config.json"))
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+func (idx *Index) stageConstraints(in StageOp) (operation, *materialBody, error) {
+	list, err := normalizeConstraintList(in.Constraints)
+	if err != nil {
+		return operation{}, nil, err
+	}
+	hash, err := idx.configHash()
+	if err != nil {
+		return operation{}, nil, err
+	}
+	return operation{Op: OpSetConstraints, BaseHash: &hash, Constraints: &list, Status: opStatusPending}, nil, nil
 }
 
 func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materialBody) (operation, *materialBody, error) {
@@ -509,21 +631,22 @@ func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materi
 	if rel == nil {
 		return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelID)
 	}
-	hash, err := idx.deleteRelHash(rel, func(id NodeID) (string, error) { return idx.hashFor(id, material) })
+	hash, err := idx.deleteRelHash(rel, func(id NodeID) (string, error) { return idx.hashFor(id, material) }, true)
 	if err != nil {
 		return operation{}, nil, err
 	}
 	label, kind := rel.Label, rel.Kind
 	op := operation{
-		Op:       OpDeleteRelationship,
-		NodeID:   string(rel.From),
-		BaseHash: &hash,
-		From:     string(rel.From),
-		To:       string(rel.To),
-		RelID:    string(rel.ID),
-		Label:    &label,
-		Kind:     &kind,
-		Status:   opStatusPending,
+		Op:         OpDeleteRelationship,
+		NodeID:     string(rel.From),
+		BaseHash:   &hash,
+		From:       string(rel.From),
+		To:         string(rel.To),
+		RelID:      string(rel.ID),
+		Label:      &label,
+		Kind:       &kind,
+		RelCovered: true,
+		Status:     opStatusPending,
 	}
 	return op, nil, nil
 }
@@ -540,10 +663,13 @@ func (idx *Index) removedByRelationship(rel *Relationship) []string {
 
 // deleteRelHash folds the source node and every interior node the delete would
 // remove into one hash, so a change to any of them makes the operation stale.
-func (idx *Index) deleteRelHash(rel *Relationship, hashOf func(NodeID) (string, error)) (string, error) {
+func (idx *Index) deleteRelHash(rel *Relationship, hashOf func(NodeID) (string, error), covered bool) (string, error) {
 	h, err := hashOf(rel.From)
 	if err != nil {
 		return "", err
+	}
+	if covered {
+		h = relBaseHash(h, rel)
 	}
 	interior := idx.removedByRelationship(rel)
 	if len(interior) == 0 {
@@ -750,6 +876,9 @@ type modelSnapshot struct {
 	index   []byte
 	nodes   map[string][]byte
 	layouts map[string][]byte
+	config  []byte
+	// configOK is false when config.json did not exist.
+	configOK bool
 }
 
 func readDirFiles(dir string) (map[string][]byte, error) {
@@ -816,7 +945,11 @@ func (idx *Index) snapshotModel() (modelSnapshot, error) {
 	if err != nil {
 		return modelSnapshot{}, err
 	}
-	return modelSnapshot{index: index, nodes: nodes, layouts: layouts}, nil
+	config, configOK, err := readOptional(filepath.Join(idx.arch(), "config.json"))
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	return modelSnapshot{index: index, nodes: nodes, layouts: layouts, config: config, configOK: configOK}, nil
 }
 
 // rollbackAccept restores the model and the proposal manifest to their state before
@@ -829,6 +962,9 @@ func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []ope
 		return err
 	}
 	if err := writeAtomic(filepath.Join(idx.arch(), "index.json"), snap.index); err != nil {
+		return err
+	}
+	if err := restoreFile(filepath.Join(idx.arch(), "config.json"), snap.config, snap.configOK); err != nil {
 		return err
 	}
 	m.Operations = original
@@ -897,6 +1033,8 @@ const (
 
 	staleCreateNotAccepted   = "container create_node was not accepted"
 	staleEndpointNotAccepted = "edge endpoint create_node was not accepted"
+
+	staleDependsOnNotAccepted = "depends_on create_node was not accepted"
 )
 
 // createDependencyUnmet returns a reason when op refers to a node that a create op in the
@@ -923,11 +1061,16 @@ func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op o
 			return ""
 		}
 		node, err := decodeNode(jsonBytes)
-		if err != nil || node.ParentID == "" {
+		if err != nil {
 			return ""
 		}
-		if notAccepted(string(node.ParentID)) {
+		if node.ParentID != "" && notAccepted(string(node.ParentID)) {
 			return staleCreateNotAccepted
+		}
+		for _, d := range node.DependsOn {
+			if notAccepted(string(d)) {
+				return staleDependsOnNotAccepted
+			}
 		}
 	}
 	return ""
@@ -958,6 +1101,13 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 	if op.Op == OpCreateNode || op.Status != opStatusPending {
 		return false, ""
 	}
+	if op.Op == OpSetConstraints {
+		hash, err := idx.configHash()
+		if err != nil || op.BaseHash == nil || *op.BaseHash != hash {
+			return true, staleMismatch
+		}
+		return false, ""
+	}
 	if op.Op == OpDeleteRelationship {
 		rel, _ := idx.relByID(RelID(op.RelID))
 		if rel == nil {
@@ -972,7 +1122,7 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 				err = ErrNotFound
 			}
 			return h, err
-		})
+		}, op.RelCovered)
 		if err != nil {
 			return true, staleMissing
 		}
@@ -991,6 +1141,13 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 		}
 		return false, ""
 	}
+	if op.Op == OpSetRelationship && op.RelCovered {
+		rel, _ := idx.relByID(RelID(op.RelID))
+		if rel == nil {
+			return true, staleMissing
+		}
+		hash = relBaseHash(hash, rel)
+	}
 	if op.BaseHash == nil || *op.BaseHash != hash {
 		return true, staleMismatch
 	}
@@ -1005,11 +1162,12 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 		return idx.applyDelete(op)
 	case OpSetRelationship:
 		in := SetRelationshipInput{
-			ID:    RelID(op.RelID),
-			From:  NodeID(op.From),
-			To:    NodeID(op.To),
-			Label: deref(op.Label),
-			Kind:  deref(op.Kind),
+			ID:       RelID(op.RelID),
+			From:     NodeID(op.From),
+			To:       NodeID(op.To),
+			Label:    deref(op.Label),
+			Kind:     deref(op.Kind),
+			Contract: op.Contract,
 		}
 		if _, err := idx.setRelationshipLocked(in); err != nil {
 			return err
@@ -1017,6 +1175,11 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 		return idx.reload()
 	case OpDeleteRelationship:
 		return idx.deleteRelationshipLocked(RelID(op.RelID))
+	case OpSetConstraints:
+		if op.Constraints == nil {
+			return fmt.Errorf("%w: set_constraints has no constraints list", ErrUnreadableProposal)
+		}
+		return idx.setConstraintsLocked(*op.Constraints)
 	default:
 		return fmt.Errorf("%w: unknown operation %q", ErrBadOperation, op.Op)
 	}
@@ -1161,6 +1324,9 @@ func (idx *Index) applyDelete(op operation) error {
 			}
 		}
 	}
+	if err := idx.checkNoDependents(removeNodes); err != nil {
+		return err
+	}
 	oldIndex, err := os.ReadFile(filepath.Join(idx.arch(), "index.json"))
 	if err != nil {
 		return err
@@ -1267,6 +1433,13 @@ func (idx *Index) validateMaterialised(n *Node, creating bool) error {
 			return fmt.Errorf("%w: %q", ErrRelationshipNotFound, n.RelationshipID)
 		}
 	}
+	// Re-validate only a changed list so an unrelated update is not blocked by a
+	// dangling entry the architect already has on disk.
+	if cur := idx.Nodes[n.ID]; creating || cur == nil || !slicesEqualIDs(cur.DependsOn, n.DependsOn) {
+		if err := idx.validateDependsOn(n.ID, n.DependsOn); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1362,7 +1535,8 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		label, kind := deref(op.Label), deref(op.Kind)
 		row.Relationship = &RelSnapshot{ID: op.RelID, From: op.From, To: op.To, Label: label, Kind: kind}
 		if rel, _ := idx.relByID(RelID(op.RelID)); rel != nil {
-			row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
+			row.CurrentRelationship = relSnapshot(rel)
+			row.Relationship.Contract = row.CurrentRelationship.Contract
 			for _, nid := range idx.removedByRelationship(rel) {
 				removed := RemovedNode{ID: nid}
 				if n := idx.Nodes[NodeID(nid)]; n != nil {
@@ -1374,17 +1548,30 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 	case OpSetRelationship:
 		label, kind := deref(op.Label), deref(op.Kind)
 		row.Relationship = &RelSnapshot{ID: op.RelID, From: op.From, To: op.To, Label: label, Kind: kind}
+		var cur *Relationship
 		if op.RelID != "" {
-			if rel, _ := idx.relByID(RelID(op.RelID)); rel != nil {
-				row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
-			}
+			cur, _ = idx.relByID(RelID(op.RelID))
 		} else {
-			for _, rel := range idx.Relationships {
+			for i := range idx.Relationships {
+				rel := &idx.Relationships[i]
 				if string(rel.From) == op.From && string(rel.To) == op.To {
-					row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
+					cur = rel
 					break
 				}
 			}
+		}
+		if cur != nil {
+			row.CurrentRelationship = relSnapshot(cur)
+		}
+		if op.Contract != nil {
+			row.Relationship.Contract = normalizeEdgeContract(op.Contract)
+		} else if cur != nil {
+			row.Relationship.Contract = row.CurrentRelationship.Contract
+		}
+	case OpSetConstraints:
+		row.CurrentConstraints = append([]Constraint(nil), idx.Constraints...)
+		if op.Constraints != nil {
+			row.ProposedConstraints = append([]Constraint(nil), *op.Constraints...)
 		}
 	}
 	return row
@@ -1515,7 +1702,7 @@ func newProposalID(now time.Time) (string, error) {
 
 func validProposalSource(source string) bool {
 	switch source {
-	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship:
+	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship, OpSetConstraints:
 		return true
 	default:
 		return false
@@ -1529,6 +1716,7 @@ func cloneNode(n *Node) *Node {
 	cp := *n
 	cp.Implementation = cloneStrings(n.Implementation)
 	cp.Scope = cloneStrings(n.Scope)
+	cp.DependsOn = append([]NodeID(nil), n.DependsOn...)
 	cp.Unknown = cloneRaw(n.Unknown)
 	return &cp
 }
@@ -1638,6 +1826,21 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 			return nil, err
 		}
 		fields = append(fields, "schema")
+	}
+	if in.DependsOn != nil {
+		if err := validateDependsOnIn(nodes, n.ID, *in.DependsOn); err != nil {
+			return nil, err
+		}
+		n.DependsOn = sortedDeps(*in.DependsOn)
+		fields = append(fields, "depends_on")
+	}
+	if in.Contract != nil {
+		c, err := patchNodeContract(in.Contract, n.Contract)
+		if err != nil {
+			return nil, err
+		}
+		n.Contract = c
+		fields = append(fields, "contract")
 	}
 	if len(fields) == 0 {
 		return nil, fmt.Errorf("%w: update_node %s changes no fields", ErrBadOperation, n.ID)
@@ -1784,7 +1987,37 @@ func snapshotNode(n *Node) *NodeSnapshot {
 		Color:          n.Color,
 		Renderer:       n.Renderer,
 		Schema:         append([]SchemaColumn(nil), n.Schema...),
+		DependsOn:      depStrings(n.DependsOn),
+		Contract:       normalizeNodeContract(n.Contract),
 	}
+}
+
+func slicesEqualIDs(a, b []NodeID) bool {
+	x, y := sortedDeps(a), sortedDeps(b)
+	if len(x) != len(y) {
+		return false
+	}
+	for i := range x {
+		if x[i] != y[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func depStrings(deps []NodeID) []string {
+	if len(deps) == 0 {
+		return nil
+	}
+	out := make([]string, len(deps))
+	for i, d := range sortedDeps(deps) {
+		out[i] = string(d)
+	}
+	return out
+}
+
+func relSnapshot(rel *Relationship) *RelSnapshot {
+	return &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind, Contract: normalizeEdgeContract(rel.Contract)}
 }
 
 func deref(s *string) string {

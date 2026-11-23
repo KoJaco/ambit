@@ -72,22 +72,34 @@ func (idx *Index) parseConstraints(obj map[string]jsonRaw) []Constraint {
 func (idx *Index) SetConstraints(in []Constraint) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.setConstraintsLocked(in)
+}
 
+// normalizeConstraintList validates a replace-all list: count, each entry, unique ids.
+func normalizeConstraintList(in []Constraint) ([]Constraint, error) {
 	if len(in) > MaxConstraints {
-		return fmt.Errorf("%w: %d constraints (max %d)", ErrBadConstraint, len(in), MaxConstraints)
+		return nil, fmt.Errorf("%w: %d constraints (max %d)", ErrBadConstraint, len(in), MaxConstraints)
 	}
 	out := make([]Constraint, 0, len(in))
 	seen := map[string]bool{}
 	for _, c := range in {
 		n, err := normalizeConstraint(c)
 		if err != nil {
-			return fmt.Errorf("%w: %v", ErrBadConstraint, err)
+			return nil, fmt.Errorf("%w: %v", ErrBadConstraint, err)
 		}
 		if seen[n.ID] {
-			return fmt.Errorf("%w: duplicate id %q", ErrBadConstraint, n.ID)
+			return nil, fmt.Errorf("%w: duplicate id %q", ErrBadConstraint, n.ID)
 		}
 		seen[n.ID] = true
 		out = append(out, n)
+	}
+	return out, nil
+}
+
+func (idx *Index) setConstraintsLocked(in []Constraint) error {
+	out, err := normalizeConstraintList(in)
+	if err != nil {
+		return err
 	}
 	obj := cloneRaw(idx.configUnknown)
 	if obj == nil {

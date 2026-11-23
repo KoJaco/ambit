@@ -25,6 +25,9 @@ and a Cursor rule for `.arch` edits. Did **not** add the full graph checklist to
   nodes. Nest more than two levels only for genuinely separate subsystems." It is a single
   sentence, not the graph checklist, so the brief stays focused on file boundaries.
 
+- **Amendment (decision 0012):** the brief also carries project facts (project rules,
+  contracts, build order). These are not modelling doctrine, so the rule above is unchanged.
+
 ## Rationale
 
 - Harnesses read MCP tool text more often than long contract docs; duplicating a short
