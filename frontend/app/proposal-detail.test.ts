@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { detailNames, detailNeedsConfirm, proposalDetailHead, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
+import { detailCanAccept, detailNames, detailNeedsConfirm, proposalDetailHead, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -236,5 +236,93 @@ describe("detail head names", () => {
         const fetched = new Map([["x", { id: "x", name: "Ex" } as never]]);
         const d = { proposal_id: "p", created_at: "", source: "", operations: [op] } as ProposalDiff;
         expect(detailNames(d, fetched).get("x")).toBe("Ex");
+    });
+});
+
+describe("node model fields", () => {
+    const names = new Map([["db", "Database"]]);
+
+    it("shows depends_on and contract before and after on an update", () => {
+        const o = op({
+            op: "update_node",
+            node_id: "api",
+            fields: ["depends_on", "contract"],
+            current: { ...node({ id: "api", name: "API" }), depends_on: [] },
+            proposed: { ...node({ id: "api", name: "API" }), depends_on: ["db"], contract: { payloads: "POST /x", invariants: ["i"] } },
+        });
+        const blocks = proposalDetailBlocks(o, names);
+        expect(blocks).toContainEqual({ kind: "pair", label: "Depends on", before: "(none)", after: "Database" });
+        expect(blocks).toContainEqual({
+            kind: "pair",
+            label: "Contract",
+            before: "none",
+            after: "payloads, 1 invariant (changed: payloads, invariants 0 → 1)",
+        });
+        expect(blocks).toContainEqual({ kind: "prose", label: "Contract payloads", before: "", after: "POST /x" });
+        expect(blocks).toContainEqual({ kind: "list", label: "Invariants", before: [], after: ["i"] });
+        const diff: ProposalDiff = { proposal_id: "p", created_at: "", source: "mcp", operations: [o] };
+        const view = proposalDetailView(diff, o);
+        expect(view.kind).toBe("update");
+        if (view.kind === "update") {
+            expect(view.changes.map((c) => c.label)).toEqual(["depends on", "contract"]);
+            expect(view.changes[0].after).toBe("db");
+        }
+    });
+
+    it("previews a create with its dependencies and contract", () => {
+        const o = op({
+            op: "create_node",
+            node_id: "api",
+            proposed: { ...node({ id: "api", name: "API" }), depends_on: ["db"], contract: { errors: ["e"] } },
+        });
+        const diff: ProposalDiff = { proposal_id: "p", created_at: "", source: "mcp", operations: [o] };
+        const view = proposalDetailView(diff, o, new Map([["db", { ...node({ id: "db", name: "Database" }) }]]));
+        expect(view.kind === "create" && view.notes).toEqual(["Depends on Database", "Contract: 1 error"]);
+    });
+
+    it("shows format and ref for a connection with a contract", () => {
+        const o = op({
+            op: "set_relationship",
+            node_id: "a",
+            relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract: { format: "jsonschema", ref: "s.json" } },
+        });
+        const diff: ProposalDiff = { proposal_id: "p", created_at: "", source: "mcp", operations: [o] };
+        const view = proposalDetailView(diff, o);
+        expect(view.kind === "connect" && view.edge.contract).toBe("JSON Schema · s.json");
+        expect(proposalDetailBlocks(o)).toContainEqual({ kind: "pair", label: "contract", before: "—", after: "JSON Schema · s.json" });
+    });
+
+    it("shows a cleared edge contract instead of unchanged", () => {
+        const o = op({
+            op: "set_relationship",
+            node_id: "a",
+            relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract_cleared: true },
+            current_relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract: { format: "openapi", ref: "api.yaml" } },
+        });
+        expect(proposalDetailBlocks(o)).toContainEqual({ kind: "pair", label: "contract", before: "OpenAPI · api.yaml", after: "Contract cleared (was: OpenAPI · api.yaml)" });
+    });
+
+    it("treats node-now-has-dependents as stale and not confirmable", () => {
+        const o = op({ op: "delete_node", node_id: "a", stale: true, stale_reason: "node now has dependents" });
+        expect(proposalDetailHead(o).map((b) => (b.kind === "line" ? b.text : ""))).toContain("Stale: the node now has dependents. Reject this operation; it cannot be applied.");
+        expect(detailCanAccept(o)).toBe(false);
+        expect(detailNeedsConfirm(o)).toBe(false);
+    });
+
+    it("renders set_constraints as Project rules lines", () => {
+        const o = op({
+            op: "set_constraints",
+            node_id: "",
+            current_constraints: [{ id: "a", text: "old", severity: "should" }],
+            proposed_constraints: [{ id: "b", text: "new", severity: "must" }],
+        });
+        const diff: ProposalDiff = { proposal_id: "p", created_at: "", source: "mcp", operations: [o] };
+        expect(proposalDetailHead(o)[0].kind === "heading" && proposalDetailHead(o)[0]).toMatchObject({ text: "Update project rules" });
+        const texts = proposalDetailBlocks(o).map((b) => ("text" in b ? b.text : ""));
+        expect(texts).toContain("Added: MUST: new");
+        expect(texts).toContain("Removed: SHOULD: old");
+        const view = proposalDetailView(diff, o);
+        expect(view.kind).toBe("rules");
+        expect(unresolvedNodeIds(diff, o)).toEqual([]);
     });
 });

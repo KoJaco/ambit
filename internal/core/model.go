@@ -80,17 +80,23 @@ type Node struct {
 	Color          string
 	Renderer       string
 	Schema         []SchemaColumn
-	Unknown        map[string]jsonRaw
+	// DependsOn is the explicit build-order dependency list (never inferred from edges).
+	DependsOn []NodeID
+	// Contract is nil when the node has none.
+	Contract *NodeContract
+	Unknown  map[string]jsonRaw
 }
 
 // Relationship is a directed cross-cutting edge. It is not a hierarchy edge.
 type Relationship struct {
-	ID      RelID
-	From    NodeID
-	To      NodeID
-	Label   string
-	Kind    string
-	Unknown map[string]jsonRaw
+	ID    RelID
+	From  NodeID
+	To    NodeID
+	Label string
+	Kind  string
+	// Contract is nil when the edge has none.
+	Contract *EdgeContract
+	Unknown  map[string]jsonRaw
 }
 
 // Assignment is the machine-local active assignment in local.json.
@@ -140,6 +146,8 @@ type CreateInput struct {
 	Color          string
 	Renderer       string
 	Schema         []SchemaColumn
+	DependsOn      []NodeID
+	Contract       *NodeContract
 }
 
 // SchemaColumn is one visual row on a database-schema canvas renderer.
@@ -164,6 +172,10 @@ type UpdateInput struct {
 	Color          *string
 	Renderer       *string
 	Schema         *[]SchemaColumn
+	// DependsOn replaces the list; a non-nil empty slice clears it.
+	DependsOn *[]NodeID
+	// Contract replaces the contract; a non-nil empty contract clears it.
+	Contract *NodeContract
 }
 
 // EffectiveScope returns scope, or implementation when scope is absent or empty.

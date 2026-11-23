@@ -27,6 +27,9 @@ and by extension the HTTP API, MCP server, and `ambit check`.
 - **Change policy:** `schema_version` lives in exactly one place, `index.json`. Node files
   inherit it and do not carry their own. A breaking change bumps it and requires a migration
   path; an additive change does not bump it.
+- **Decision 0012** added the optional node fields `contract` and `depends_on`, the
+  relationship field `contract`, and the `config.json` key `constraints`. Additive, so
+  `schema_version` stays 1; an older ambit keeps the new keys in its unknown-field bag.
 
 ## Definitions
 
@@ -159,6 +162,25 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
 - `schema` — optional list of `{ "title", "type" }` rows, drawn when `renderer` is `schema`.
   At most 32 rows; each title and type is at most 64 characters. Empty or absent draws the
   schema header only. MCP does not set `schema` in v1.
+- `depends_on` — list of node ids this node must be built after. Explicit only; never
+  inferred from relationships. Written sorted. Ids must exist, no self-reference, no
+  duplicates, and the graph must be acyclic. Unknown keys inside a node or edge `contract` object are preserved on write. A buildable
+  container (one with `implementation` globs) counts as done from its children alone; its
+  own `status` is ignored for the done rule. Cycles are checked on the expanded graph (a
+  dependency on a pure container means its descendants), so `x -> container` with a child
+  that depends on `x` is rejected like any cycle. Drives the derived build order
+  ([decision 0012](../decisions/0012-greenfield-node-model.md)); advisory, never blocks a
+  status change.
+- `contract` — optional object `{ "payloads": string, "invariants": string[], "errors":
+  string[], "owns_data": string[] }`; every key optional, empty keys omitted. `payloads` is
+  at most 8000 characters; each list has at most 32 items of at most 300 characters. Large
+  machine-readable specs (OpenAPI, JSON Schema) are referenced by repo path in text, not
+  stored here.
+
+Node file key order on write: `id, name, type, parent_id, relationship_id, implementation,
+scope, protected, icon, color, renderer, schema, depends_on, contract, status`, then unknown
+keys sorted. Over-limit values already on disk still load; new values over a limit are
+rejected on write.
 
 **Renderer ids (normative):** `card`, `schema`, `placeholder`, `group`.
 
@@ -220,6 +242,13 @@ does not constrain it.
   `"reads from"`). Optional but strongly encouraged; an unlabelled edge tells a reader
   almost nothing.
 - `kind` — one of `sync`, `async`, `data`. Optional. Used only to style the rendered edge.
+- `contract` — optional object `{ "format": "openapi" | "jsonschema" | "text", "ref":
+  string, "text": string }` describing what is on the wire. Stored as opaque text; ambit
+  parses no schemas. `text` is at most 4000 characters; `ref` is a repo path of at most 300
+  characters and must not contain `..` segments. An unknown `format` already on disk loads
+  as-is; new unknown values are rejected on write.
+
+Relationship key order on write: `id, from, to, label, kind, contract`, then unknown keys.
 
 Relationships are **directed**. `from → to` is not the same as `to → from`, and both may
 exist independently.
@@ -241,7 +270,18 @@ Recognised keys (all optional; unknown keys are preserved on write):
 - `level_budget` — positive integer, default `24`. Visible node count on a level above which
   groups default to collapsed summaries.
 
-Both are view defaults only (decision 0010). A missing key uses the default. A value that is
+- `constraints` — ordered list of project-wide rules `{ "id", "text", "severity" }`. `id` is
+  a unique lowercase slug; `text` is 1 to 300 characters; `severity` is `must` (default
+  when absent) or `should`. At most 24 entries on write. An invalid or duplicate entry on
+  load is skipped with a warning, not a load error. Global only
+  ([decision 0012](../decisions/0012-greenfield-node-model.md)). Unknown keys inside a
+  constraint entry are preserved on write. `SetConstraints` (the UI, or an accepted
+  `set_constraints`) rewrites `config.json` with its keys sorted alphabetically and the
+  constraints array on one compact line; other keys and their values are kept. Saved JSON
+  is not HTML-escaped (`List<Order>` stays readable). A running `ambit mcp` reloads when
+  `config.json` changes on disk, so rules edited through `ambit start` reach its briefs.
+
+`group_max` and `level_budget` are view defaults only (decision 0010). A missing key uses the default. A value that is
 not a positive integer falls back to the default and produces a warning, not a load error.
 The effective values are returned as `view_defaults` on level reads.
 
@@ -309,6 +349,13 @@ be committed.
 - **Hierarchy cycle** — rejected at mutation time by `ambit-core`, so it cannot be created
   through the HTTP API or MCP. If found on load (hand-edited), reported as an error and the
   offending edge is not traversed.
+- **Dangling `depends_on`** (names a missing node) — model integrity warning. The node still
+  loads and the entry is ignored by the build order.
+- **Dependency cycle** — rejected at mutation time. If found on load (hand-edited), reported
+  as an error diagnostic; the nodes involved get no build order.
+- **Deleting a node others `depends_on`** — rejected, naming the dependents.
+- **Wrong-typed `depends_on` or `contract`** (node or relationship) — hard error naming the
+  file, like other malformed values.
 - **Malformed JSON** — hard error naming the file. The model does not partially load.
 - **Ignore entries missing or ineffective** — `ambit start` and `ambit check` warn loudly.
   This is the release-gate condition described in

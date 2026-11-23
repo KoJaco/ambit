@@ -495,7 +495,7 @@ export function ProposalReview({
                                     {skipped[proposal.proposal_id]?.length ? (
                                         <p className="px-3 pt-2 text-xs text-amber-700 dark:text-amber-400">
                                             Skipped{" "}
-                                            {skipped[proposal.proposal_id].map((op) => `${op.node_id} (${op.reason})`).join(", ")}
+                                            {skipped[proposal.proposal_id].map((op) => `${op.node_id || op.op} (${op.reason})`).join(", ")}
                                         </p>
                                     ) : null}
                                     {proposal.unreadable ? null : (
@@ -555,6 +555,7 @@ const VERB_STYLE: Record<RowVerb, string> = {
     Delete: "bg-red-500/15 text-red-800 dark:text-red-300",
     Connect: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
     "Remove connection": "bg-red-500/15 text-red-800 dark:text-red-300",
+    Rules: "bg-amber-500/15 text-amber-900 dark:text-amber-300",
     Other: "bg-muted text-muted-foreground",
 };
 
@@ -584,10 +585,27 @@ function DetailBlockView({
     headingRef?: Ref<HTMLHeadingElement>;
 }) {
     if (block.kind === "heading") {
+        const Heading = block.level === 4 ? "h4" : "h3";
         return (
-            <h3 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-sm font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
+            <Heading ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-sm font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
                 {block.text}
-            </h3>
+            </Heading>
+        );
+    }
+    if (block.kind === "list") {
+        const items = (list: string[]) => (
+            <ul className="list-disc pl-4">
+                {list.map((item, i) => (
+                    <li key={i}>{item}</li>
+                ))}
+            </ul>
+        );
+        return (
+            <div className="text-xs">
+                <p className="font-medium text-foreground/70">{block.label}</p>
+                {block.before.length > 0 ? <div className="text-foreground/60 line-through">{items(block.before)}</div> : null}
+                {block.after.length > 0 ? <div className="text-foreground">{items(block.after)}</div> : <p className="text-foreground">→ (none)</p>}
+            </div>
         );
     }
     if (block.kind === "line") {

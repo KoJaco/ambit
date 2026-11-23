@@ -1,4 +1,13 @@
 import type { NodeSnapshot, OpDiff, ProposalDiff } from "./api";
+import {
+    constraintsChangeText,
+    contractChangeSummary,
+    contractIsEmpty,
+    contractSummary,
+    dependsText,
+    edgeContractLine,
+    normalizeDependsOn,
+} from "./node-contract";
 
 export type ReviewRow = {
     key: string;
@@ -19,9 +28,12 @@ export type ReviewRow = {
     groupKey: string;
 };
 
-export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Remove connection" | "Other";
+export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Remove connection" | "Rules" | "Other";
 
 const missingNode = "node is missing";
+const noDependents = "node now has dependents";
+// Reasons the server refuses even with confirm_stale.
+const unconfirmable = (reason?: string) => reason === missingNode || reason === noDependents;
 
 // proposalRows shapes a server diff into one compact row per operation.
 // Stale is copied from the payload. This function does not compare hashes.
@@ -29,7 +41,7 @@ const missingNode = "node is missing";
 export function proposalRows(diff: ProposalDiff, existingNames?: ReadonlyMap<string, string>): ReviewRow[] {
     const names = nameLookup(diff, existingNames);
     return diff.operations.map((op) => {
-        const missing = op.stale_reason === missingNode;
+        const missing = unconfirmable(op.stale_reason);
         const pending = op.status === "pending" && !op.error;
         return {
             key: `${op.index}:${op.op}:${op.node_id}`,
@@ -67,6 +79,7 @@ function summarize(op: OpDiff, names?: ReadonlyMap<string, string>): string {
     if (op.op === "set_relationship" && op.relationship) {
         return `${name(op.relationship.from)} → ${name(op.relationship.to)}`;
     }
+    if (op.op === "set_constraints") return "Project rules";
     return `${op.op} ${name(op.node_id)}`;
 }
 
@@ -77,12 +90,14 @@ function detailOf(op: OpDiff): string {
         return `${op.proposed.type} · ${parent}`;
     }
     if (op.op === "set_relationship" && op.relationship) {
-        return [op.relationship.label, op.relationship.kind].filter(Boolean).join(" · ");
+        return edgeSummary(op);
     }
+    if (op.op === "set_constraints") return constraintsChangeText(op.current_constraints, op.proposed_constraints);
     if (op.op === "update_node" && op.fields?.length) {
         return op.fields
             .map((field) => {
                 if (field === "spec") return "spec changed";
+                if (field === "contract") return `contract ${contractChangeSummary(op.current?.contract, op.proposed?.contract)}`;
                 const current = fieldText(op.current, field);
                 const proposed = fieldText(op.proposed, field);
                 return `${field}: ${current} → ${proposed}`;
@@ -109,9 +124,25 @@ function fieldText(node: NodeSnapshot | null, field: string): string {
             return node.scope.join(", ") || "(empty)";
         case "protected":
             return node.protected ? "protected" : "not protected";
+        case "depends_on":
+            return dependsText(node.depends_on);
+        case "contract":
+            return contractSummary(node.contract);
         default:
             return field;
     }
+}
+
+// Label, kind and contract of a connection on one line.
+function edgeSummary(op: OpDiff): string {
+    const rel = op.relationship;
+    if (!rel) return "";
+    const was = edgeContractLine(op.current_relationship?.contract);
+    const contract = edgeContractLine(rel.contract);
+    if (rel.contract_cleared && !contract) {
+        return [rel.label, rel.kind, was ? `contract cleared (was: ${was})` : "contract cleared"].filter(Boolean).join(" · ");
+    }
+    return [rel.label, rel.kind, contract ? `contract: ${contract}` : ""].filter(Boolean).join(" · ");
 }
 
 // ---- review-panel presentation -------------------------------------------------------------
@@ -127,6 +158,8 @@ const FIELD_LABELS: Record<string, string> = {
     protected: "Protected",
     icon: "Icon",
     color: "Colour",
+    depends_on: "Depends on",
+    contract: "Contract",
 };
 
 export function humanField(field: string): string {
@@ -172,12 +205,15 @@ function verbOf(op: OpDiff): RowVerb {
             return "Connect";
         case "delete_relationship":
             return "Remove connection";
+        case "set_constraints":
+            return "Rules";
         default:
             return "Other";
     }
 }
 
 function titleOf(op: OpDiff, names: Map<string, string>): string {
+    if (op.op === "set_constraints") return "Project rules";
     if (op.op === "set_relationship" && op.relationship) {
         const { from, to } = op.relationship;
         return `${names.get(from) ?? from} → ${names.get(to) ?? to}`;
@@ -196,17 +232,27 @@ function parentName(id: string | undefined, names: Map<string, string>): string 
 function changeOf(op: OpDiff, names: Map<string, string>): string {
     if (op.error) return op.error;
     if (op.op === "create_node" && op.proposed) {
-        return `${op.proposed.type} in ${parentName(op.proposed.parent_id, names)}`;
+        const extras = [
+            normalizeDependsOn(op.proposed.depends_on).length ? `depends on ${normalizeDependsOn(op.proposed.depends_on).length}` : "",
+            contractIsEmpty(op.proposed.contract) ? "" : "has contract",
+        ].filter(Boolean);
+        return [`${op.proposed.type} in ${parentName(op.proposed.parent_id, names)}`, ...extras].join(" · ");
     }
+    if (op.op === "set_constraints") return constraintsChangeText(op.current_constraints, op.proposed_constraints);
     if (op.op === "delete_node") return "Removes the node";
     if (op.op === "delete_relationship") return removeConnectionChange(op);
     if (op.op === "set_relationship" && op.relationship) {
-        return [op.relationship.label, op.relationship.kind].filter(Boolean).join(" · ");
+        return edgeSummary(op);
     }
     if (op.op === "update_node" && op.fields?.length) {
         return op.fields
             .map((field) => {
                 if (field === "spec") return "Spec changed";
+                if (field === "contract") return `Contract ${contractChangeSummary(op.current?.contract, op.proposed?.contract)}`;
+                if (field === "depends_on") {
+                    const list = (node: NodeSnapshot | null) => dependsText(node?.depends_on, (id) => names.get(id) ?? id);
+                    return `Depends on: ${list(op.current)} → ${list(op.proposed)}`;
+                }
                 if (field === "parent_id") {
                     return `Parent: ${parentName(op.current?.parent_id, names)} → ${parentName(op.proposed?.parent_id, names)}`;
                 }
@@ -262,6 +308,7 @@ export function summarizeProposal(diff: ProposalDiff): ProposalSummaryLine {
     const nodesAdded = count("create_node");
     const edgesAdded = count("set_relationship");
     const changed = count("update_node");
+    const rulesChanged = count("set_constraints");
     const nodesRemoved = count("delete_node");
     const edgesRemoved = count("delete_relationship");
 
@@ -269,9 +316,10 @@ export function summarizeProposal(diff: ProposalDiff): ProposalSummaryLine {
     const adds = [nodesAdded ? plural(nodesAdded, "node") : "", edgesAdded ? plural(edgesAdded, "connection") : ""].filter(Boolean);
     if (adds.length) sections.push(`Adds ${adds.join(" · ")}`);
     if (changed) sections.push(`Changes ${changed}`);
+    if (rulesChanged) sections.push("Changes project rules");
     const removes = [nodesRemoved ? plural(nodesRemoved, "node") : "", edgesRemoved ? plural(edgesRemoved, "connection") : ""].filter(Boolean);
     if (removes.length) sections.push(`Removes ${removes.join(" · ")}`);
-    const other = pending.length - nodesAdded - edgesAdded - changed - nodesRemoved - edgesRemoved;
+    const other = pending.length - nodesAdded - edgesAdded - changed - rulesChanged - nodesRemoved - edgesRemoved;
     if (other > 0) sections.push(plural(other, "other change"));
 
     const origin = proposalOrigin(diff.source);
@@ -289,7 +337,7 @@ export function unresolvedParentIds(diff: ProposalDiff, known?: ReadonlyMap<stri
     const names = nameLookup(diff);
     const out = new Set<string>();
     for (const op of diff.operations) {
-        if (op.op === "set_relationship" || op.op === "delete_relationship") continue;
+        if (op.op === "set_relationship" || op.op === "delete_relationship" || op.op === "set_constraints") continue;
         const parent = (op.op === "create_node" ? op.proposed : (op.current ?? op.proposed))?.parent_id;
         if (parent && !names.has(parent) && !known?.has(parent)) out.add(parent);
     }
@@ -299,7 +347,7 @@ export function unresolvedParentIds(diff: ProposalDiff, known?: ReadonlyMap<stri
 export type HierarchyItem = { row: ReviewRow; label: string };
 export type HierarchySection = {
     key: string;
-    kind: "new-zone" | "existing-zone" | "connections";
+    kind: "new-zone" | "existing-zone" | "connections" | "rules";
     title: string;
     items: HierarchyItem[];
 };
@@ -342,6 +390,7 @@ export function hierarchySections(diff: ProposalDiff, existingNames?: ReadonlyMa
         return section;
     };
     const connections: HierarchySection = { key: "connections", kind: "connections", title: "Connections", items: [] };
+    const rules: HierarchySection = { key: "rules", kind: "rules", title: "Project rules", items: [] };
     const label = (row: ReviewRow): string => {
         const rel = opByIndex.get(row.index)?.relationship;
         return rel?.label ? `${row.title} "${rel.label}"` : row.title;
@@ -353,6 +402,10 @@ export function hierarchySections(diff: ProposalDiff, existingNames?: ReadonlyMa
         const op = opByIndex.get(row.index);
         const item = { row, label: label(row) };
         if (!op) continue;
+        if (op.op === "set_constraints") {
+            rules.items.push(item);
+            continue;
+        }
         if (op.op === "set_relationship" || op.op === "delete_relationship") {
             const rel = op.relationship;
             const from = rel ? newRoot(rel.from) : "";
@@ -378,6 +431,7 @@ export function hierarchySections(diff: ProposalDiff, existingNames?: ReadonlyMa
         ...all.filter((s) => s.kind === "new-zone"),
         ...all.filter((s) => s.kind === "existing-zone"),
         ...(connections.items.length ? [connections] : []),
+        ...(rules.items.length ? [rules] : []),
     ];
     return ordered;
 }

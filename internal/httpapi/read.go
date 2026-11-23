@@ -60,7 +60,7 @@ func relationshipLevelBody(lvl core.RelationshipLevel, assigned core.NodeID) rel
 	for _, rel := range lvl.Relationships {
 		body.Relationships = append(body.Relationships, relJSON{
 			ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
-			Drillable: rel.Drillable,
+			Drillable: rel.Drillable, Contract: contractOrNil(rel.Contract),
 		})
 	}
 	for _, c := range lvl.Crossings {
@@ -73,7 +73,7 @@ func relationshipLevelBody(lvl core.RelationshipLevel, assigned core.NodeID) rel
 }
 
 func relViewJSON(v core.RelView) relViewBody {
-	return relViewBody{ID: string(v.ID), From: string(v.From), To: string(v.To), Label: v.Label, Kind: v.Kind}
+	return relViewBody{ID: string(v.ID), From: string(v.From), To: string(v.To), Label: v.Label, Kind: v.Kind, Contract: contractOrNil(v.Contract)}
 }
 
 type relationshipLevelJSON struct {
@@ -86,11 +86,12 @@ type relationshipLevelJSON struct {
 }
 
 type relViewBody struct {
-	ID    string `json:"id"`
-	From  string `json:"from"`
-	To    string `json:"to"`
-	Label string `json:"label"`
-	Kind  string `json:"kind"`
+	ID       string             `json:"id"`
+	From     string             `json:"from"`
+	To       string             `json:"to"`
+	Label    string             `json:"label"`
+	Kind     string             `json:"kind"`
+	Contract *core.EdgeContract `json:"contract,omitempty"`
 }
 
 func getNode(idx *core.Index) http.HandlerFunc {
@@ -157,7 +158,7 @@ func levelBody(lvl core.Level, assigned core.NodeID) levelJSON {
 func edgeBody(rel core.EdgeView) relJSON {
 	out := relJSON{
 		ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
-		Drillable: rel.Drillable, Aggregated: rel.Aggregated, Kinds: rel.Kinds,
+		Drillable: rel.Drillable, Aggregated: rel.Aggregated, Kinds: rel.Kinds, Contract: contractOrNil(rel.Contract),
 	}
 	for _, m := range rel.Members {
 		out.Members = append(out.Members, string(m))
@@ -192,6 +193,7 @@ func summaryOf(n core.NodeView, assigned core.NodeID) summaryJSON {
 	out := summaryJSON{
 		ID: string(n.ID), Name: n.Name, Type: n.Type, Status: string(n.Status), Protected: n.Protected,
 		Icon: n.Icon, Color: n.Color, Renderer: n.Renderer, Schema: n.Schema, ChildCount: n.ChildCount,
+		DependsOn: dependsOn(n.DependsOn), Contract: nodeContractOrNil(n.Contract),
 		GroupID: string(n.GroupID), Expanded: n.Expanded, InternalRelCount: n.InternalRelCount,
 		Assigned: assigned != "" && n.ID == assigned,
 	}
@@ -243,6 +245,8 @@ type nodeJSON struct {
 	Color          string              `json:"color,omitempty"`
 	Renderer       string              `json:"renderer,omitempty"`
 	Schema         []core.SchemaColumn `json:"schema,omitempty"`
+	DependsOn      []string            `json:"depends_on"`
+	Contract       *core.NodeContract  `json:"contract,omitempty"`
 	Assigned       bool                `json:"assigned,omitempty"`
 }
 
@@ -256,6 +260,8 @@ type summaryJSON struct {
 	Color      string              `json:"color,omitempty"`
 	Renderer   string              `json:"renderer,omitempty"`
 	Schema     []core.SchemaColumn `json:"schema,omitempty"`
+	DependsOn  []string            `json:"depends_on"`
+	Contract   *core.NodeContract  `json:"contract,omitempty"`
 	ChildCount int                 `json:"child_count"`
 	GroupID    string              `json:"group_id,omitempty"`
 	Expanded   bool                `json:"expanded,omitempty"`
@@ -276,6 +282,8 @@ type relJSON struct {
 	Aggregated bool     `json:"aggregated,omitempty"`
 	Members    []string `json:"members,omitempty"`
 	Kinds      []string `json:"kinds,omitempty"`
+	// Contract is the relationship contract (omitted when none; never on aggregated edges).
+	Contract *core.EdgeContract `json:"contract,omitempty"`
 }
 
 type crossJSON struct {
@@ -320,9 +328,12 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrStale),
 		errors.Is(err, core.ErrUnreadableProposal),
 		errors.Is(err, core.ErrExists),
-		errors.Is(err, core.ErrContainerConflict):
+		errors.Is(err, core.ErrContainerConflict),
+		errors.Is(err, core.ErrDependencyCycle),
+		errors.Is(err, core.ErrHasDependents):
 		code = http.StatusConflict
 	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation),
+		errors.Is(err, core.ErrBadContract), errors.Is(err, core.ErrBadConstraint), errors.Is(err, core.ErrBadDependency),
 		errors.Is(err, core.ErrInvalidPresentation):
 		code = http.StatusBadRequest
 	}

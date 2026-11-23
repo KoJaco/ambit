@@ -280,6 +280,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"seed_model": true, "create_node": true, "update_node": true, "delete_node": true,
 		"set_relationship": true, "delete_relationship": true, "get_context": true, "check_scope": true, "update_node_status": true,
 		"get_graph": true, "list_proposals": true, "list_icons": true, "check_drift": true,
+		"set_constraints": true, "get_build_order": true,
 	}
 	for _, tool := range res.Tools {
 		delete(want, tool.Name)
@@ -287,8 +288,8 @@ func TestMCPServerListsTools(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing tools %v (got %d)", want, len(res.Tools))
 	}
-	if len(res.Tools) != 13 {
-		t.Fatalf("got %d tools, want 13", len(res.Tools))
+	if len(res.Tools) != 15 {
+		t.Fatalf("got %d tools, want 15", len(res.Tools))
 	}
 }
 
@@ -424,5 +425,219 @@ func TestCheckDriftTool(t *testing.T) {
 	}
 	if strings.Join(r.Unowned, ",") != ".gitignore,main.go" || len(r.Unmatched) != 1 {
 		t.Fatalf("report %+v", r)
+	}
+}
+
+func acceptOnly(t *testing.T, idx *core.Index) {
+	t.Helper()
+	list, err := idx.ListProposals()
+	if err != nil || len(list) == 0 {
+		t.Fatalf("proposals %+v err %v", list, err)
+	}
+	res, err := idx.AcceptAll(list[len(list)-1].ID)
+	if err != nil || len(res.Applied) == 0 {
+		t.Fatalf("accept %+v err %v", res, err)
+	}
+}
+
+func TestNodeModelFieldsRoundTripStageToAccept(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+
+	_, out, err := env.handleSeedModel(ctx, nil, seedModelIn{
+		Transcript: "model",
+		Nodes: []seedNodeIn{
+			{ID: "db", Name: "DB", Type: "database"},
+			{ID: "api", Name: "API", Type: "service", DependsOn: []string{"db"},
+				Contract: &core.NodeContract{Payloads: "POST /x", Invariants: []string{"scoped by user"}, Errors: []string{"409"}, OwnsData: []string{"orders"}}},
+		},
+		Relationships: []seedRelIn{{From: "api", To: "db", Label: "reads", Kind: "sync",
+			Contract: &core.EdgeContract{Format: "text", Text: "SQL"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Applied || !strings.Contains(out.Message, "NOT been applied") {
+		t.Fatalf("response %+v", out)
+	}
+	if idx.HasNode("api") {
+		t.Fatal("applied before accept")
+	}
+	acceptOnly(t, idx)
+	n, err := idx.Node("api")
+	if err != nil || len(n.DependsOn) != 1 || n.DependsOn[0] != "db" || n.Contract == nil || n.Contract.Payloads != "POST /x" || len(n.Contract.OwnsData) != 1 {
+		t.Fatalf("node %+v err %v", n, err)
+	}
+	_, edges := idx.Graph()
+	if len(edges) != 1 || !edges[0].HasContract {
+		t.Fatalf("edges %+v", edges)
+	}
+
+	// create_node with fields
+	if _, _, err := env.handleCreateNode(ctx, nil, createNodeIn{ID: "web", Name: "Web", Type: "service", DependsOn: []string{"api"}, Contract: &core.NodeContract{Errors: []string{"x"}}}); err != nil {
+		t.Fatal(err)
+	}
+	acceptOnly(t, idx)
+	if n, _ := idx.Node("web"); len(n.DependsOn) != 1 || n.Contract == nil || n.Contract.Errors[0] != "x" {
+		t.Fatalf("web %+v", n)
+	}
+
+	// update: omitted = unchanged
+	name := "API v2"
+	if _, _, err := env.handleUpdateNode(ctx, nil, updateNodeIn{NodeID: "api", Name: &name}); err != nil {
+		t.Fatal(err)
+	}
+	acceptOnly(t, idx)
+	if n, _ := idx.Node("api"); len(n.DependsOn) != 1 || n.Contract == nil {
+		t.Fatalf("omitted fields changed: %+v", n)
+	}
+	// update: empty clears
+	empty := []string{}
+	if _, _, err := env.handleUpdateNode(ctx, nil, updateNodeIn{NodeID: "api", DependsOn: &empty, Contract: &core.NodeContract{}}); err != nil {
+		t.Fatal(err)
+	}
+	acceptOnly(t, idx)
+	if n, _ := idx.Node("api"); len(n.DependsOn) != 0 || n.Contract != nil {
+		t.Fatalf("not cleared: %+v", n)
+	}
+
+	// set_relationship: omitted contract unchanged, empty clears
+	relCall := func(c *core.EdgeContract) {
+		t.Helper()
+		if _, _, err := env.handleSetRelationship(ctx, nil, setRelationshipIn{From: "api", To: "db", Label: "writes", Kind: "sync", RelationshipID: string(edges[0].ID), Contract: c}); err != nil {
+			t.Fatal(err)
+		}
+		acceptOnly(t, idx)
+	}
+	relCall(nil)
+	if _, e := idx.Graph(); !e[0].HasContract {
+		t.Fatal("omitted contract cleared edge contract")
+	}
+	relCall(&core.EdgeContract{})
+	if _, e := idx.Graph(); e[0].HasContract {
+		t.Fatal("empty contract did not clear")
+	}
+}
+
+func TestNodeModelBadInputsAreRejectedAtStage(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	_, _, err := env.handleCreateNode(context.Background(), nil, createNodeIn{Name: "A", Type: "service", DependsOn: []string{"missing"}})
+	if !errors.Is(err, core.ErrBadDependency) {
+		t.Fatalf("got %v", err)
+	}
+	_, _, err = env.handleCreateNode(context.Background(), nil, createNodeIn{Name: "A", Type: "service", Contract: &core.NodeContract{Payloads: strings.Repeat("x", core.MaxContractPayloads+1)}})
+	if !errors.Is(err, core.ErrBadContract) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestSetConstraintsStagesOnly(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+	_, out, err := env.handleSetConstraints(ctx, nil, setConstraintsIn{Constraints: []constraintIn{
+		{ID: "scope-by-user", Text: "Every query scopes by user_id"},
+		{ID: "no-secrets", Text: "No secrets in logs", Severity: "should"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Applied || !strings.Contains(out.Message, "NOT been applied") {
+		t.Fatalf("response %+v", out)
+	}
+	if len(idx.ConstraintList()) != 0 {
+		t.Fatal("constraints applied before accept")
+	}
+	// summaries tolerate ops with empty node_id
+	if _, g, err := env.handleGetGraph(ctx, nil, getGraphIn{}); err != nil || len(g.Pending) != 1 || g.Pending[0].Operations != 1 {
+		t.Fatalf("graph %+v err %v", g, err)
+	}
+	if _, l, err := env.handleListProposals(ctx, nil, listProposalsIn{}); err != nil || len(l.Proposals) != 1 || l.Proposals[0].Operations[0].NodeID != "" {
+		t.Fatalf("list %+v err %v", l, err)
+	}
+	acceptOnly(t, idx)
+	cs := idx.ConstraintList()
+	if len(cs) != 2 || cs[0].Severity != core.ConstraintMust || cs[1].Severity != core.ConstraintShould {
+		t.Fatalf("constraints %+v", cs)
+	}
+	if _, _, err := env.handleSetConstraints(ctx, nil, setConstraintsIn{Constraints: []constraintIn{{ID: "Bad ID", Text: "x"}}}); !errors.Is(err, core.ErrBadConstraint) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestGetBuildOrderReadOnlyAndCycles(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+	a, _ := idx.Create(core.CreateInput{ID: "a", Name: "A", Type: "service"})
+	b, _ := idx.Create(core.CreateInput{ID: "b", Name: "B", Type: "service", DependsOn: []core.NodeID{a}})
+	before, _ := nodeFiles(dir)
+	_, res, err := env.handleGetBuildOrder(ctx, nil, getBuildOrderIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Order) != 2 || res.Order[0].ID != a || res.Order[0].Wave != 1 || res.Order[1].ID != b || res.Order[1].Wave != 2 ||
+		len(res.Order[1].BlockedBy) != 1 || len(res.Waves) != 2 || len(res.Cycles) != 0 {
+		t.Fatalf("result %+v", res)
+	}
+	if props, _ := idx.ListProposals(); len(props) != 0 {
+		t.Fatal("get_build_order staged something")
+	}
+	if after, _ := nodeFiles(dir); strings.Join(before, ",") != strings.Join(after, ",") {
+		t.Fatal("files changed")
+	}
+	if _, _, err := env.handleGetBuildOrder(ctx, nil, getBuildOrderIn{ScopeNodeID: "nope"}); !errors.Is(err, core.ErrNotFound) {
+		t.Fatalf("got %v", err)
+	}
+
+	// A cycle can only arrive from disk; write one by hand and reload.
+	p := filepath.Join(dir, ".arch", "nodes", "a.json")
+	raw, err := os.ReadFile(p)
+	if err != nil {
+		t.Skipf("node file layout: %v", err)
+	}
+	s := strings.Replace(string(raw), `"status"`, `"depends_on": ["b"], "status"`, 1)
+	if s == string(raw) {
+		t.Skip("could not inject cycle")
+	}
+	if err := os.WriteFile(p, []byte(s), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idx2, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env2 := &toolEnv{idx: idx2, dir: dir}
+	_, res, err = env2.handleGetBuildOrder(ctx, nil, getBuildOrderIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Cycles) != 1 || len(res.Unordered) != 2 {
+		t.Fatalf("cycle result %+v", res)
+	}
+}
+
+func TestGetGraphExposesDependsOnAndHasContract(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	a, _ := idx.Create(core.CreateInput{ID: "a", Name: "A", Type: "service"})
+	b, _ := idx.Create(core.CreateInput{ID: "b", Name: "B", Type: "service", DependsOn: []core.NodeID{a}})
+	if _, err := idx.SetRelationship(core.SetRelationshipInput{From: a, To: b, Contract: &core.EdgeContract{Text: "hi"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, g, err := env.handleGetGraph(context.Background(), nil, getGraphIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, n := range g.Nodes {
+		if n.ID == b && len(n.DependsOn) == 1 {
+			found = true
+		}
+	}
+	if !found || len(g.Relationships) != 1 || !g.Relationships[0].HasContract {
+		t.Fatalf("graph %+v", g)
 	}
 }

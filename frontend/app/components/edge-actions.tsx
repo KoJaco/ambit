@@ -1,9 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import { X } from "lucide-react";
 import clsx from "clsx";
 import { history } from "../history";
-import { deleteRelationship, getNode, setRelationship, relationshipDrillId, type NodeDetail, type Relationship } from "../api";
+import {
+    deleteRelationship,
+    getNode,
+    setRelationship,
+    relationshipDrillId,
+    type EdgeContract,
+    type NodeDetail,
+    type Relationship,
+} from "../api";
+import {
+    EDGE_FORMATS,
+    EDGE_REF_MAX,
+    EDGE_TEXT_MAX,
+    edgeContractDirty,
+    normalizeEdgeContract,
+    validateEdgeContract,
+} from "../node-contract";
+import { Counter, fieldClass, labelClass } from "./node-contract-fields";
 import { specExcerpt } from "../excerpt";
 import { edgeKindStyle, type EdgeKindStyle } from "../kind-style";
 import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-presentation";
@@ -199,6 +216,138 @@ function Members({ edge }: { edge: Relationship }) {
     );
 }
 
+// The edge contract: only for edges that are real relationships (aggregated edges carry none).
+function EdgeContractSection({ edge, onSaved }: { edge: Relationship; onSaved: () => void }) {
+    const uid = useId();
+    // The selected edge is a snapshot taken when it was clicked, so the saved contract is tracked
+    // here and updated from the server's response.
+    const [saved, setSaved] = useState<EdgeContract | undefined>(edge.contract);
+    const [draft, setDraft] = useState<EdgeContract>(edge.contract ?? {});
+    const [error, setError] = useState<string | null>(null);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+        setSaved(edge.contract);
+        setDraft(edge.contract ?? {});
+        setError(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [edge.id]);
+    const problems = validateEdgeContract(draft);
+    const hasProblems = Boolean(problems.ref || problems.text);
+    const dirty = edgeContractDirty(saved, draft);
+    const hasSaved = Object.keys(normalizeEdgeContract(saved)).length > 0;
+
+    async function save(contract: EdgeContract) {
+        setBusy(true);
+        setError(null);
+        try {
+            // label and kind are sent as they are: an update with an id rewrites them.
+            const result = await setRelationship({ id: edge.id, from: edge.from, to: edge.to, label: edge.label, kind: edge.kind, contract });
+            setSaved(result.contract);
+            setDraft(result.contract ?? {});
+            onSaved();
+        } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "save failed");
+        } finally {
+            setBusy(false);
+        }
+    }
+
+    return (
+        <section aria-labelledby={`${uid}-heading`} className="space-y-3">
+            <h3 id={`${uid}-heading`} className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Contract
+            </h3>
+            {!hasSaved ? <p className="text-xs text-muted-foreground">No contract</p> : null}
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-format`} className={labelClass}>
+                    Format
+                </label>
+                <select
+                    id={`${uid}-format`}
+                    className={fieldClass}
+                    value={draft.format ?? ""}
+                    onChange={(event) => setDraft({ ...draft, format: (event.target.value || undefined) as EdgeContract["format"] })}
+                >
+                    <option value="">None</option>
+                    {EDGE_FORMATS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                            {f.label}
+                        </option>
+                    ))}
+                </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-ref`} className={labelClass}>
+                    Reference
+                </label>
+                <input
+                    id={`${uid}-ref`}
+                    className={fieldClass}
+                    aria-describedby={`${uid}-ref-hint ${uid}-ref-count${problems.ref ? ` ${uid}-ref-error` : ""}`}
+                    aria-invalid={problems.ref ? true : undefined}
+                    placeholder="docs/api/orders.yaml"
+                    value={draft.ref ?? ""}
+                    onChange={(event) => setDraft({ ...draft, ref: event.target.value })}
+                />
+                <p id={`${uid}-ref-hint`} className="text-xs text-muted-foreground">
+                    A repo-relative path, without '..'.
+                </p>
+                <Counter id={`${uid}-ref-count`} length={(draft.ref ?? "").trim().length} max={EDGE_REF_MAX} />
+                {problems.ref ? (
+                    <p id={`${uid}-ref-error`} role="alert" className="text-xs text-destructive">
+                        {problems.ref}
+                    </p>
+                ) : null}
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-text`} className={labelClass}>
+                    Text
+                </label>
+                <textarea
+                    id={`${uid}-text`}
+                    rows={4}
+                    className={`${fieldClass} min-h-20 resize-y text-sm`}
+                    aria-describedby={`${uid}-text-count${problems.text ? ` ${uid}-text-error` : ""}`}
+                    aria-invalid={problems.text ? true : undefined}
+                    value={draft.text ?? ""}
+                    onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+                />
+                <Counter id={`${uid}-text-count`} length={(draft.text ?? "").trim().length} max={EDGE_TEXT_MAX} />
+                {problems.text ? (
+                    <p id={`${uid}-text-error`} role="alert" className="text-xs text-destructive">
+                        {problems.text}
+                    </p>
+                ) : null}
+            </div>
+            <div className="flex flex-wrap gap-2">
+                <button
+                    type="button"
+                    disabled={busy || !dirty || hasProblems}
+                    className="inline-flex min-h-7 items-center rounded-full bg-primary px-4 py-1 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                    onClick={() => void save(normalizeEdgeContract(draft))}
+                >
+                    {busy ? "Saving" : "Save contract"}
+                </button>
+                {hasSaved ? (
+                    <button
+                        type="button"
+                        disabled={busy}
+                        className="inline-flex min-h-7 items-center rounded-full bg-accent px-3 py-1 text-sm font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                        onClick={() => void save({})}
+                    >
+                        Clear contract
+                    </button>
+                ) : null}
+            </div>
+            {error ? (
+                <p role="alert" className="text-xs text-destructive">
+                    {error}
+                </p>
+            ) : null}
+        </section>
+    );
+}
+
 export function EdgeActions({
     edge,
     onClose,
@@ -298,6 +447,8 @@ export function EdgeActions({
             </section>
 
             {multi ? <Members edge={edge} /> : null}
+
+            {!edge.aggregated ? <EdgeContractSection edge={edge} onSaved={onMutated} /> : null}
 
             {drillId ? (
                 <Link

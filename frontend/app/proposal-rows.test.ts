@@ -300,3 +300,105 @@ describe("existing node names in rows", () => {
         expect(unresolvedRowIds(d, names)).toEqual([]);
     });
 });
+
+describe("node model fields", () => {
+    const base = {
+        status: "pending",
+        stale: false,
+        current: null,
+        proposed: null,
+        relationship: null,
+        current_relationship: null,
+    };
+    const rulesOp: OpDiff = {
+        ...base,
+        index: 2,
+        op: "set_constraints",
+        node_id: "",
+        current_constraints: [{ id: "a", text: "old", severity: "must" }],
+        proposed_constraints: [
+            { id: "a", text: "new", severity: "must" },
+            { id: "b", text: "added", severity: "should" },
+        ],
+    };
+
+    it("renders set_constraints as a Project rules row", () => {
+        const rows = proposalRows(diff([rulesOp]));
+        expect(rows[0]).toMatchObject({ verb: "Rules", title: "Project rules", canAccept: true });
+        expect(rows[0].change).toBe("Project rules: 1 added, 1 changed");
+    });
+
+    it("counts rule changes in the summary and gives them their own section", () => {
+        const d = diff([rulesOp]);
+        expect(summarizeProposal(d).headline).toBe("Changes project rules");
+        const sections = hierarchySections(d);
+        expect(sections).toHaveLength(1);
+        expect(sections[0]).toMatchObject({ kind: "rules", title: "Project rules" });
+        expect(unresolvedParentIds(d)).toEqual([]);
+        expect(unresolvedRowIds(d)).toEqual([]);
+    });
+
+    it("shows depends_on and contract changes on an update", () => {
+        const rows = proposalRows(
+            diff([
+                {
+                    ...base,
+                    index: 0,
+                    op: "update_node",
+                    node_id: "api",
+                    fields: ["depends_on", "contract"],
+                    current: { ...node({ id: "api", name: "API" }), depends_on: [] },
+                    proposed: { ...node({ id: "api", name: "API" }), depends_on: ["db"], contract: { payloads: "p", invariants: ["i"] } },
+                },
+            ]),
+            new Map([["db", "Database"]]),
+        );
+        expect(rows[0].change).toBe("Depends on: (none) → Database; Contract changed: payloads, invariants 0 → 1");
+    });
+
+    it("summarises a cleared edge contract and blocks accept for dependents", () => {
+        const rows = proposalRows({
+            proposal_id: "p", created_at: "", source: "mcp",
+            operations: [
+                {
+                    index: 0, op: "set_relationship", node_id: "a", status: "pending", stale: false, current: null, proposed: null,
+                    relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract_cleared: true },
+                    current_relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract: { format: "openapi", ref: "api.yaml" } },
+                },
+                { index: 1, op: "delete_node", node_id: "c", status: "pending", stale: true, stale_reason: "node now has dependents", current: null, proposed: null, relationship: null, current_relationship: null },
+            ],
+        });
+        expect(rows[0].change).toBe("calls · sync · contract cleared (was: OpenAPI · api.yaml)");
+        expect(rows[1].canAccept).toBe(false);
+        expect(rows[1].needsConfirm).toBe(false);
+        expect(rows[1].staleReason).toBe("node now has dependents");
+    });
+
+    it("mentions contract and dependencies on create, and an edge contract on connect", () => {
+        const create = proposalRows(
+            diff([
+                {
+                    ...base,
+                    index: 0,
+                    op: "create_node",
+                    node_id: "api",
+                    fields: [],
+                    proposed: { ...node({ id: "api", name: "API" }), depends_on: ["db"], contract: { errors: ["e"] } },
+                },
+            ]),
+        );
+        expect(create[0].change).toBe("service in root · depends on 1 · has contract");
+        const connect = proposalRows(
+            diff([
+                {
+                    ...base,
+                    index: 1,
+                    op: "set_relationship",
+                    node_id: "a",
+                    relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract: { format: "openapi", ref: "api.yaml" } },
+                },
+            ]),
+        );
+        expect(connect[0].change).toBe("calls · sync · contract: OpenAPI · api.yaml");
+    });
+});

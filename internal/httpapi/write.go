@@ -31,6 +31,8 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			Color:          body.Color,
 			Renderer:       body.Renderer,
 			Schema:         body.Schema,
+			DependsOn:      toNodeIDs(body.DependsOn),
+			Contract:       body.Contract,
 		})
 		if err != nil {
 			writeAPIError(w, err)
@@ -73,6 +75,14 @@ func patchNode(idx *core.Index) http.HandlerFunc {
 		in.Color = body.Color
 		in.Renderer = body.Renderer
 		in.Schema = body.Schema
+		in.Contract = body.Contract
+		if body.DependsOn != nil {
+			deps := toNodeIDs(*body.DependsOn)
+			if deps == nil {
+				deps = []core.NodeID{}
+			}
+			in.DependsOn = &deps
+		}
 		if err := idx.Update(id, in); err != nil {
 			writeAPIError(w, err)
 			return
@@ -105,11 +115,12 @@ func putRelationship(idx *core.Index) http.HandlerFunc {
 			return
 		}
 		rel, err := idx.SetRelationship(core.SetRelationshipInput{
-			ID:    core.RelID(body.ID),
-			From:  core.NodeID(body.From),
-			To:    core.NodeID(body.To),
-			Label: body.Label,
-			Kind:  body.Kind,
+			ID:       core.RelID(body.ID),
+			From:     core.NodeID(body.From),
+			To:       core.NodeID(body.To),
+			Label:    body.Label,
+			Kind:     body.Kind,
+			Contract: body.Contract,
 		})
 		if err != nil {
 			writeAPIError(w, err)
@@ -133,6 +144,7 @@ func deleteRelationship(idx *core.Index) http.HandlerFunc {
 func relBody(rel core.Relationship) relJSON {
 	return relJSON{
 		ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind,
+		Contract: contractOrNil(rel.Contract),
 	}
 }
 
@@ -201,6 +213,8 @@ func nodeBody(n core.NodeView, assigned core.NodeID) nodeJSON {
 		Color:          n.Color,
 		Renderer:       n.Renderer,
 		Schema:         n.Schema,
+		DependsOn:      dependsOn(n.DependsOn),
+		Contract:       nodeContractOrNil(n.Contract),
 		Assigned:       assigned != "" && n.ID == assigned,
 	}
 }
@@ -237,6 +251,9 @@ type createJSON struct {
 	Color          string              `json:"color"`
 	Renderer       string              `json:"renderer"`
 	Schema         []core.SchemaColumn `json:"schema"`
+	DependsOn      []string            `json:"depends_on"`
+	// Contract is optional; omitted means none.
+	Contract *core.NodeContract `json:"contract"`
 }
 
 type patchJSON struct {
@@ -252,6 +269,9 @@ type patchJSON struct {
 	Color          *string              `json:"color"`
 	Renderer       *string              `json:"renderer"`
 	Schema         *[]core.SchemaColumn `json:"schema"`
+	// DependsOn replaces the list when present ([] clears). Contract replaces when present ({} clears).
+	DependsOn *[]string          `json:"depends_on"`
+	Contract  *core.NodeContract `json:"contract"`
 }
 
 func postGroupProposal(idx *core.Index) http.HandlerFunc {
@@ -323,4 +343,80 @@ func writeStagedProposal(w http.ResponseWriter, idx *core.Index, pid string, err
 		return
 	}
 	writeJSON(w, http.StatusCreated, diff)
+}
+
+func toNodeIDs(in []string) []core.NodeID {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]core.NodeID, len(in))
+	for i, s := range in {
+		out[i] = core.NodeID(s)
+	}
+	return out
+}
+
+func dependsOn(in []core.NodeID) []string {
+	out := make([]string, len(in))
+	for i, id := range in {
+		out[i] = string(id)
+	}
+	return out
+}
+
+// nodeContractOrNil drops empty contracts so reads omit the key.
+func nodeContractOrNil(c *core.NodeContract) *core.NodeContract {
+	if c.IsEmpty() {
+		return nil
+	}
+	return c
+}
+
+func contractOrNil(c *core.EdgeContract) *core.EdgeContract {
+	if c.IsEmpty() {
+		return nil
+	}
+	return c
+}
+
+func getConstraints(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"constraints": constraintBodies(idx.ConstraintList())})
+	}
+}
+
+// putConstraints replaces the project constraints directly (the architect's own surface).
+func putConstraints(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Constraints []core.Constraint `json:"constraints"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		if err := idx.SetConstraints(body.Constraints); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"constraints": constraintBodies(idx.ConstraintList())})
+	}
+}
+
+func constraintBodies(in []core.Constraint) []core.Constraint {
+	if in == nil {
+		return []core.Constraint{}
+	}
+	return in
+}
+
+func getBuildOrder(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		res, err := core.BuildOrder(idx, core.NodeID(r.URL.Query().Get("scope")))
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
+	}
 }

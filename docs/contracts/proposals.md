@@ -88,7 +88,7 @@ proposal's age is obvious at a glance.
 Every operation carries:
 
 - `op` — one of `create_node`, `update_node`, `delete_node`, `set_relationship`,
-  `delete_relationship`.
+  `delete_relationship`, `set_constraints`.
 - `node_id` — the node this operation concerns. For `create_node`, the caller-supplied `id`
   when one was given (a free slug), otherwise the ID `ambit-core` derived from the proposed
   name. For `set_relationship` and `delete_relationship`, the `from` node — relationships
@@ -103,11 +103,39 @@ Every operation carries:
 can summarise an operation without diffing to find out what moved.
 
 `set_relationship` additionally carries the relationship itself: `from`, `to`, `label`,
-`kind`.
+`kind`, and optionally `contract` (the edge contract: `format`, `ref`, `text`). An absent
+`contract` leaves an existing edge's contract unchanged; an empty one (`{}`) clears it.
+Limits are those of the model format and are checked at staging. `rel_covered: true` records
+that `base_hash` also covers the relationship's own JSON (see Staleness).
+
+`set_constraints` replaces the project `constraints` list in `config.json` (full list, not a
+patch). It carries `constraints` (the validated list; empty clears) and no node: `node_id` is
+empty. Its `base_hash` is the sha256 of the `config.json` bytes, so any concurrent edit to
+the file makes it stale. At most one `set_constraints` may appear in a proposal. Accepting
+applies the list with the same validation as the direct `SetConstraints` call.
+
+`create_node` and `update_node` carry the node's `depends_on` and `contract` inside the
+staged node file (decision 0012). `update_node` lists `depends_on` and `contract` in
+`fields` when they change. Dependencies are validated at staging against the model as
+earlier operations of the same proposal leave it, so a cycle formed across two operations is
+rejected with `ErrDependencyCycle`; they are validated again at accept time against the
+canonical model. A staged `delete_node` is rejected with `ErrHasDependents` (naming the
+dependents) while a node outside the deleted set still lists it in `depends_on`. If a
+dependent appears after staging, the `delete_node` becomes **stale** with reason `node now has
+dependents` (accept-all skips and reports it; single accept refuses even with
+`confirm_stale`) instead of failing apply and rolling back the whole accept. A staged
+`delete_relationship` is likewise rejected with `ErrHasDependents` when an interior node it
+would remove has dependents, and goes stale with the same reason later.
+
+Diff snapshots. `NodeSnapshot` gains `depends_on` (sorted ids) and `contract`; `RelSnapshot`
+gains `contract` and, on a `set_relationship` row, `contract_cleared` (`true`, omitted
+otherwise) when the staged contract is explicitly empty so the edge's contract is cleared
+(`contract` is then absent, which alone would read as unchanged). A `set_constraints` diff row carries `current_constraints` and
+`proposed_constraints` (an absent key means an empty list).
 
 `delete_relationship` carries `relationship_id`, plus `from`, `to`, `label`, `kind` of the
-edge as it stood when staged. Its `base_hash` is the `from` node's hash, so it goes stale
-exactly like `set_relationship`. Applying it runs `DeleteRelationship`, which also removes
+edge as it stood when staged. Its `base_hash` covers the `from` node's hash, the hashes of
+any interior nodes, and the edge's own JSON. Applying it runs `DeleteRelationship`, which also removes
 any nodes inside the edge (relationship interior). A proposal can only delete an edge that
 exists in the canonical model at staging time.
 
@@ -145,7 +173,7 @@ accept-all applies a proposal, every operation that call already applied is roll
 operations and the failing one under `failed`, and the remaining operations are not
 attempted. Stale operations are different: they are still skipped and reported under
 `skipped` while the rest apply, as described under Staleness. Cached layouts invalidated by
-rolled-back operations are not restored.
+rolled-back operations are restored too.
 
 **Accepting an operation is atomic.** The node's `.json` and `.md` move from the proposal
 into `.arch/nodes/`, and `index.json` is updated, as one unit. A node never lands with its
@@ -165,6 +193,16 @@ moved out from under the proposal.
 
 Each operation's `base_hash` records what the agent saw. At review time, `ambit-core`
 recomputes the node's current hash. A mismatch marks the operation **stale**.
+
+A relationship operation's `base_hash` also covers the relationship's own JSON (decision
+0012, item 7), so two agents editing one edge's contract cannot silently overwrite each
+other. It is the sha256 of the `from` node hash plus the edge JSON when the edge existed on
+disk at staging and no earlier operation in the same proposal touched it (`rel_covered`;
+this applies to `delete_relationship` too, so `set_relationship` then `delete_relationship`
+on one edge does not go stale against itself);
+otherwise it is the `from` node hash alone, so a proposal that creates or repeatedly edits an
+edge does not go stale against itself. Proposals staged before this field existed have
+`rel_covered` absent and keep the old from-node-only hash.
 
 **Stale operations are flagged and require explicit confirmation, not auto-rejected.**
 Auto-rejecting would force the agent to redo work whenever the architect touched anything

@@ -8,6 +8,7 @@ export type GhostEdgeData = FlowEdgeData & {
     ghost?: {
         variant: GhostVariant;
         label: string;
+        hasContract?: boolean;
         highlighted: boolean;
         onActivate: () => void;
         onHover: (on: boolean) => void;
@@ -19,7 +20,7 @@ const STROKE: Record<GhostVariant, string> = {
     changed: "var(--ghost-changed)",
     removed: "var(--ghost-removed)",
 };
-const pillBase = "max-w-[16rem] rounded-full border px-2.5 py-0.5 text-[11px] leading-normal font-medium";
+const pillBase = "min-h-6 max-w-[11rem] rounded-full border px-2.5 py-1 text-[11px] leading-normal font-medium";
 const BADGE: Record<GhostVariant, string> = { new: "+ New", changed: "● Changed", removed: "✕ Removed" };
 const PILL: Record<GhostVariant, string> = {
     new: "border-primary bg-card text-foreground",
@@ -35,7 +36,7 @@ export function GhostEdge(props: EdgeProps) {
     const ghost = (data as GhostEdgeData | undefined)?.ghost;
     if (!ghost) return null;
     const { variant } = ghost;
-    const title = `${BADGE[variant].slice(2)}: ${ghost.label || "connection"}`;
+    const title = `${BADGE[variant].slice(2)}: ${ghost.label || "connection"}${ghost.hasContract ? " · contract" : ""}`;
     return (
         <>
             <BaseEdge
@@ -54,7 +55,7 @@ export function GhostEdge(props: EdgeProps) {
                         PILL[variant],
                         ghost.highlighted && "outline-2 outline-offset-2 outline-[var(--ring)]",
                     )}
-                    style={edgeLabelStyle(labelX, labelY)}
+                    style={edgeLabelStyle(labelX, labelY - 14, ghost.highlighted)}
                     title={title}
                     aria-label={`${title}. Open in Review`}
                     onClick={(event) => {
@@ -67,7 +68,8 @@ export function GhostEdge(props: EdgeProps) {
                     onBlur={() => ghost.onHover(false)}
                 >
                     <span className="shrink-0 font-semibold">{BADGE[variant]}</span>
-                    {ghost.label ? <span className={clsx("truncate", variant === "removed" && "line-through")}>{ghost.label}</span> : null}
+                    {ghost.label ? <span className={clsx("min-w-0 truncate", variant === "removed" && "line-through")}>{ghost.label}</span> : null}
+                    {ghost.hasContract ? <span className="shrink-0">· contract</span> : null}
                 </button>
             </EdgeLabelRenderer>
         </>

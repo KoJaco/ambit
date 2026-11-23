@@ -32,6 +32,8 @@ type Index struct {
 	// GroupMax and LevelBudget are the effective view defaults from config.json.
 	GroupMax    int
 	LevelBudget int
+	// Constraints are the valid project rules from config.json, in file order.
+	Constraints []Constraint
 
 	indexUnknown      map[string]jsonRaw
 	configUnknown     map[string]jsonRaw
@@ -72,6 +74,7 @@ func Open(dir string) (*Index, error) {
 	}
 	idx.ensureRelationshipIDs()
 	idx.linkHierarchy()
+	idx.linkDependencies()
 	idx.linkRelationships()
 	idx.warnAssignment()
 	return idx, nil
@@ -172,6 +175,7 @@ func (idx *Index) readConfig() error {
 	// The typed keys stay in configUnknown so the file round-trips unchanged.
 	idx.GroupMax = idx.configPositiveInt(obj, "group_max", DefaultGroupMax)
 	idx.LevelBudget = idx.configPositiveInt(obj, "level_budget", DefaultLevelBudget)
+	idx.Constraints = idx.parseConstraints(obj)
 	return nil
 }
 
@@ -469,6 +473,7 @@ func (idx *Index) reload() error {
 	idx.configUnknown = next.configUnknown
 	idx.GroupMax = next.GroupMax
 	idx.LevelBudget = next.LevelBudget
+	idx.Constraints = next.Constraints
 	idx.localUnknown = next.localUnknown
 	idx.assignmentUnknown = next.assignmentUnknown
 	return nil

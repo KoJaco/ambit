@@ -1,7 +1,6 @@
 package core
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -31,7 +30,7 @@ func (idx *Index) saveIndex() error {
 		}
 		relRaws = append(relRaws, raw)
 	}
-	relArray, err := json.Marshal(relRaws)
+	relArray, err := marshalNoEscape(relRaws)
 	if err != nil {
 		return err
 	}

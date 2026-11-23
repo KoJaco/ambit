@@ -105,6 +105,22 @@ export function saveLayoutSig(cacheKey: string, sig: string): void {
 
 export type SchemaColumn = { title: string; type: string };
 
+// Node contract (decision 0012). Omitted by the server when empty.
+export type NodeContract = {
+    payloads?: string;
+    invariants?: string[];
+    errors?: string[];
+    owns_data?: string[];
+};
+
+export type EdgeContract = {
+    format?: "openapi" | "jsonschema" | "text";
+    ref?: string;
+    text?: string;
+};
+
+export type Constraint = { id: string; text: string; severity: "must" | "should" };
+
 export type Summary = {
     id: string;
     name: string;
@@ -145,6 +161,8 @@ export type Relationship = {
     aggregated?: boolean;
     members?: string[];
     kinds?: string[];
+    // Only non-aggregated edges carry a contract; omitted when none.
+    contract?: EdgeContract;
 };
 
 // Aggregated edges carry a synthetic id; only a single-member one can be drilled, via that member.
@@ -193,6 +211,8 @@ export type NodeDetail = {
     renderer?: string;
     schema?: SchemaColumn[];
     assigned?: boolean;
+    depends_on?: string[];
+    contract?: NodeContract;
 };
 
 export type NodePatch = {
@@ -208,6 +228,9 @@ export type NodePatch = {
     color?: string;
     renderer?: string;
     schema?: SchemaColumn[];
+    // PATCH: present replaces, omitted leaves unchanged, [] / {} clears.
+    depends_on?: string[];
+    contract?: NodeContract;
 };
 
 export type Position = { id: string; x: number; y: number };
@@ -271,6 +294,8 @@ export function createNode(input: {
     color?: string;
     renderer?: string;
     schema?: SchemaColumn[];
+    depends_on?: string[];
+    contract?: NodeContract;
 }): Promise<NodeDetail> {
     return send<NodeDetail>("/nodes", {
         method: "POST",
@@ -291,6 +316,7 @@ export function deleteNode(id: string): Promise<void> {
     return send<void>(`/nodes/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// contract: omitted keeps the edge's contract, {} clears it.
 export function setRelationship(input: Partial<Relationship> & { from: string; to: string }): Promise<Relationship> {
     return send<Relationship>("/relationships", {
         method: "PUT",
@@ -320,6 +346,41 @@ export function setAssignment(nodeId: string): Promise<void> {
 
 export function clearAssignment(): Promise<void> {
     return send<void>("/assignment", { method: "DELETE" });
+}
+
+export function getConstraints(signal?: AbortSignal): Promise<{ constraints: Constraint[] }> {
+    return send("/constraints", { signal });
+}
+
+// Replaces the whole list. There is no SSE for config, so callers refetch after their own PUT.
+export function putConstraints(constraints: Constraint[]): Promise<{ constraints: Constraint[] }> {
+    return send("/constraints", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ constraints }),
+    });
+}
+
+export type BuildItem = {
+    id: string;
+    name: string;
+    status: string;
+    done: boolean;
+    wave: number;
+    depends_on: string[];
+    blocked_by: string[];
+};
+
+export type BuildOrder = {
+    scope?: string;
+    order: BuildItem[];
+    waves: string[][];
+    cycles: string[][];
+    unordered: string[];
+};
+
+export function getBuildOrder(scope?: string, signal?: AbortSignal): Promise<BuildOrder> {
+    return send(scope ? `/build-order?scope=${encodeURIComponent(scope)}` : "/build-order", { signal });
 }
 
 export function getLayout(key: string): Promise<Layout> {
@@ -367,6 +428,8 @@ export type NodeSnapshot = {
     markdown: string;
     icon?: string;
     color?: string;
+    depends_on?: string[];
+    contract?: NodeContract;
 };
 
 export type RelSnapshot = {
@@ -375,6 +438,9 @@ export type RelSnapshot = {
     to: string;
     label: string;
     kind: string;
+    contract?: EdgeContract;
+    // Set when the staged edge contract is explicitly empty (a clear); contract is then absent.
+    contract_cleared?: boolean;
 };
 
 export type OpDiff = {
@@ -390,6 +456,9 @@ export type OpDiff = {
     relationship: RelSnapshot | null;
     current_relationship: RelSnapshot | null;
     removes_nodes?: { id: string; name: string }[];
+    // set_constraints only (node_id is empty); an absent key means an empty list.
+    current_constraints?: Constraint[];
+    proposed_constraints?: Constraint[];
     error?: string;
 };
 

@@ -6,12 +6,14 @@ import {
     createNode,
     deleteNode,
     getAssignment,
+    getBuildOrder,
     getLevel,
     getNode,
     getRelationshipLevel,
     setAssignment,
     updateNode,
     type Assignment,
+    type BuildOrder,
     type NodeDetail,
 } from "../api";
 import { history } from "../history";
@@ -31,6 +33,17 @@ import { CollapsibleSection } from "./collapsible-section";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { nodeSettingsSummary } from "../node-settings";
 import { setInspectorDirty } from "../right-rail-state";
+import {
+    collectNodes,
+    contractSummary,
+    dependsText,
+    normalizeContract,
+    normalizeDependsOn,
+    saveErrorTarget,
+    validateContract,
+    type DependsOption,
+} from "../node-contract";
+import { BuildBadges, ContractFields, DependsPicker } from "./node-contract-fields";
 
 const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
 
@@ -55,11 +68,17 @@ export default function NodeInspector({
     const uid = useId();
     const settingsId = `${uid}-settings`;
     const appearanceId = `${uid}-appearance`;
+    const contractId = `${uid}-contract`;
+    const dependsId = `${uid}-depends`;
     const [node, setNode] = useState<NodeDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [appearanceOpen, setAppearanceOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    const [contractOpen, setContractOpen] = useState(false);
+    const [dependsOpen, setDependsOpen] = useState(false);
+    const [buildOrder, setBuildOrder] = useState<BuildOrder | null>(null);
+    const [allNodes, setAllNodes] = useState<DependsOption[] | null>(null);
     const [presentationTouched, setPresentationTouched] = useState(false);
     const [deletePlan, setDeletePlan] = useState<{ count: number } | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
@@ -73,6 +92,8 @@ export default function NodeInspector({
         setError(null);
         setAppearanceOpen(false);
         setPresentationTouched(false);
+        setContractOpen(false);
+        setDependsOpen(false);
         getNode(nodeId, ac.signal)
             .then((loaded) => {
                 baseline.current = loaded;
@@ -87,10 +108,27 @@ export default function NodeInspector({
 
     // Tell the page whether unsaved edits are open, so a new proposal does not cover them.
     useEffect(() => {
-        const dirty = !!node && (presentationTouched || JSON.stringify(node) !== JSON.stringify(baseline.current));
+        const dirty =
+            !!node && (presentationTouched || JSON.stringify(comparable(node)) !== JSON.stringify(comparable(baseline.current)));
         setInspectorDirty(dirty);
     }, [node, presentationTouched]);
     useEffect(() => () => setInspectorDirty(false), []);
+
+    // Advisory build order, and the full node list (containers too) for the dependency picker. Refetched on every
+    // model-changed event (refreshKey); the previous order stays until the new one arrives.
+    useEffect(() => {
+        const ac = new AbortController();
+        getBuildOrder(undefined, ac.signal)
+            .then(setBuildOrder)
+            .catch(() => undefined);
+        collectNodes((parent) => getLevel(parent, ac.signal).then((l) => l.children))
+            .then((list) => {
+                if (!ac.signal.aborted) setAllNodes(list);
+            })
+            .catch(() => undefined);
+        return () => ac.abort();
+    }, [refreshKey]);
+    const nameOf = (id: string) => allNodes?.find((n) => n.id === id)?.name;
 
     const [assignment, setAssignmentState] = useState<Assignment | null>(null);
     const [otherName, setOtherName] = useState<string | null>(null);
@@ -201,16 +239,19 @@ export default function NodeInspector({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [node]);
 
+    const contractInvalid = !!node && validateContract(node.contract).length > 0;
+
     async function save() {
         if (!node) return;
         setSaving(true);
         setError(null);
         try {
             const before = baseline.current;
-            const patch = toPatch(node, presentationTouched);
+            const patch = toPatch(node, presentationTouched, before);
             const saved = await updateNode(node.id, patch);
             if (before) {
-                const undoPatch = toPatch(before, true);
+                // Undo restores contract and dependencies only when this save changed them.
+                const undoPatch = toPatch(before, true, node, patch);
                 history.record({
                     label: `edit ${before.name}`,
                     undo: async () => void (await updateNode(node.id, undoPatch)),
@@ -236,6 +277,7 @@ export default function NodeInspector({
         })
         : null;
 
+    const errorTarget = error ? saveErrorTarget(error) : null;
     const markPresentation = () => setPresentationTouched(true);
 
     const state = assignmentState(assignment, nodeId);
@@ -264,7 +306,11 @@ export default function NodeInspector({
     return (
         <RightRailPanel label="Inspector" className="overflow-hidden" onPointerDown={() => onFocus?.()}>
             {header}
-            {error ? <p className="shrink-0 text-destructive">{error}</p> : null}
+            {error && errorTarget === "general" ? (
+                <p role="alert" className="shrink-0 text-destructive">
+                    {error}
+                </p>
+            ) : null}
             {node && preview ? (
                 <>
                     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-1 [scrollbar-gutter:stable]">
@@ -281,6 +327,7 @@ export default function NodeInspector({
                                 value={node.type}
                                 onChange={(event) => setNode({ ...node, type: event.target.value })}
                             />
+                            <BuildBadges order={buildOrder} id={node.id} nameOf={nameOf} />
                         </div>
                         <div className="flex flex-col gap-2">
                             <label htmlFor={`${uid}-spec`} className={sectionLabelClass}>
@@ -315,6 +362,39 @@ export default function NodeInspector({
                                 </select>
                             </div>
                         </div>
+                        <CollapsibleSection
+                            title="Contract"
+                            id={contractId}
+                            open={contractOpen || errorTarget === "contract"}
+                            onToggle={() => setContractOpen((open) => !open)}
+                            maxHeightClass="max-h-[60vh]"
+                            summary={<span className="text-xs text-muted-foreground">{contractSummary(node.contract)}</span>}
+                        >
+                            <ContractFields
+                                value={node.contract}
+                                onChange={(next) => setNode({ ...node, contract: next })}
+                                serverError={errorTarget === "contract" ? error : null}
+                            />
+                        </CollapsibleSection>
+                        <CollapsibleSection
+                            title="Depends on"
+                            id={dependsId}
+                            open={dependsOpen || errorTarget === "depends"}
+                            onToggle={() => setDependsOpen((open) => !open)}
+                            summary={
+                                <span className="text-xs text-muted-foreground">
+                                    {dependsText(node.depends_on, (id) => nameOf(id) ?? buildOrder?.order.find((o) => o.id === id)?.name ?? id)}
+                                </span>
+                            }
+                        >
+                            <DependsPicker
+                                selfId={node.id}
+                                value={node.depends_on}
+                                nodes={allNodes}
+                                onChange={(next) => setNode({ ...node, depends_on: next })}
+                                serverError={errorTarget === "depends" ? error : null}
+                            />
+                        </CollapsibleSection>
                         <CollapsibleSection
                             title="Appearance"
                             id={appearanceId}
@@ -520,7 +600,7 @@ export default function NodeInspector({
                         <button
                             type="button"
                             className="shrink-0 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-                            disabled={saving}
+                            disabled={saving || contractInvalid}
                             onClick={() => {
                                 void save();
                             }}
@@ -538,13 +618,26 @@ const inputClass =
     "w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
 const sectionLabelClass = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
+// Blank contract rows and ordering do not count as edits.
+function comparable(node: NodeDetail | null): unknown {
+    return node && { ...node, depends_on: normalizeDependsOn(node.depends_on), contract: normalizeContract(node.contract) };
+}
+
 function statusOptions(current: string): readonly string[] {
     if ((STATUSES as readonly string[]).includes(current)) return STATUSES;
     return [current, ...STATUSES];
 }
 
 // presentation=false leaves icon/colour/renderer/schema untouched, as a save without appearance edits does.
-function toPatch(node: NodeDetail, presentation: boolean): Parameters<typeof updateNode>[1] {
+// `compare` is the node as it was before the edit: depends_on and contract are sent only when
+// they differ from it (or, with `only`, when that patch sent them), so a save never overwrites a
+// change made elsewhere.
+function toPatch(
+    node: NodeDetail,
+    presentation: boolean,
+    compare?: NodeDetail | null,
+    only?: Parameters<typeof updateNode>[1],
+): Parameters<typeof updateNode>[1] {
     const patch: Parameters<typeof updateNode>[1] = {
         name: node.name,
         type: node.type,
@@ -554,6 +647,16 @@ function toPatch(node: NodeDetail, presentation: boolean): Parameters<typeof upd
         protected: node.protected,
         markdown: node.markdown,
     };
+    const deps = normalizeDependsOn(node.depends_on);
+    const contract = normalizeContract(node.contract);
+    const sendDeps = only
+        ? only.depends_on !== undefined
+        : !!compare && JSON.stringify(deps) !== JSON.stringify(normalizeDependsOn(compare.depends_on));
+    const sendContract = only
+        ? only.contract !== undefined
+        : !!compare && JSON.stringify(contract) !== JSON.stringify(normalizeContract(compare.contract));
+    if (sendDeps) patch.depends_on = deps;
+    if (sendContract) patch.contract = contract;
     if (presentation) {
         patch.icon = node.icon ?? "";
         patch.color = node.color ?? "";

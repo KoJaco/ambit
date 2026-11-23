@@ -81,3 +81,53 @@ describe("runSteps", () => {
         expect(a.deleteNode).toHaveBeenCalledWith("g-2");
     });
 });
+
+describe("node model history", () => {
+    const snap = (extra: object) => ({
+        id: "api", name: "API", type: "service", status: "draft", implementation: [], scope: [], protected: false, markdown: "", ...extra,
+    });
+
+    it("restores depends_on and contract on undo of an update", () => {
+        const plan = planAccepted([
+            {
+                index: 0, op: "update_node", node_id: "api", status: "pending", stale: false, fields: ["depends_on", "contract"],
+                current: snap({}), proposed: snap({ depends_on: ["db"], contract: { payloads: "p" } }),
+                relationship: null, current_relationship: null,
+            },
+        ]);
+        expect(plan?.undo).toEqual([{ kind: "patch", id: "api", patch: { depends_on: [], contract: {} } }]);
+        expect(plan?.redo).toEqual([{ kind: "patch", id: "api", patch: { depends_on: ["db"], contract: { payloads: "p" } } }]);
+    });
+
+    it("clears an edge contract explicitly when undoing a set that added one", () => {
+        const before = { id: "r1", from: "a", to: "b", label: "l", kind: "sync" };
+        const plan = planAccepted([
+            {
+                index: 0, op: "set_relationship", node_id: "a", status: "pending", stale: false, current: null, proposed: null,
+                relationship: { ...before, contract: { format: "text" as const, text: "t" } }, current_relationship: before,
+            },
+        ]);
+        expect(plan?.undo).toEqual([{ kind: "set-rel", rel: { ...before, contract: {} } }]);
+    });
+
+    it("re-clears an edge contract on redo and restores it on undo", () => {
+        const before = { id: "r1", from: "a", to: "b", label: "l", kind: "sync", contract: { format: "openapi" as const, ref: "x.yaml" } };
+        const { contract: _c, ...bare } = before;
+        const plan = planAccepted([
+            op({ op: "set_relationship", node_id: "a", relationship: { ...bare, contract_cleared: true }, current_relationship: before }),
+        ]);
+        expect(plan?.redo).toEqual([{ kind: "set-rel", rel: { ...bare, contract: {} } }]);
+        expect(plan?.undo).toEqual([{ kind: "set-rel", rel: before }]);
+    });
+
+    it("does not try to undo a set_constraints operation", () => {
+        expect(
+            planAccepted([
+                {
+                    index: 0, op: "set_constraints", node_id: "", status: "pending", stale: false, current: null, proposed: null,
+                    relationship: null, current_relationship: null,
+                },
+            ]),
+        ).toBeNull();
+    });
+});

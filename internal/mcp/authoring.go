@@ -10,10 +10,10 @@ import (
 )
 
 type seedModelIn struct {
-	Transcript    string        `json:"transcript" jsonschema:"required"`
-	ParentID      string        `json:"parent_id,omitempty"`
-	Nodes         []seedNodeIn  `json:"nodes,omitempty"`
-	Relationships []seedRelIn   `json:"relationships,omitempty"`
+	Transcript    string       `json:"transcript" jsonschema:"required"`
+	ParentID      string       `json:"parent_id,omitempty"`
+	Nodes         []seedNodeIn `json:"nodes,omitempty"`
+	Relationships []seedRelIn  `json:"relationships,omitempty"`
 	// Updates, DeleteRelationships and DeleteNodes let one proposal restructure a model.
 	// Order of staging: creates, updates, relationships, relationship deletes, node deletes.
 	Updates             []updateNodeIn `json:"updates,omitempty"`
@@ -32,6 +32,10 @@ type seedNodeIn struct {
 	Protected      bool     `json:"protected,omitempty"`
 	Spec           string   `json:"spec,omitempty"`
 	Icon           string   `json:"icon,omitempty"`
+	// DependsOn lists node ids that must be built first (real build ordering only).
+	DependsOn []string `json:"depends_on,omitempty"`
+	// Contract is the node interface: payloads, invariants, errors, owns_data.
+	Contract *core.NodeContract `json:"contract,omitempty"`
 }
 
 type seedRelIn struct {
@@ -40,6 +44,8 @@ type seedRelIn struct {
 	Label          string `json:"label,omitempty"`
 	Kind           string `json:"kind,omitempty"`
 	RelationshipID string `json:"relationship_id,omitempty"`
+	// Contract is what is on the wire: format (openapi|jsonschema|text), ref, text.
+	Contract *core.EdgeContract `json:"contract,omitempty"`
 }
 
 func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest, in seedModelIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -69,6 +75,8 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 				Scope:          n.Scope,
 				Protected:      n.Protected,
 				Icon:           n.Icon,
+				DependsOn:      nodeIDs(n.DependsOn),
+				Contract:       n.Contract,
 			},
 		})
 	}
@@ -81,12 +89,13 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 	}
 	for _, r := range in.Relationships {
 		ops = append(ops, core.StageOp{
-			Op:    core.OpSetRelationship,
-			From:  core.NodeID(r.From),
-			To:    core.NodeID(r.To),
-			Label: r.Label,
-			Kind:  r.Kind,
-			RelID: core.RelID(r.RelationshipID),
+			Op:       core.OpSetRelationship,
+			From:     core.NodeID(r.From),
+			To:       core.NodeID(r.To),
+			Label:    r.Label,
+			Kind:     r.Kind,
+			RelID:    core.RelID(r.RelationshipID),
+			Contract: r.Contract,
 		})
 	}
 	for _, rid := range in.DeleteRelationships {
@@ -110,16 +119,18 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 }
 
 type createNodeIn struct {
-	ID             string   `json:"id,omitempty"`
-	Name           string   `json:"name" jsonschema:"required"`
-	Type           string   `json:"type" jsonschema:"required"`
-	ParentID       string   `json:"parent_id,omitempty"`
-	RelationshipID string   `json:"relationship_id,omitempty"`
-	Implementation []string `json:"implementation,omitempty"`
-	Scope          []string `json:"scope,omitempty"`
-	Protected      bool     `json:"protected,omitempty"`
-	Spec           string   `json:"spec,omitempty"`
-	Icon           string   `json:"icon,omitempty"`
+	ID             string             `json:"id,omitempty"`
+	Name           string             `json:"name" jsonschema:"required"`
+	Type           string             `json:"type" jsonschema:"required"`
+	ParentID       string             `json:"parent_id,omitempty"`
+	RelationshipID string             `json:"relationship_id,omitempty"`
+	Implementation []string           `json:"implementation,omitempty"`
+	Scope          []string           `json:"scope,omitempty"`
+	Protected      bool               `json:"protected,omitempty"`
+	Spec           string             `json:"spec,omitempty"`
+	Icon           string             `json:"icon,omitempty"`
+	DependsOn      []string           `json:"depends_on,omitempty"`
+	Contract       *core.NodeContract `json:"contract,omitempty"`
 }
 
 func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in createNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -139,6 +150,8 @@ func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolReques
 				Scope:          in.Scope,
 				Protected:      in.Protected,
 				Icon:           in.Icon,
+				DependsOn:      nodeIDs(in.DependsOn),
+				Contract:       in.Contract,
 			},
 		}},
 	})
@@ -158,6 +171,10 @@ type updateNodeIn struct {
 	Protected      *bool     `json:"protected,omitempty"`
 	Spec           *string   `json:"spec,omitempty"`
 	Icon           *string   `json:"icon,omitempty"`
+	// DependsOn replaces the list when present; [] clears it. Omitted leaves it unchanged.
+	DependsOn *[]string `json:"depends_on,omitempty"`
+	// Contract replaces the contract when present; {} clears it. Omitted leaves it unchanged.
+	Contract *core.NodeContract `json:"contract,omitempty"`
 }
 
 func (e *toolEnv) handleUpdateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in updateNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -193,6 +210,14 @@ func updatePatch(in updateNodeIn) (core.UpdateInput, error) {
 		Scope:          in.Scope,
 		Protected:      in.Protected,
 		Icon:           in.Icon,
+		Contract:       in.Contract,
+	}
+	if in.DependsOn != nil {
+		deps := nodeIDs(*in.DependsOn)
+		if deps == nil {
+			deps = []core.NodeID{}
+		}
+		patch.DependsOn = &deps
 	}
 	if in.ParentID != nil {
 		p := core.NodeID(*in.ParentID)
@@ -227,6 +252,8 @@ type setRelationshipIn struct {
 	Label          string `json:"label,omitempty"`
 	Kind           string `json:"kind,omitempty"`
 	RelationshipID string `json:"relationship_id,omitempty"`
+	// Contract omitted leaves an existing edge contract unchanged; {} clears it.
+	Contract *core.EdgeContract `json:"contract,omitempty"`
 }
 
 func (e *toolEnv) handleSetRelationship(ctx context.Context, _ *sdkmcp.CallToolRequest, in setRelationshipIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -234,12 +261,13 @@ func (e *toolEnv) handleSetRelationship(ctx context.Context, _ *sdkmcp.CallToolR
 		Source:  core.OpSetRelationship,
 		Summary: fmt.Sprintf("relationship %s -> %s", in.From, in.To),
 		Ops: []core.StageOp{{
-			Op:    core.OpSetRelationship,
-			From:  core.NodeID(in.From),
-			To:    core.NodeID(in.To),
-			Label: in.Label,
-			Kind:  in.Kind,
-			RelID: core.RelID(in.RelationshipID),
+			Op:       core.OpSetRelationship,
+			From:     core.NodeID(in.From),
+			To:       core.NodeID(in.To),
+			Label:    in.Label,
+			Kind:     in.Kind,
+			RelID:    core.RelID(in.RelationshipID),
+			Contract: in.Contract,
 		}},
 	})
 	return nil, out, err
@@ -257,6 +285,40 @@ func (e *toolEnv) handleDeleteRelationship(ctx context.Context, _ *sdkmcp.CallTo
 			Op:    core.OpDeleteRelationship,
 			RelID: core.RelID(in.RelationshipID),
 		}},
+	})
+	return nil, out, err
+}
+
+func nodeIDs(in []string) []core.NodeID {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]core.NodeID, len(in))
+	for i, s := range in {
+		out[i] = core.NodeID(s)
+	}
+	return out
+}
+
+type constraintIn struct {
+	ID       string `json:"id" jsonschema:"required"`
+	Text     string `json:"text" jsonschema:"required"`
+	Severity string `json:"severity,omitempty"`
+}
+
+type setConstraintsIn struct {
+	Constraints []constraintIn `json:"constraints" jsonschema:"required"`
+}
+
+func (e *toolEnv) handleSetConstraints(ctx context.Context, _ *sdkmcp.CallToolRequest, in setConstraintsIn) (*sdkmcp.CallToolResult, stageResponse, error) {
+	list := make([]core.Constraint, 0, len(in.Constraints))
+	for _, c := range in.Constraints {
+		list = append(list, core.Constraint{ID: c.ID, Text: c.Text, Severity: c.Severity})
+	}
+	_, out, err := e.stage(ctx, core.StageInput{
+		Source:  core.OpSetConstraints,
+		Summary: fmt.Sprintf("replace project constraints (%d)", len(list)),
+		Ops:     []core.StageOp{{Op: core.OpSetConstraints, Constraints: list}},
 	})
 	return nil, out, err
 }
