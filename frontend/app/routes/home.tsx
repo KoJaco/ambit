@@ -5,7 +5,7 @@ import NodeInspector from "../components/node-inspector";
 import { ControlBar } from "../components/ControlBar";
 import type { ControlBarTool } from "../components/types";
 import clsx from "clsx";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ModeToggle } from "~/components/ui/mode-toggle";
 import { ReactFlowProvider } from "@xyflow/react";
 import { UIProvider } from "../components/ui-context";
@@ -16,7 +16,8 @@ import ScreenSizeAlert from "../components/ScreenSizeAlert";
 import { ProposalReview } from "../components/proposal-review";
 import { RightRailStack, type RightRailFront } from "../components/right-rail-stack";
 import { EdgeActions } from "../components/edge-actions";
-import type { Relationship } from "../api";
+import type { ProposalDiff, Relationship } from "../api";
+import type { CanvasPreview } from "../ghost-preview";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
 import {
     floatingToggleMode,
@@ -89,6 +90,23 @@ export default function Home() {
         setReviewOpen(true);
         setFrontPanel("review");
     }
+    // Ghost preview on the canvas: proposals the Review panel has switched on, the element a row
+    // or ghost is pointing at, and a request from a ghost to open an item in the panel.
+    const [previewDiffs, setPreviewDiffs] = useState<ProposalDiff[]>([]);
+    const [highlightKey, setHighlightKey] = useState<string | null>(null);
+    const [openItem, setOpenItem] = useState<{ proposalId: string; index: number; nonce: number } | null>(null);
+    const canvasPreview = useMemo<CanvasPreview>(
+        () => ({
+            diffs: previewDiffs,
+            highlightKey,
+            onHover: setHighlightKey,
+            onActivate: (proposalId, index) => {
+                setOpenItem((current) => ({ proposalId, index, nonce: (current?.nonce ?? 0) + 1 }));
+                showReview();
+            },
+        }),
+        [previewDiffs, highlightKey], // eslint-disable-line react-hooks/exhaustive-deps
+    );
     const [pendingReviewIds, setPendingReviewIds] = useState<string[]>([]);
     // Proposals already offered to the user. null until the first load, so proposals that were
     // waiting when the page opened do not count as new.
@@ -130,6 +148,7 @@ export default function Home() {
                         nodeId={nodeId}
                         relationshipId={relationshipId}
                         refreshKey={refreshKey}
+                        preview={canvasPreview}
                         tool={tool === "grab" ? "grab" : "pointer"}
                         onSelectNode={(id) => {
                             setSelectedId(id);
@@ -266,6 +285,10 @@ export default function Home() {
                                 );
                             }}
                             onPendingChange={onPendingReview}
+                            onPreviewChange={setPreviewDiffs}
+                            onHighlight={setHighlightKey}
+                            highlightKey={highlightKey}
+                            openItem={openItem}
                         />
                     }
                 />

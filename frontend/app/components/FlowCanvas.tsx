@@ -10,6 +10,7 @@ import {
     type NodeMouseHandler,
     type OnNodeDrag,
 } from "@xyflow/react";
+import clsx from "clsx";
 import { useNavigate } from "react-router";
 import "@xyflow/react/dist/style.css";
 import {
@@ -71,6 +72,9 @@ import { ButtonEdge } from "./flow/button-edge";
 import { DataEdge } from "./flow/data-edge";
 import { ContainerNode, GroupFrame } from "./flow/group-node";
 import { ExternalStub } from "./flow/external-node";
+import { GhostEdge, type GhostEdgeData } from "./flow/ghost-edge";
+import { GhostNode, ghostNodeClass } from "./flow/ghost-node";
+import { buildGhostPreview, emptyGhostPreview, ghostLeafSize, placeGhosts, type CanvasPreview, type GhostLayout, type Rect as GhostRect } from "../ghost-preview";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
@@ -83,12 +87,14 @@ const nodeTypes = {
     group: GroupFrame,
     container: ContainerNode,
     external: ExternalStub,
+    ghost: GhostNode,
 };
 const edgeTypes = {
     arch: ArchEdge,
     button: ButtonEdge,
     animated: AnimatedEdge,
     data: DataEdge,
+    ghost: GhostEdge,
 };
 
 function nodeData(
@@ -332,6 +338,7 @@ export default function FlowCanvas({
     onRequestRecenterRef,
     onRequestZoomRef,
     onProposalStaged,
+    preview,
 }: {
     nodeId?: string;
     relationshipId?: string;
@@ -343,6 +350,8 @@ export default function FlowCanvas({
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
     // Called after a structure edit staged a proposal; the host brings the review panel forward.
     onProposalStaged?: () => void;
+    // Pending proposals drawn as ghosts over this level. Display only: never saved or laid out.
+    preview?: CanvasPreview;
 }) {
     const navigate = useNavigate();
     const { zoomIn, zoomOut, fitView, screenToFlowPosition, getInternalNode } = useReactFlow();
@@ -726,6 +735,119 @@ export default function FlowCanvas({
         return [...regular, ...stubEdges];
     }, [activeLevel, nodeId]);
 
+    // Ghost preview: derived from the proposals and the level on screen, drawn only through
+    // displayNodes/displayEdges. `nodes`, the layout cache and the group-size store never see it.
+    const ghost = useMemo(() => {
+        if (!preview || relationshipId || !level || (level.node?.id ?? "") !== (nodeId ?? "")) return emptyGhostPreview;
+        return buildGhostPreview({
+            diffs: preview.diffs,
+            parentId: level.node?.id ?? null,
+            nodeIds: (level.children ?? []).map((child) => child.id),
+            edgeIds: (level.relationships ?? []).map((rel) => rel.id),
+        });
+    }, [preview?.diffs, level, relationshipId, nodeId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Placement is held still while a node is being dragged so ghosts do not chase the pointer.
+    const ghostLayoutRef = useRef<GhostLayout | null>(null);
+    const ghostLayout = useMemo(() => {
+        if (ghost.ghostNodes.length === 0) return null;
+        if (nodes.some((item) => item.dragging) && ghostLayoutRef.current) return ghostLayoutRef.current;
+        const obstacles: Record<string, GhostRect> = {};
+        for (const item of nodes) {
+            if (item.parentId) continue;
+            const styleW = typeof item.style?.width === "number" ? item.style.width : undefined;
+            const styleH = typeof item.style?.height === "number" ? item.style.height : undefined;
+            obstacles[item.id] = {
+                x: item.position.x,
+                y: item.position.y,
+                width: item.measured?.width ?? styleW ?? ghostLeafSize.width,
+                height: item.measured?.height ?? styleH ?? ghostLeafSize.height,
+            };
+        }
+        ghostLayoutRef.current = placeGhosts(ghost.ghostNodes, ghost.ghostEdges, obstacles);
+        return ghostLayoutRef.current;
+    }, [ghost, nodes]);
+    const highlightKey = preview?.highlightKey ?? null;
+    const displayNodes = useMemo<ArchNode[]>(() => {
+        if (!preview || (ghost.ghostNodes.length === 0 && Object.keys(ghost.nodeMarks).length === 0)) return nodes;
+        const real = nodes.map((item) => {
+            const mark = ghost.nodeMarks[item.id];
+            if (!mark) return item;
+            return {
+                ...item,
+                className: clsx(item.className, mark.kind === "removed" ? "ghost-removed" : "ghost-changed", highlightKey === mark.key && "ghost-highlight"),
+                ariaLabel: `${item.data.name}, proposed ${mark.kind === "removed" ? "for removal" : "to change"}`,
+            };
+        });
+        const placed = ghostLayout;
+        const fresh: ArchNode[] = placed
+            ? ghost.ghostNodes.map((item) => ({
+                  id: item.id,
+                  type: "ghost" as const,
+                  className: ghostNodeClass(highlightKey === item.key),
+                  selectable: false,
+                  draggable: false,
+                  deletable: false,
+                  connectable: false,
+                  focusable: true,
+                  ariaRole: "button" as const,
+                  ariaLabel: `Proposed new node ${item.name}. Open in Review`,
+                  ...(item.parentGhostId ? { parentId: item.parentGhostId, extent: "parent" as const } : {}),
+                  position: placed.positions[item.id] ?? { x: 0, y: 0 },
+                  width: placed.sizes[item.id].width,
+                  height: placed.sizes[item.id].height,
+                  // Ghosts are not in `nodes`, so React Flow's measurements are never fed back to them.
+                  measured: placed.sizes[item.id],
+                  data: {
+                      name: item.name,
+                      type: item.type,
+                      status: "",
+                      protected: false,
+                      icon: item.icon,
+                      color: item.color,
+                      ghost: { container: item.hasChildren },
+                  },
+              }))
+            : [];
+        return [...real, ...fresh];
+    }, [nodes, ghost, ghostLayout, highlightKey, preview]);
+    const displayEdges = useMemo<Edge[]>(() => {
+        if (!preview || (ghost.ghostEdges.length === 0 && Object.keys(ghost.edgeMarks).length === 0)) return edges;
+        const variantProps = (variant: "new" | "changed" | "removed", label: string, key: string, proposalId: string, index: number): GhostEdgeData["ghost"] => ({
+            variant,
+            label,
+            highlighted: highlightKey === key,
+            onActivate: () => preview.onActivate(proposalId, index),
+            onHover: (on) => preview.onHover(on ? key : null),
+        });
+        const real = edges.map((edge) => {
+            const mark = ghost.edgeMarks[edge.id];
+            if (!mark) return edge;
+            return { ...edge, type: "ghost", data: { ...edge.data, ghost: variantProps(mark.kind, mark.label, mark.key, mark.proposalId, mark.index) } };
+        });
+        const fresh: Edge[] = ghost.ghostEdges.map((edge) => ({
+            id: edge.id,
+            type: "ghost",
+            source: edge.source,
+            target: edge.target,
+            selectable: false,
+            focusable: false,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            data: { ghost: variantProps("new", edge.label, edge.key, edge.proposalId, edge.index) },
+        }));
+        return [...real, ...fresh];
+    }, [edges, ghost, highlightKey, preview]);
+    const activateGhost = (id: string) => {
+        const item = ghost.ghostNodes.find((candidate) => candidate.id === id);
+        if (item) preview?.onActivate(item.proposalId, item.index);
+    };
+    const hoverNode: NodeMouseHandler<ArchNode> = (_event, node) => {
+        const key = node.type === "ghost" ? ghost.ghostNodes.find((item) => item.id === node.id)?.key : ghost.nodeMarks[node.id]?.key;
+        if (key) preview?.onHover(key);
+    };
+    const unhoverNode: NodeMouseHandler<ArchNode> = (_event, node) => {
+        if (node.type === "ghost" || ghost.nodeMarks[node.id]) preview?.onHover(null);
+    };
+
     // Drilling is only for summary cards. An expanded group already shows its children
     // on this level, so opening it would repeat the same picture (decision 0010).
     const openStub = (node: ArchNode) => {
@@ -739,12 +861,19 @@ export default function FlowCanvas({
         if (!isStubActivationKey(event.key)) return;
         const target = event.target as HTMLElement;
         if (!target.classList?.contains("react-flow__node")) return;
+        const ghostId = target.getAttribute("data-id") ?? "";
+        if (ghost.ghostNodes.some((item) => item.id === ghostId)) {
+            event.preventDefault();
+            activateGhost(ghostId);
+            return;
+        }
         const node = nodes.find((n) => n.id === target.getAttribute("data-id"));
         if (node?.type !== "external") return;
         event.preventDefault();
         openStub(node);
     };
     const onNodeDoubleClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        if (node.type === "ghost") return;
         if (node.type === "external") {
             openStub(node);
             return;
@@ -753,6 +882,10 @@ export default function FlowCanvas({
         navigate(`/node/${node.id}`);
     };
     const onNodeClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        if (node.type === "ghost") {
+            activateGhost(node.id);
+            return;
+        }
         if (node.type === "external") return;
         onSelectEdge?.(null);
         onSelectNode?.(node.id);
@@ -960,14 +1093,16 @@ export default function FlowCanvas({
                 </div>
             ) : null}
             <ReactFlow
-                nodes={nodes}
-                edges={edges}
+                nodes={displayNodes}
+                edges={displayEdges}
                 nodeTypes={nodeTypes}
                 multiSelectionKeyCode={multiSelectionKeys}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
                 onKeyDown={onStubKeyDown}
                 onNodeClick={onNodeClick}
+                onNodeMouseEnter={hoverNode}
+                onNodeMouseLeave={unhoverNode}
                 onNodeDoubleClick={onNodeDoubleClick}
                 onEdgeClick={onEdgeClick}
                 onEdgeDoubleClick={onEdgeDoubleClick}

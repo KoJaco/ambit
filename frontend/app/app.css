@@ -397,3 +397,71 @@ body {
     opacity: 0;
     pointer-events: none;
 }
+
+/* Ghost preview (pending proposals drawn on the canvas). Every state pairs colour with text and a
+   dashed or marked shape. Nothing animates, so reduced-motion needs no special case.
+   Contrast: removed #b91c1c on #f7f5f0 is 5.5, changed #b45309 is 4.6; the dark values are lighter. */
+:root {
+    --ghost-changed: #b45309;
+    --ghost-changed-bg: #fef3c7;
+    --ghost-changed-fg: #7c2d12;
+    --ghost-removed: #b91c1c;
+    --ghost-removed-bg: #fee2e2;
+    --ghost-removed-fg: #7f1d1d;
+}
+.dark {
+    --ghost-changed: #fbbf24;
+    --ghost-changed-bg: #451a03;
+    --ghost-changed-fg: #fde68a;
+    --ghost-removed: #f87171;
+    --ghost-removed-bg: #450a0a;
+    --ghost-removed-fg: #fecaca;
+}
+.react-flow__node.ghost-removed,
+.react-flow__node.ghost-changed {
+    outline: 2px dashed var(--ghost-removed);
+    outline-offset: 3px;
+    border-radius: 16px;
+}
+.react-flow__node.ghost-changed {
+    outline-color: var(--ghost-changed);
+}
+.react-flow__node.ghost-removed::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    background: color-mix(in oklab, var(--ghost-removed) 14%, transparent);
+    pointer-events: none;
+    z-index: 1;
+}
+.react-flow__node.ghost-removed::after,
+.react-flow__node.ghost-changed::after {
+    position: absolute;
+    top: -12px;
+    right: 10px;
+    z-index: 2;
+    padding: 1px 8px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.5;
+    pointer-events: none;
+}
+.react-flow__node.ghost-removed::after {
+    content: "\2715  Removed";
+    background: var(--ghost-removed-bg);
+    color: var(--ghost-removed-fg);
+    border: 1px solid var(--ghost-removed);
+}
+.react-flow__node.ghost-changed::after {
+    content: "\25CF  Changed";
+    background: var(--ghost-changed-bg);
+    color: var(--ghost-changed-fg);
+    border: 1px solid var(--ghost-changed);
+}
+.react-flow__node.ghost-highlight {
+    outline: 3px solid var(--ring);
+    outline-offset: 4px;
+    border-radius: 16px;
+}

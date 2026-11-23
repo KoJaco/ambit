@@ -2,7 +2,7 @@ import type { SchemaColumn } from "./api";
 
 export const RENDERER_IDS = ["card", "schema", "placeholder", "group"] as const;
 
-export type CanvasNodeType = "card" | "schema" | "placeholder" | "group" | "container" | "external";
+export type CanvasNodeType = "card" | "schema" | "placeholder" | "group" | "container" | "external" | "ghost";
 export type CanvasEdgeType = "arch" | "button" | "animated" | "data";
 
 // An open group is always a container. A collapsed node with children is a summary card, even
