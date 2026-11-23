@@ -260,6 +260,22 @@ func decodeNode(data []byte) (*Node, error) {
 		}
 		n.Schema = schema
 	}
+	if raw, ok := take(obj, "depends_on"); ok && !isNull(raw) {
+		deps, err := decodeStringSlice(raw)
+		if err != nil {
+			return nil, fmt.Errorf("depends_on: %w", err)
+		}
+		for _, d := range deps {
+			n.DependsOn = append(n.DependsOn, NodeID(d))
+		}
+	}
+	if raw, ok := take(obj, "contract"); ok && !isNull(raw) {
+		c, err := decodeNodeContract(raw)
+		if err != nil {
+			return nil, fmt.Errorf("contract: %w", err)
+		}
+		n.Contract = c
+	}
 	if len(obj) > 0 {
 		n.Unknown = obj
 	}
@@ -331,10 +347,25 @@ func encodeNode(n *Node) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if len(n.DependsOn) > 0 {
+		deps := make([]string, len(n.DependsOn))
+		for i, d := range n.DependsOn {
+			deps[i] = string(d)
+		}
+		sort.Strings(deps)
+		if err = put("depends_on", deps); err != nil {
+			return nil, err
+		}
+	}
+	if !n.Contract.IsEmpty() {
+		if err = put("contract", n.Contract); err != nil {
+			return nil, err
+		}
+	}
 	if err = put("status", string(n.Status)); err != nil {
 		return nil, err
 	}
-	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "icon", "color", "renderer", "schema", "status"}
+	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "icon", "color", "renderer", "schema", "depends_on", "contract", "status"}
 	return encodeObject(order, vals, n.Unknown)
 }
 
@@ -386,6 +417,13 @@ func decodeRelationship(data []byte) (Relationship, error) {
 		}
 		rel.Kind = kind
 	}
+	if raw, ok := take(obj, "contract"); ok && !isNull(raw) {
+		c, err := decodeEdgeContract(raw)
+		if err != nil {
+			return Relationship{}, fmt.Errorf("relationship contract: %w", err)
+		}
+		rel.Contract = c
+	}
 	if len(obj) > 0 {
 		rel.Unknown = obj
 	}
@@ -423,7 +461,14 @@ func encodeRelationship(rel Relationship) (jsonRaw, error) {
 			return nil, err
 		}
 	}
-	return encodeCompact([]string{"id", "from", "to", "label", "kind"}, vals, rel.Unknown)
+	if !rel.Contract.IsEmpty() {
+		raw, err := rawOf(rel.Contract)
+		if err != nil {
+			return nil, err
+		}
+		vals["contract"] = raw
+	}
+	return encodeCompact([]string{"id", "from", "to", "label", "kind", "contract"}, vals, rel.Unknown)
 }
 
 func encodeCompact(order []string, vals map[string]jsonRaw, unknown map[string]jsonRaw) (jsonRaw, error) {

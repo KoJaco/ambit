@@ -43,6 +43,10 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if err := validateCreatePresentation(in.Icon, in.Color, in.Renderer, schema); err != nil {
 		return "", err
 	}
+	contract, err := patchNodeContract(in.Contract, nil)
+	if err != nil {
+		return "", err
+	}
 	var id NodeID
 	if in.ID != "" {
 		if err := idx.checkExplicitID(in.ID, nil); err != nil {
@@ -55,6 +59,9 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 			return "", err
 		}
 		id = idx.allocate(base)
+	}
+	if err := idx.validateDependsOn(id, in.DependsOn); err != nil {
+		return "", err
 	}
 	node := &Node{
 		ID:             id,
@@ -71,6 +78,8 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 		Color:          strings.TrimSpace(in.Color),
 		Renderer:       strings.TrimSpace(in.Renderer),
 		Schema:         schema,
+		DependsOn:      sortedDeps(in.DependsOn),
+		Contract:       contract,
 	}
 	if err := idx.writeNode(node); err != nil {
 		_ = idx.removeNodeFiles(id)
@@ -107,6 +116,7 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 	next := *node
 	next.Implementation = cloneStrings(node.Implementation)
 	next.Scope = cloneStrings(node.Scope)
+	next.DependsOn = append([]NodeID(nil), node.DependsOn...)
 	next.Unknown = cloneRaw(node.Unknown)
 
 	if in.Name != nil {
@@ -181,6 +191,19 @@ func (idx *Index) Update(id NodeID, in UpdateInput) error {
 	if err := applySchemaPatch(&next, in.Schema); err != nil {
 		return err
 	}
+	if in.DependsOn != nil {
+		if err := idx.validateDependsOn(id, *in.DependsOn); err != nil {
+			return err
+		}
+		next.DependsOn = sortedDeps(*in.DependsOn)
+	}
+	if in.Contract != nil {
+		c, err := patchNodeContract(in.Contract, node.Contract)
+		if err != nil {
+			return err
+		}
+		next.Contract = c
+	}
 	if err := idx.writeNode(&next); err != nil {
 		return err
 	}
@@ -221,6 +244,9 @@ func (idx *Index) Delete(id NodeID) error {
 				removeRels[rid] = true
 			}
 		}
+	}
+	if err := idx.checkNoDependents(removeNodes); err != nil {
+		return err
 	}
 	var order []NodeID
 	for _, existing := range idx.Order {
@@ -286,6 +312,9 @@ func (idx *Index) deleteRelationshipLocked(id RelID) error {
 		return fmt.Errorf("%w: %q", ErrRelationshipNotFound, id)
 	}
 	toRemove := idx.relationshipClosure(id)
+	if err := idx.checkNoDependents(toRemove.nodes); err != nil {
+		return err
+	}
 	var order []NodeID
 	for _, existing := range idx.Order {
 		if !toRemove.nodes[existing] {
@@ -382,6 +411,16 @@ func (idx *Index) setRelationshipLocked(in SetRelationshipInput) (Relationship, 
 	if kind != "" && !validKind(kind) {
 		return Relationship{}, fmt.Errorf("%w: %s -> %s kind %q", errBadKind, from, to, kind)
 	}
+	var existing *EdgeContract
+	if in.ID != "" {
+		if rel, _ := idx.relByID(in.ID); rel != nil {
+			existing = rel.Contract
+		}
+	}
+	contract, err := patchEdgeContract(in.Contract, existing)
+	if err != nil {
+		return Relationship{}, err
+	}
 	prev := append([]Relationship{}, idx.Relationships...)
 	if in.ID != "" {
 		rel, i := idx.relByID(in.ID)
@@ -389,6 +428,9 @@ func (idx *Index) setRelationshipLocked(in SetRelationshipInput) (Relationship, 
 			updated := *rel
 			updated.Label = label
 			updated.Kind = kind
+			if in.Contract != nil {
+				updated.Contract = contract
+			}
 			idx.Relationships[i] = updated
 			if err := idx.saveIndex(); err != nil {
 				idx.Relationships = prev
@@ -396,7 +438,7 @@ func (idx *Index) setRelationshipLocked(in SetRelationshipInput) (Relationship, 
 			}
 			return updated, nil
 		}
-		created := Relationship{ID: in.ID, From: from, To: to, Label: label, Kind: kind}
+		created := Relationship{ID: in.ID, From: from, To: to, Label: label, Kind: kind, Contract: contract}
 		idx.Relationships = append(idx.Relationships, created)
 		if err := idx.saveIndex(); err != nil {
 			idx.Relationships = prev
@@ -408,7 +450,7 @@ func (idx *Index) setRelationshipLocked(in SetRelationshipInput) (Relationship, 
 	if err != nil {
 		return Relationship{}, err
 	}
-	created := Relationship{ID: id, From: from, To: to, Label: label, Kind: kind}
+	created := Relationship{ID: id, From: from, To: to, Label: label, Kind: kind, Contract: contract}
 	idx.Relationships = append(idx.Relationships, created)
 	if err := idx.saveIndex(); err != nil {
 		idx.Relationships = prev

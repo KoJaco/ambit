@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -262,7 +263,11 @@ func affectedByIndex(beforeOrder, afterOrder []NodeID, beforeRels, afterRels []R
 }
 
 func relKey(rel Relationship) string {
-	return string(rel.ID) + "\t" + string(rel.From) + "\t" + string(rel.To) + "\t" + rel.Label + "\t" + rel.Kind
+	key := string(rel.ID) + "\t" + string(rel.From) + "\t" + string(rel.To) + "\t" + rel.Label + "\t" + rel.Kind
+	if !rel.Contract.IsEmpty() {
+		key += "\t" + rel.Contract.Format + "\t" + rel.Contract.Ref + "\t" + rel.Contract.Text
+	}
+	return key
 }
 
 func affectedRelationshipIDs(beforeRels, afterRels []Relationship) []RelID {
@@ -280,7 +285,7 @@ func affectedRelationshipIDs(beforeRels, afterRels []Relationship) []RelID {
 		}
 	}
 	for id, rel := range after {
-		if prev, ok := before[id]; !ok || prev.Label != rel.Label || prev.Kind != rel.Kind || prev.From != rel.From || prev.To != rel.To {
+		if prev, ok := before[id]; !ok || prev.Label != rel.Label || prev.Kind != rel.Kind || prev.From != rel.From || prev.To != rel.To || !reflect.DeepEqual(prev.Contract, rel.Contract) {
 			ids[id] = struct{}{}
 		}
 	}

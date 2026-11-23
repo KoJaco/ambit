@@ -20,6 +20,9 @@ type SetRelationshipInput struct {
 	To    NodeID
 	Label string
 	Kind  string
+	// Contract: nil leaves an existing edge's contract unchanged; a non-nil empty
+	// contract clears it. A new edge stores it as given.
+	Contract *EdgeContract
 }
 
 func (idx *Index) relationshipTaken(id string) bool {
