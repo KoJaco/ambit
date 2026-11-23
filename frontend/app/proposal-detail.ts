@@ -338,8 +338,39 @@ const PREVIEW_FIELDS: Record<string, PreviewField> = {
     parent_id: "parent",
 };
 
-export function proposalDetailView(diff: ProposalDiff, op: OpDiff): DetailView {
-    const lookup = snapshotLookup(diff);
+// Proposal snapshots merged over `fetched` ones (existing nodes outside the proposal); the
+// proposal's own snapshots win because they describe the state this operation sees.
+export function mergedLookup(diff: ProposalDiff, fetched?: ReadonlyMap<string, NodeSnapshot>): Map<string, NodeSnapshot> {
+    const merged = new Map<string, NodeSnapshot>(fetched ?? []);
+    for (const [id, snap] of snapshotLookup(diff)) merged.set(id, snap);
+    return merged;
+}
+
+// Ids of nodes this operation's visual names (endpoints, parents) that no known snapshot covers.
+export function unresolvedNodeIds(diff: ProposalDiff, op: OpDiff, fetched?: ReadonlyMap<string, NodeSnapshot>): string[] {
+    const lookup = mergedLookup(diff, fetched);
+    const rel = op.op === "set_relationship" ? op.relationship : op.op === "delete_relationship" ? (op.relationship ?? op.current_relationship) : null;
+    const shown = new Set<string>();
+    if (rel) {
+        shown.add(rel.from);
+        shown.add(rel.to);
+    }
+    for (const n of op.removes_nodes ?? []) shown.add(n.id);
+    const missing = new Set<string>();
+    const snaps: (NodeSnapshot | null | undefined)[] = [op.current, op.proposed];
+    for (const id of shown) {
+        const snap = lookup.get(id);
+        if (snap) snaps.push(snap);
+        else missing.add(id);
+    }
+    for (const snap of snaps) {
+        if (snap?.parent_id && !lookup.has(snap.parent_id)) missing.add(snap.parent_id);
+    }
+    return [...missing];
+}
+
+export function proposalDetailView(diff: ProposalDiff, op: OpDiff, fetched?: ReadonlyMap<string, NodeSnapshot>): DetailView {
+    const lookup = mergedLookup(diff, fetched);
     switch (op.op) {
         case "create_node": {
             const node = preview(op.proposed, op.node_id, lookup);

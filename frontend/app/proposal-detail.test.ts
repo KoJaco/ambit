@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { detailNeedsConfirm, proposalDetailBlocks, proposalDetailView, specDiffSummary } from "./proposal-detail";
+import { detailNeedsConfirm, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -169,5 +169,53 @@ describe("proposal detail view", () => {
         expect(specDiffSummary("a", "a")).toBe("Spec unchanged");
         expect(specDiffSummary("", "a")).toBe("Spec: 1 line added");
         expect(specDiffSummary("a\nb", "a")).toBe("Spec: 1 line removed");
+    });
+});
+
+describe("fetched node snapshots", () => {
+    const api = node({ id: "api", name: "Public API", type: "service", parent_id: "core", color: "blue" });
+    const core = node({ id: "core", name: "Core", type: "zone" });
+    const queue = node({ id: "q", name: "Queue" });
+    const create = op({ op: "create_node", node_id: "q", proposed: queue });
+    const rel = op({
+        op: "set_relationship",
+        node_id: "q",
+        relationship: { from: "q", to: "api", label: "enqueue", kind: "async" },
+    });
+    const diff = diffOf(create, rel);
+
+    it("lists unresolved endpoints, then their parents", () => {
+        expect(unresolvedNodeIds(diff, rel)).toEqual(["api"]);
+        expect(unresolvedNodeIds(diff, rel, new Map([["api", api]]))).toEqual(["core"]);
+        expect(unresolvedNodeIds(diff, rel, new Map([["api", api], ["core", core]]))).toEqual([]);
+    });
+
+    it("resolves endpoints from fetched snapshots", () => {
+        const view = proposalDetailView(diff, rel, new Map([["api", api], ["core", core]]));
+        if (view.kind !== "connect") throw new Error("kind");
+        expect(view.to).toMatchObject({ name: "Public API", known: true, type: "service", parentName: "Core" });
+    });
+
+    it("prefers proposal snapshots over fetched ones", () => {
+        const stale = node({ id: "q", name: "Old queue" });
+        const view = proposalDetailView(diff, rel, new Map([["q", stale]]));
+        if (view.kind !== "connect") throw new Error("kind");
+        expect(view.from.name).toBe("Queue");
+    });
+
+    it("resolves an existing parent of an update", () => {
+        const upd = op({
+            op: "update_node",
+            node_id: "a",
+            fields: ["parent_id"],
+            current: node({ id: "a", name: "A" }),
+            proposed: node({ id: "a", name: "A", parent_id: "core" }),
+        });
+        const d = diffOf(upd);
+        expect(unresolvedNodeIds(d, upd)).toEqual(["core"]);
+        const view = proposalDetailView(d, upd, new Map([["core", core]]));
+        if (view.kind !== "update") throw new Error("kind");
+        expect(view.after.parentName).toBe("Core");
+        expect(view.changes[0].after).toBe("Core");
     });
 });

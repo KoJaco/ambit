@@ -14,7 +14,8 @@ import {
     type ProposalDiff,
     type ProposalSummary,
 } from "../api";
-import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks, proposalDetailHead, proposalDetailView } from "../proposal-detail";
+import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks, proposalDetailHead, proposalDetailView, unresolvedNodeIds } from "../proposal-detail";
+import { useNodeSnapshots } from "../use-node-snapshots";
 import { ProposalVisual } from "./proposal-visuals";
 import { history } from "../history";
 import { acceptedEntry } from "../proposal-history";
@@ -185,6 +186,9 @@ export function ProposalReview({
     if (summaries.length === 0 && !error) return null;
 
     const detailOp = detail ? findOp(diffs, detail) : null;
+    const fetchedNodes = useNodeSnapshots((known) =>
+        detail && detailOp && diffs[detail.proposalId] ? unresolvedNodeIds(diffs[detail.proposalId], detailOp, known) : [],
+    );
 
     return (
         <RightRailPanel
@@ -211,7 +215,7 @@ export function ProposalReview({
                         {(() => {
                             const head = proposalDetailHead(detailOp);
                             const rest = proposalDetailBlocks(detailOp).slice(head.length);
-                            const view = proposalDetailView(diffs[detail.proposalId], detailOp);
+                            const view = proposalDetailView(diffs[detail.proposalId], detailOp, fetchedNodes);
                             return (
                                 <>
                                     {head.map((block, i) => (
