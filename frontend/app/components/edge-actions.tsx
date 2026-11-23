@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { X } from "lucide-react";
 import clsx from "clsx";
@@ -205,7 +205,10 @@ export function EdgeActions({
     onMutated,
     onDeleted,
     onFocus,
+    deleteRequest = 0,
 }: {
+    // Bumped by the Delete key: opens the same confirmation as the button.
+    deleteRequest?: number;
     edge: Relationship;
     onClose: () => void;
     onMutated: () => void;
@@ -215,6 +218,12 @@ export function EdgeActions({
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    const seenDeleteRequest = useRef(deleteRequest);
+    useEffect(() => {
+        if (deleteRequest === seenDeleteRequest.current) return;
+        seenDeleteRequest.current = deleteRequest;
+        setConfirmDelete(true);
+    }, [deleteRequest]);
     const from = useEndpoint(edge.from);
     const to = useEndpoint(edge.to);
     const fromName = from.status === "ready" ? from.node.name : edge.from;
@@ -238,7 +247,7 @@ export function EdgeActions({
     }
 
     return (
-        <RightRailPanel onPointerDown={onFocus}>
+        <RightRailPanel label="Inspector" onPointerDown={onFocus}>
             <div className="flex items-center justify-between gap-2">
                 <h2 className="text-sm font-semibold text-foreground">Relationship</h2>
                 <PanelHeaderActions onClose={onClose} closeLabel="Close relationship panel" />

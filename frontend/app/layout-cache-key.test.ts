@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutCacheKey, rootLayoutKey } from "./api";
+import { layoutCacheKey, orphanedGroupSizeKeys, rootLayoutKey } from "./api";
 
 describe("layout cache key", () => {
     it("uses _root for / and the node id for /node/:nodeId", () => {
@@ -24,5 +24,19 @@ describe("layout cache key", () => {
 
     it("never hashes relationship levels", () => {
         expect(layoutCacheKey({ relationshipId: "calls", expanded: ["a"] })).toBe("_rel_calls");
+    });
+});
+
+describe("orphaned group-size keys", () => {
+    it("selects only hashed group-size keys", () => {
+        expect(
+            orphanedGroupSizeKeys([
+                "ambit:group-sizes:_root",
+                "ambit:group-sizes:_root~ab12",
+                "ambit:group-sizes:orders~cd34",
+                "ambit:view-modes:_root~ab12",
+                "ambit:layout-sig:_root~ab12",
+            ]),
+        ).toEqual(["ambit:group-sizes:_root~ab12", "ambit:group-sizes:orders~cd34"]);
     });
 });

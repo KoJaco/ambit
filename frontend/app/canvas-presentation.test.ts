@@ -52,4 +52,10 @@ describe("stacked summary card footprint", () => {
         expect(isStackedCard("card", 3, true)).toBe(false);
         expect(isStackedCard("schema", 3, false)).toBe(false);
     });
+
+    it("reserves about half a card width for an external stub", () => {
+        const stub = nodeLayoutSize("external");
+        expect(stub.width).toBe(110);
+        expect(stub.width).toBeLessThan(nodeLayoutSize("card").width / 2 + 1);
+    });
 });

@@ -43,6 +43,15 @@ describe("matchShortcut", () => {
         expect(matchShortcut(key("1", { code: "Digit1" }))).toBeNull();
     });
 
+    it("matches Delete and Backspace, and ignores them in fields", () => {
+        expect(matchShortcut(key("Delete"))).toBe("delete");
+        expect(matchShortcut(key("Backspace"))).toBe("delete");
+        expect(matchShortcut(key("Backspace", { ctrlKey: true }))).toBeNull();
+        const field = { tagName: "TEXTAREA" };
+        expect(resolveShortcut(key("Backspace"), { target: field, dialogOpen: false, platform: "other" })).toBeNull();
+        expect(resolveShortcut(key("Delete"), { target: { tagName: "INPUT" }, dialogOpen: false, platform: "other" })).toBeNull();
+    });
+
     it("matches ? with or without reported shift, and Escape", () => {
         expect(matchShortcut(key("?", { shiftKey: true }))).toBe("open-shortcuts");
         expect(matchShortcut(key("?"))).toBe("open-shortcuts");
@@ -107,6 +116,6 @@ describe("labels", () => {
     it("groups every shortcut once", () => {
         const groups = shortcutsByGroup();
         expect(groups.map((g) => g.group)).toEqual(["Tools", "History", "View", "Help"]);
-        expect(groups.flatMap((g) => g.items).length).toBe(9);
+        expect(groups.flatMap((g) => g.items).length).toBe(10);
     });
 });

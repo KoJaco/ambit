@@ -18,7 +18,13 @@ import { RightRailStack, type RightRailFront } from "../components/right-rail-st
 import { EdgeActions } from "../components/edge-actions";
 import type { Relationship } from "../api";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
-import { floatingToggleMode, useRailState } from "../right-rail-state";
+import {
+    floatingToggleMode,
+    isEditableElement,
+    isInspectorDirty,
+    shouldAutoOpenReview,
+    useRailState,
+} from "../right-rail-state";
 import { history, isOutsideChange, useHistory } from "../history";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
@@ -53,6 +59,8 @@ export default function Home() {
         [],
     );
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    // Bumped by Delete/Backspace; the open inspector panel turns it into its confirmation.
+    const [deleteRequest, setDeleteRequest] = useState(0);
     const historyView = useHistory();
     const [historyEpoch, setHistoryEpoch] = useState(0);
     const [historyNote, setHistoryNote] = useState<string | null>(null);
@@ -75,6 +83,31 @@ export default function Home() {
         setRefreshKey((value) => value + 1);
     }
     const [frontPanel, setFrontPanel] = useState<RightRailFront>("review");
+    // Whether the Review panel is shown. Closing it keeps the proposals; the toolbar badge reopens it.
+    const [reviewOpen, setReviewOpen] = useState(true);
+    function showReview() {
+        setReviewOpen(true);
+        setFrontPanel("review");
+    }
+    const [pendingReviewIds, setPendingReviewIds] = useState<string[]>([]);
+    // Proposals already offered to the user. null until the first load, so proposals that were
+    // waiting when the page opened do not count as new.
+    const seenProposals = useRef<Set<string> | null>(null);
+    function onPendingReview(ids: string[]) {
+        setPendingReviewIds(ids);
+        if (seenProposals.current === null) {
+            seenProposals.current = new Set(ids);
+            return;
+        }
+        const open = shouldAutoOpenReview({
+            pendingIds: ids,
+            seenIds: seenProposals.current,
+            editingFocus: isEditableElement(document.activeElement),
+            inspectorDirty: isInspectorDirty(),
+        });
+        ids.forEach((id) => seenProposals.current?.add(id));
+        if (open) showReview();
+    }
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
         null
@@ -111,7 +144,7 @@ export default function Home() {
                         }}
                         onProposalStaged={() => {
                             setProposalRefreshKey((value) => value + 1);
-                            setFrontPanel("review");
+                            showReview();
                         }}
                         onRequestRecenterRef={(fn) => {
                             recenterRef.current = fn;
@@ -151,9 +184,22 @@ export default function Home() {
                         onZoomIn={() => zoomRef.current?.zoomIn()}
                         onZoomOut={() => zoomRef.current?.zoomOut()}
                         onUndo={historyView.canUndo && !historyView.busy ? () => void stepHistory("undo") : undefined}
+                        onDelete={
+                            selectedEdge || selectedId
+                                ? () => {
+                                      setFrontPanel("inspector");
+                                      setDeleteRequest((value) => value + 1);
+                                  }
+                                : undefined
+                        }
                         onRedo={historyView.canRedo && !historyView.busy ? () => void stepHistory("redo") : undefined}
                         undoLabel={historyView.undoLabel}
                         redoLabel={historyView.redoLabel}
+                        reviewCount={pendingReviewIds.length}
+                        onOpenReview={() => {
+                            showReview();
+                            window.requestAnimationFrame(() => document.getElementById("review-heading")?.focus());
+                        }}
                     />
                 </div>
                 <div
@@ -189,6 +235,7 @@ export default function Home() {
                                     }
                                 }}
                                 onFocus={() => setFrontPanel("inspector")}
+                                deleteRequest={deleteRequest}
                             />
                         ) : selectedId ? (
                             <NodeInspector
@@ -197,6 +244,11 @@ export default function Home() {
                                 refreshKey={refreshKey}
                                 onClose={() => setSelectedId(null)}
                                 onSaved={() => setRefreshKey((value) => value + 1)}
+                                onDeleted={() => {
+                                    setSelectedId(null);
+                                    setRefreshKey((value) => value + 1);
+                                }}
+                                deleteRequest={deleteRequest}
                                 onFocus={() => setFrontPanel("inspector")}
                             />
                         ) : null
@@ -205,6 +257,15 @@ export default function Home() {
                         <ProposalReview
                             refreshKey={refreshKey + proposalRefreshKey}
                             onFocus={() => setFrontPanel("review")}
+                            open={reviewOpen}
+                            onClose={() => {
+                                setReviewOpen(false);
+                                setFrontPanel("inspector");
+                                window.requestAnimationFrame(() =>
+                                    document.querySelector<HTMLElement>('[aria-label^="Review, "]')?.focus(),
+                                );
+                            }}
+                            onPendingChange={onPendingReview}
                         />
                     }
                 />

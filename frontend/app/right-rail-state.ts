@@ -37,3 +37,42 @@ export function floatingToggleMode(s: RailState): "hidden" | "shifted" | "normal
     if (s.toggles > 0) return "hidden";
     return s.panels > 0 ? "shifted" : "normal";
 }
+
+// ---- review auto-open ---------------------------------------------------------------------
+
+// Whether the open inspector holds edits that are not saved. Read at decision time, not rendered.
+let inspectorDirty = false;
+export function setInspectorDirty(value: boolean) {
+    inspectorDirty = value;
+}
+export function isInspectorDirty(): boolean {
+    return inspectorDirty;
+}
+
+type ElementLike = { tagName?: string; isContentEditable?: boolean } | null | undefined;
+
+// True when the focused element takes typed text, so a panel change would pull the rug out.
+export function isEditableElement(el: ElementLike): boolean {
+    if (!el) return false;
+    if (el.isContentEditable) return true;
+    const tag = (el.tagName ?? "").toUpperCase();
+    return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+// Bring Review forward only for a proposal not seen before and only when the user is not mid-edit.
+// Ids already seen never re-open it, so closing or leaving the panel sticks for that proposal.
+export function shouldAutoOpenReview(input: {
+    pendingIds: readonly string[];
+    seenIds: ReadonlySet<string>;
+    editingFocus: boolean;
+    inspectorDirty: boolean;
+}): boolean {
+    if (input.editingFocus || input.inspectorDirty) return false;
+    return input.pendingIds.some((id) => !input.seenIds.has(id));
+}
+
+// What Escape does inside the Review panel: leave a detail view first, then close the panel.
+export function reviewEscapeAction(input: { detailOpen: boolean; editingFocus: boolean }): "back" | "close" | "none" {
+    if (input.editingFocus) return "none";
+    return input.detailOpen ? "back" : "close";
+}

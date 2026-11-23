@@ -4,6 +4,7 @@
 export type ShortcutId =
     | "tool-pointer"
     | "tool-grab"
+    | "delete"
     | "undo"
     | "redo"
     | "zoom-in"
@@ -38,6 +39,16 @@ export type Shortcut = {
 export const shortcuts: Shortcut[] = [
     { id: "tool-pointer", label: "Pointer tool", group: "Tools", keys: ["V"], bindings: [{ key: "v", mod: false, shift: false }] },
     { id: "tool-grab", label: "Grab tool (pan)", group: "Tools", keys: ["H"], bindings: [{ key: "h", mod: false, shift: false }] },
+    {
+        id: "delete",
+        label: "Delete selected edge or node",
+        group: "Tools",
+        keys: ["Del"],
+        bindings: [
+            { key: "delete", mod: false, shift: false },
+            { key: "backspace", mod: false, shift: false },
+        ],
+    },
     { id: "undo", label: "Undo", group: "History", keys: ["Mod+Z"], bindings: [{ key: "z", mod: true, shift: false }] },
     {
         id: "redo",

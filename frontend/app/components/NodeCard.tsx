@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { SchemaColumn, TypeMixEntry } from "../api";
 import type { CanvasNodeType } from "../canvas-presentation";
 import { fullSummaryText } from "../node-card-summary";
+import type { ExternalNodeData } from "./flow/external-node";
 import { AgentChip } from "./agent-chip";
 import { Tooltip } from "./tooltip";
 import {
@@ -16,21 +17,14 @@ import {
     type ColorToken,
 } from "../node-presentation";
 
-export type CrossingMark = {
-    direction: string;
-    label: string;
-    otherId: string;
-    relationshipId?: string;
-    drillable?: boolean;
-};
-
 export type ArchNodeData = {
     name: string;
     type: string;
     status: string;
     protected: boolean;
     assigned?: boolean;
-    crossings: CrossingMark[];
+    // Set only on edge stubs (type "external").
+    external?: ExternalNodeData;
     icon?: string;
     color?: string;
     renderer?: string;
@@ -120,32 +114,6 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                         </div>
                     </div>
                 </div>
-                {data.crossings.length > 0 ? (
-                    <ul className="border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">
-                        {data.crossings.map((crossing) => (
-                            <li key={`${crossing.direction}-${crossing.otherId}-${crossing.label}`}>
-                                {crossing.drillable && crossing.relationshipId ? (
-                                    <a
-                                        href={`/relationship/${crossing.relationshipId}`}
-                                        className="underline hover:text-primary"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            window.location.assign(`/relationship/${crossing.relationshipId}`);
-                                        }}
-                                    >
-                                        {crossing.direction === "in" ? "←" : "→"} {crossing.label || "relationship"}
-                                    </a>
-                                ) : (
-                                    <>
-                                        {crossing.direction === "in" ? "←" : "→"} {crossing.label || "relationship"}{" "}
-                                        {crossing.otherId}
-                                    </>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
-                ) : null}
                 {stacked ? (
                     <div className="flex flex-col gap-1.5 border-t border-border px-3 py-2 text-xs text-muted-foreground">
                         <p className="break-words tabular-nums" title="Direct children">

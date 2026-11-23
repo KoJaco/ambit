@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { X } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, type KeyboardEvent, type ReactNode } from "react";
 import { registerRailPanel } from "../right-rail-state";
 import { Tooltip } from "./tooltip";
 import { ModeToggle } from "./ui/mode-toggle";
@@ -13,14 +13,19 @@ export function RightRailPanel({
     children,
     className,
     onPointerDown,
+    onKeyDown,
+    label,
 }: {
     children: ReactNode;
     className?: string;
     onPointerDown?: () => void;
+    onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
+    // Accessible name of the complementary landmark.
+    label?: string;
 }) {
     useEffect(() => registerRailPanel("panels"), []);
     return (
-        <aside className={clsx(rightRailPanelClass, className)} onPointerDown={onPointerDown}>
+        <aside aria-label={label} className={clsx(rightRailPanelClass, className)} onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
             {children}
         </aside>
     );

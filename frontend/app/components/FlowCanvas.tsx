@@ -21,6 +21,7 @@ import {
     loadLayoutSig,
     loadViewModes,
     saveGroupSizes,
+    pruneOrphanedGroupSizes,
     saveLayoutSig,
     putLayout,
     relationshipDrillId,
@@ -48,7 +49,8 @@ import { barStore } from "../bottom-bar";
 import { history } from "../history";
 import { useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
-import { computeGroupSizes, layoutCompound, layoutLevel, type NodeSize, type Point } from "../layout";
+import { buildExternalStubs, isStubActivationKey, stubAriaLabel } from "../external-stubs";
+import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions, type NodeSize, type Point } from "../layout";
 import {
     canExpandChild,
     expandedGroups,
@@ -62,12 +64,13 @@ import {
     toggleMode,
     type ViewModes,
 } from "../level-view";
-import { NodeCard, type ArchNode, type ArchNodeData, type CrossingMark } from "./NodeCard";
+import { NodeCard, type ArchNode, type ArchNodeData } from "./NodeCard";
 import { ArchEdge } from "./ArchEdge";
 import { AnimatedEdge } from "./flow/animated-edge";
 import { ButtonEdge } from "./flow/button-edge";
 import { DataEdge } from "./flow/data-edge";
 import { ContainerNode, GroupFrame } from "./flow/group-node";
+import { ExternalStub } from "./flow/external-node";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
@@ -79,6 +82,7 @@ const nodeTypes = {
     placeholder: PlaceholderFrame,
     group: GroupFrame,
     container: ContainerNode,
+    external: ExternalStub,
 };
 const edgeTypes = {
     arch: ArchEdge,
@@ -87,21 +91,8 @@ const edgeTypes = {
     data: DataEdge,
 };
 
-function crossingMarks(childId: string, crossings: Level["crossings"]): CrossingMark[] {
-    return (crossings ?? [])
-        .filter((crossing) => crossing.node_id === childId)
-        .map((crossing) => ({
-            direction: crossing.direction,
-            label: crossing.label,
-            otherId: crossing.other_id,
-            relationshipId: crossing.relationship_id,
-            drillable: crossing.drillable,
-        }));
-}
-
 function nodeData(
     child: SummaryLike,
-    crossings: Level["crossings"],
     onToggleMode?: (id: string) => void,
     onUngroup?: (id: string) => void,
 ): ArchNodeData {
@@ -111,7 +102,6 @@ function nodeData(
         status: child.status,
         protected: child.protected,
         assigned: child.assigned,
-        crossings: crossingMarks(child.id, crossings),
         icon: child.icon,
         color: child.color,
         renderer: child.renderer,
@@ -153,8 +143,9 @@ type SummaryLike = {
 };
 
 // Footprint per child; collapsed groups are drawn as stacked cards and reserve the sheet offset.
-function layoutSizes(kids: SummaryLike[]): Record<string, NodeSize> {
+function layoutSizes(kids: SummaryLike[], stubIds: string[] = []): Record<string, NodeSize> {
     const sizes: Record<string, NodeSize> = {};
+    for (const id of stubIds) sizes[id] = nodeLayoutSize("external");
     for (const child of kids) {
         sizes[child.id] = nodeLayoutSize(
             child.renderer,
@@ -170,11 +161,13 @@ function containerSizing(
     compound: { id: string; parentId?: string }[],
     positions: Record<string, Point>,
     sizes: Record<string, NodeSize>,
-    cacheKey: string,
+    baseKey: string,
+    // Sizes groups already had on screen: a toggle may grow a group but never shrinks it.
+    floor: Record<string, NodeSize> = {},
 ) {
     return {
         mins: computeGroupSizes(compound, positions, sizes),
-        applied: computeGroupSizes(compound, positions, sizes, loadGroupSizes(cacheKey)),
+        applied: computeGroupSizes(compound, positions, sizes, maxSizes(loadGroupSizes(baseKey), floor)),
     };
 }
 
@@ -210,7 +203,36 @@ function buildArchNodes(
     const children = level.children ?? [];
     const present = new Set(children.map((child) => child.id));
     // Members must follow their group in the array; the server already orders them that way.
-    return children.map((child, index) => {
+    const { stubs } = buildExternalStubs(level.crossings);
+    const stubNodes: ArchNode[] = stubs.map((stub, index) => ({
+        id: stub.id,
+        type: "external" as const,
+        selectable: false,
+        // Only a stub that opens a relationship is a keyboard stop; it is then a button.
+        focusable: stub.drillable,
+        ariaRole: stub.drillable ? ("button" as const) : undefined,
+        ariaLabel: stub.drillable ? stubAriaLabel(stub.label, stub.direction, "outside this level") : undefined,
+        className: "group/stub",
+        // Movable (layout only, persisted with the level's positions) but never selectable or deletable.
+        draggable: true,
+        deletable: false,
+        position: positions[stub.id] ?? { x: -200, y: index * 80 },
+        data: {
+            name: stub.label || stub.otherId,
+            type: "external",
+            status: "",
+            protected: false,
+            external: {
+                otherId: stub.otherId,
+                label: stub.label,
+                direction: stub.direction,
+                straightSide: stub.straightSide,
+                relationshipId: stub.relationshipId,
+                drillable: stub.drillable,
+            },
+        },
+    }));
+    const archNodes = children.map((child, index) => {
         const parentId = child.group_id && present.has(child.group_id) ? child.group_id : undefined;
         const type = canvasNodeType(child.renderer, child.child_count, child.expanded);
         const size = groupSizes[child.id];
@@ -226,7 +248,7 @@ function buildArchNodes(
                 y: Math.floor(index / 4) * 160,
             },
             data: {
-                ...nodeData(child, level.crossings ?? [], toggleFor(child, level, onToggleMode), onUngroup),
+                ...nodeData(child, toggleFor(child, level, onToggleMode), onUngroup),
                 ...(type === "container"
                     ? {
                           depth: tints[child.id],
@@ -238,6 +260,7 @@ function buildArchNodes(
             },
         };
     });
+    return [...archNodes, ...stubNodes];
 }
 
 function sameSet(left: string[], right: string[]): boolean {
@@ -268,7 +291,6 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
         left.internalRelCount !== right.internalRelCount ||
         (left.typeMix ?? []).map((entry) => `${entry.type}:${entry.count}`).join() !==
             (right.typeMix ?? []).map((entry) => `${entry.type}:${entry.count}`).join() ||
-        left.crossings.length !== right.crossings.length ||
         (left.schema?.length ?? 0) !== (right.schema?.length ?? 0)
     ) {
         return false;
@@ -281,12 +303,7 @@ function sameData(left: ArchNodeData, right: ArchNodeData): boolean {
     ) {
         return false;
     }
-    return left.crossings.every(
-        (mark, index) =>
-            mark.direction === right.crossings[index].direction &&
-            mark.label === right.crossings[index].label &&
-            mark.otherId === right.crossings[index].otherId,
-    );
+    return true;
 }
 
 // Fetch a level, then refine the expand set by the 0010 defaults. The client only learns about
@@ -394,14 +411,13 @@ export default function FlowCanvas({
     // Resizing a group only records its size here (localStorage, next to the view modes); the typed
     // server layout carries positions only, and the top-left corner never moves.
     const cacheKeyRef = useRef("");
+    // Group sizes are keyed by the level (base key), not the expanded set, so they survive toggles.
     const onResizeGroup = useCallback((id: string, size: NodeSize) => {
-        const key = cacheKeyRef.current;
-        if (!key) return;
-        saveGroupSizes(key, {
-            ...loadGroupSizes(key),
+        saveGroupSizes(baseKey, {
+            ...loadGroupSizes(baseKey),
             [id]: { width: Math.round(size.width), height: Math.round(size.height) },
         });
-    }, []);
+    }, [baseKey]);
 
     // Structure edits only ever stage a proposal; the model changes when the architect accepts it,
     // and the model-changed event then reloads the level (refreshKey).
@@ -465,6 +481,9 @@ export default function FlowCanvas({
         .map((child) => `${child.id}>${child.group_id ?? ""}`)
         .join("\0");
     const edgeKey = (activeLevel?.relationships ?? []).map((rel) => rel.id).join("\n");
+    const stubKey = buildExternalStubs(activeLevel?.crossings)
+        .stubs.map((stub) => `${stub.id}@${stub.nodeId}`)
+        .join("\n");
     const expandedIds = useMemo(
         () => (activeLevel?.children ?? []).filter((child) => child.expanded).map((child) => child.id),
         [activeLevel],
@@ -472,6 +491,16 @@ export default function FlowCanvas({
     const expandedSig = expandedIds.join("\0");
     const cacheKey = layoutCacheKey({ nodeId, relationshipId, expanded: expandedIds });
     cacheKeyRef.current = cacheKey;
+    // Base and full key of the layout last applied; a change of only the full key is a group toggle.
+    const appliedRef = useRef<{ base: string; key: string } | null>(null);
+    // Set while a toggle's layout is still in flight, so toggling straight back (same key as the
+    // one on screen) still takes the keep-positions path instead of refitting the viewport.
+    const toggleIntentRef = useRef(false);
+
+    // Older builds saved auto-grown sizes under `<base>~<hash>` keys that nothing reads any more.
+    useEffect(() => {
+        pruneOrphanedGroupSizes();
+    }, []);
 
     useEffect(() => {
         if (!activeLevel) return;
@@ -479,11 +508,21 @@ export default function FlowCanvas({
         if (!relationshipId && (nodeId ?? "") !== parentId && nodeId !== undefined) return;
         let cancelled = false;
         const kids = activeLevel.children ?? [];
-        const ids = kids.map((c) => c.id);
-        const compound = kids.map((c) => ({ id: c.id, parentId: c.group_id }));
-        const sizes = layoutSizes(kids);
-        const edges = (activeLevel.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to }));
+        // Edge stubs take part in layout so room is reserved for them next to the node they attach to.
+        const ext = buildExternalStubs(activeLevel.crossings);
+        const stubIds = ext.stubs.map((stub) => stub.id);
+        const ids = [...kids.map((c) => c.id), ...stubIds];
+        const compound = [...kids.map((c) => ({ id: c.id, parentId: c.group_id })), ...stubIds.map((id) => ({ id }))];
+        const sizes = layoutSizes(kids, stubIds);
+        const edges = [
+            ...(activeLevel.relationships ?? []).map((rel) => ({ from: rel.from, to: rel.to })),
+            ...ext.edges.map((edge) => ({ from: edge.source, to: edge.target })),
+        ];
         const nested = kids.some((c) => c.group_id);
+        const last = appliedRef.current;
+        const toggled =
+            !!last && last.base === baseKey && (last.key !== cacheKey || toggleIntentRef.current) && nodesRef.current.length > 0;
+        if (toggled) toggleIntentRef.current = true;
         getLayout(cacheKey)
             .then(async (cached) => {
                 if (cancelled) return;
@@ -502,8 +541,60 @@ export default function FlowCanvas({
                     loadLayoutSig(cacheKey),
                     sig,
                 );
+                if (toggled) {
+                    // Group toggle: keep every placed node where it is, place only what was revealed,
+                    // grow groups only when needed, and leave the viewport alone.
+                    const prev = nodesRef.current;
+                    const seeded = seedPositions(
+                        compound,
+                        prev.map((item) => ({ id: item.id, parentId: item.parentId, position: item.position })),
+                        sizes,
+                        usable ? stored : {},
+                    );
+                    const floor: Record<string, NodeSize> = {};
+                    // Sizes kept nodes had on screen: the floor for containers, and the baseline
+                    // growth is measured against when pushing siblings clear.
+                    const oldSizes: Record<string, NodeSize> = {};
+                    for (const item of prev) {
+                        const width = item.style?.width;
+                        const height = item.style?.height;
+                        if (item.type === "container" && typeof width === "number" && typeof height === "number") {
+                            floor[item.id] = { width, height };
+                            oldSizes[item.id] = { width, height };
+                        } else {
+                            const w = item.measured?.width ?? item.width;
+                            const h = item.measured?.height ?? item.height;
+                            if (typeof w === "number" && typeof h === "number") oldSizes[item.id] = { width: w, height: h };
+                        }
+                    }
+                    // Growth (card -> container, or a container gaining members) can run into later
+                    // siblings; push them clear, then re-measure since moved members can grow a parent.
+                    let placed = seeded;
+                    let containers = containerSizing(compound, placed, sizes, baseKey, floor);
+                    for (let round = 0; round < 4; round += 1) {
+                        const nextSizes = { ...sizes, ...containers.applied };
+                        const pushed = pushOverlaps(compound, placed, oldSizes, nextSizes);
+                        if (compound.every((item) => pushed[item.id]?.x === placed[item.id]?.x && pushed[item.id]?.y === placed[item.id]?.y)) break;
+                        placed = pushed;
+                        containers = containerSizing(compound, placed, sizes, baseKey, floor);
+                    }
+                    // Auto-grown sizes are deliberately not persisted: only the architect's own
+                    // resizes (onResizeGroup) are a permanent floor, so groups shrink on a relayout.
+                    appliedRef.current = { base: baseKey, key: cacheKey };
+                    toggleIntentRef.current = false;
+                    setNodes(buildArchNodes(activeLevel, placed, containers, onToggleMode, onUngroup, onResizeGroup));
+                    await putLayout(cacheKey, {
+                        positions: ids.map((id) => ({ id, x: placed[id]?.x ?? 0, y: placed[id]?.y ?? 0 })),
+                        ports: cached.ports,
+                        attachments: cached.attachments,
+                    });
+                    saveLayoutSig(cacheKey, sig);
+                    return;
+                }
                 if (usable) {
-                    setNodes(buildArchNodes(activeLevel, stored, containerSizing(compound, stored, sizes, cacheKey), onToggleMode, onUngroup, onResizeGroup));
+                    appliedRef.current = { base: baseKey, key: cacheKey };
+                    toggleIntentRef.current = false;
+                    setNodes(buildArchNodes(activeLevel, stored, containerSizing(compound, stored, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                     setFitToken((v) => v + 1);
                     return;
                 }
@@ -511,7 +602,9 @@ export default function FlowCanvas({
                     ? (await layoutCompound(compound, edges, sizes)).positions
                     : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
-                setNodes(buildArchNodes(activeLevel, laid, containerSizing(compound, laid, sizes, cacheKey), onToggleMode, onUngroup, onResizeGroup));
+                appliedRef.current = { base: baseKey, key: cacheKey };
+                toggleIntentRef.current = false;
+                setNodes(buildArchNodes(activeLevel, laid, containerSizing(compound, laid, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                 setFitToken((v) => v + 1);
                 await putLayout(cacheKey, {
                     positions: ids.map((id) => ({ id, x: laid[id]?.x ?? 0, y: laid[id]?.y ?? 0 })),
@@ -527,7 +620,7 @@ export default function FlowCanvas({
         return () => {
             cancelled = true;
         };
-    }, [nodeId, relationshipId, parentId, childIds, edgeKey, cacheKey, expandedSig, activeLevel, relLevel, onToggleMode, onUngroup, onResizeGroup]);
+    }, [nodeId, relationshipId, parentId, childIds, edgeKey, stubKey, cacheKey, baseKey, expandedSig, activeLevel, relLevel, onToggleMode, onUngroup, onResizeGroup]);
 
     useEffect(() => {
         const ac = new AbortController();
@@ -561,12 +654,13 @@ export default function FlowCanvas({
             const children = new Map((activeLevel.children ?? []).map((child) => [child.id, child]));
             let changed = false;
             const next = current.flatMap((node) => {
+                if (node.type === "external") return [node];
                 const child = children.get(node.id);
                 if (!child) {
                     changed = true;
                     return [];
                 }
-                const data = nodeData(child, activeLevel.crossings ?? [], toggleFor(child, activeLevel, onToggleMode), onUngroup);
+                const data = nodeData(child, toggleFor(child, activeLevel, onToggleMode), onUngroup);
                 const type = canvasNodeType(child.renderer, child.child_count, child.expanded);
                 if (node.type === type && sameData(node.data, data)) return [node];
                 if ((node.type === "container") !== (type === "container")) {
@@ -590,7 +684,22 @@ export default function FlowCanvas({
         }
         const pairIndex = new Map<string, number>();
         const names = new Map((activeLevel?.children ?? []).map((child) => [child.id, child.name]));
-        return rels.map((rel) => {
+        const stubEdges: Edge[] = buildExternalStubs(activeLevel?.crossings).edges.map((edge) => ({
+            id: edge.id,
+            type: canvasEdgeType(edge.kind),
+            source: edge.source,
+            target: edge.target,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            style: { cursor: edge.rel.drillable ? "pointer" : "default" },
+            data: {
+                drillable: edge.rel.drillable,
+                rel: edge.rel,
+                fromNodeId: nodeId,
+                labelIndex: 0,
+                labelCount: 1,
+            },
+        }));
+        const regular = rels.map((rel) => {
             const kindForType = rel.aggregated ? undefined : rel.kind;
             const key = `${rel.from}\0${rel.to}`;
             const labelIndex = pairIndex.get(key) ?? 0;
@@ -614,15 +723,37 @@ export default function FlowCanvas({
                 },
             };
         });
+        return [...regular, ...stubEdges];
     }, [activeLevel, nodeId]);
 
     // Drilling is only for summary cards. An expanded group already shows its children
     // on this level, so opening it would repeat the same picture (decision 0010).
+    const openStub = (node: ArchNode) => {
+        const stub = node.data.external;
+        if (stub?.drillable && stub.relationshipId) {
+            navigate(`/relationship/${stub.relationshipId}`, { state: { fromNodeId: nodeId } });
+        }
+    };
+    // Enter/Space on a focused stub acts like a double-click.
+    const onStubKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (!isStubActivationKey(event.key)) return;
+        const target = event.target as HTMLElement;
+        if (!target.classList?.contains("react-flow__node")) return;
+        const node = nodes.find((n) => n.id === target.getAttribute("data-id"));
+        if (node?.type !== "external") return;
+        event.preventDefault();
+        openStub(node);
+    };
     const onNodeDoubleClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        if (node.type === "external") {
+            openStub(node);
+            return;
+        }
         if (!drillsOnDoubleClick(node.type)) return;
         navigate(`/node/${node.id}`);
     };
     const onNodeClick: NodeMouseHandler<ArchNode> = (_event, node) => {
+        if (node.type === "external") return;
         onSelectEdge?.(null);
         onSelectNode?.(node.id);
     };
@@ -686,7 +817,7 @@ export default function FlowCanvas({
 
     // A top-level node dropped on an open container moves into it (via proposal). Null otherwise.
     function dropInTarget(event: MouseEvent | TouchEvent, node: ArchNode): string | null {
-        if (node.parentId || node.type === "container") return null;
+        if (node.parentId || node.type === "container" || node.type === "external") return null;
         const pointer = pointerPoint(event);
         if (!pointer) return null;
         return containerAt(screenToFlowPosition(pointer), containerRects(), [node.id]);
@@ -704,7 +835,10 @@ export default function FlowCanvas({
             requestReparent(node.id, outside);
             return;
         }
-        const ids = (activeLevel?.children ?? []).map((child) => child.id);
+        const ids = [
+            ...(activeLevel?.children ?? []).map((child) => child.id),
+            ...buildExternalStubs(activeLevel?.crossings).stubs.map((stub) => stub.id),
+        ];
         // Members are stored relative to their group, as React Flow holds them.
         const placed = new Map(nodesRef.current.map((item) => [item.id, item.position]));
         placed.set(node.id, node.position);
@@ -832,6 +966,7 @@ export default function FlowCanvas({
                 multiSelectionKeyCode={multiSelectionKeys}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
+                onKeyDown={onStubKeyDown}
                 onNodeClick={onNodeClick}
                 onNodeDoubleClick={onNodeDoubleClick}
                 onEdgeClick={onEdgeClick}
@@ -841,6 +976,7 @@ export default function FlowCanvas({
                 panOnDrag={tool === "grab"}
                 selectionOnDrag={tool === "pointer"}
                 nodesConnectable={false}
+                deleteKeyCode={null}
                 proOptions={{ hideAttribution: true }}
             >
                 <Background gap={24} size={1} color="var(--canvas-dot)" />

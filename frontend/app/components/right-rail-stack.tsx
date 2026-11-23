@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
-const railClass = "pointer-events-none absolute top-0 right-0 z-50 h-full w-[min(440px,92vw)]";
+// Below 1280px the centred control bar would sit under a full-height rail, so the rail stops above it.
+const railClass = "pointer-events-none absolute top-0 right-0 z-50 h-full w-[min(440px,92vw)] max-[1279px]:h-[calc(100%-5rem)]";
 
 export type RightRailFront = "inspector" | "review";
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { proposalRows } from "./proposal-rows";
+import { hierarchySections, proposalRows, summarizeProposal, unresolvedParentIds, unresolvedRowIds } from "./proposal-rows";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -127,6 +127,30 @@ describe("proposal rows", () => {
     });
 });
 
+describe("delete_relationship rows", () => {
+    it("renders a Remove connection row naming the interior nodes it removes", () => {
+        const rows = proposalRows(
+            diff([
+                {
+                    index: 0,
+                    op: "delete_relationship",
+                    node_id: "a",
+                    status: "pending",
+                    stale: false,
+                    current: node({ id: "a", name: "Alpha" }),
+                    proposed: null,
+                    relationship: { id: "r1", from: "a", to: "b", label: "calls", kind: "" },
+                    current_relationship: null,
+                    removes_nodes: [{ id: "s1", name: "Step one" }],
+                },
+            ]),
+        );
+        expect(rows[0].verb).toBe("Remove connection");
+        expect(rows[0].title).toBe("Alpha → b");
+        expect(rows[0].change).toContain("Step one");
+    });
+});
+
 describe("review presentation", () => {
     const move = (id: string, parent: string): OpDiff => ({
         index: 0,
@@ -147,13 +171,132 @@ describe("review presentation", () => {
         expect(rows[0].title).toBe("A");
         expect(rows[0].change).toBe("Parent: walkflow-platform → root");
     });
+});
 
-    it("collapses three or more identical moves and leaves pairs alone", async () => {
-        const { groupRows } = await import("./proposal-rows");
-        const seven = proposalRows(diff(["a", "b", "c", "d", "e", "f", "g"].map((id) => move(id, ""))));
-        const items = groupRows(seven);
-        expect(items).toHaveLength(1);
-        expect(items[0]).toMatchObject({ kind: "group", group: { title: "Move 7 nodes to root" } });
-        expect(groupRows(seven.slice(0, 2)).every((item) => item.kind === "row")).toBe(true);
+function op(partial: Partial<OpDiff> & { op: string; index: number }): OpDiff {
+    return {
+        node_id: "",
+        status: "pending",
+        stale: false,
+        current: null,
+        proposed: null,
+        relationship: null,
+        current_relationship: null,
+        ...partial,
+    };
+}
+
+const create = (index: number, id: string, name: string, parent?: string) =>
+    op({ index, op: "create_node", node_id: id, proposed: node({ id, name, parent_id: parent }) });
+const connect = (index: number, from: string, to: string, label = "") =>
+    op({ index, op: "set_relationship", relationship: { from, to, label, kind: "" } });
+
+describe("summarizeProposal", () => {
+    it("counts adds, changes and removals in plain language", () => {
+        const s = summarizeProposal(
+            diff([
+                create(0, "z", "Zone"),
+                create(1, "a", "A", "z"),
+                connect(2, "z", "a"),
+                op({ index: 3, op: "update_node", node_id: "x", fields: ["name"], current: node({ id: "x", name: "X" }), proposed: node({ id: "x", name: "Y" }) }),
+                op({ index: 4, op: "delete_relationship", relationship: { from: "a", to: "b", label: "", kind: "" } }),
+            ]),
+        );
+        expect(s.headline).toBe("Adds 2 nodes · 1 connection; Changes 1; Removes 1 connection");
+        expect(s.source).toBe("Proposed by seed_model");
+        expect(s.staleCount).toBe(0);
+    });
+
+    it("ignores settled ops, counts stale pending ones and names canvas proposals", () => {
+        const s = summarizeProposal({
+            ...diff([
+                { ...create(0, "a", "A"), status: "accepted" },
+                { ...create(1, "b", "B"), stale: true },
+            ]),
+            source: "group_nodes",
+        });
+        expect(s.headline).toBe("Adds 1 node");
+        expect(s.staleCount).toBe(1);
+        expect(s.source).toBe("Staged by you");
+        expect(summarizeProposal(diff([])).headline).toBe("No pending changes");
+    });
+});
+
+describe("hierarchySections", () => {
+    it("puts a new subtree and its inner edges in a new zone, outer edges in Connections", () => {
+        const sections = hierarchySections(
+            diff([
+                create(0, "z", "Billing"),
+                create(1, "a", "API", "z"),
+                create(2, "b", "DB", "z"),
+                connect(3, "a", "b", "reads"),
+                connect(4, "a", "ext", "calls"),
+                create(5, "lone", "Cache", "root1"),
+                op({ index: 6, op: "delete_node", node_id: "old", current: node({ id: "old", name: "Old", parent_id: "root1" }) }),
+            ]),
+        );
+        expect(sections.map((s) => [s.kind, s.title, s.items.length])).toEqual([
+            ["new-zone", "New zone: Billing", 4],
+            ["existing-zone", "In root1", 2],
+            ["connections", "Connections", 1],
+        ]);
+        expect(sections[0].items.map((i) => i.label)).toContain('API → DB "reads"');
+        expect(sections[2].items[0].label).toBe('API → ext "calls"');
+    });
+
+    it("lists existing parents that nothing names yet", () => {
+        const d = diff([create(0, "lone", "Cache", "root1"), create(1, "z", "Z", "lone")]);
+        expect(unresolvedParentIds(d)).toEqual(["root1"]);
+        expect(unresolvedParentIds(d, new Map([["root1", 1]]))).toEqual([]);
+    });
+
+    it("names existing parent zones from the lookup, falling back to the id", () => {
+        const d = diff([create(0, "lone", "Cache", "root1")]);
+        expect(hierarchySections(d, new Map([["root1", "Platform"]]))[0].title).toBe("In Platform");
+        expect(hierarchySections(d)[0].title).toBe("In root1");
+    });
+});
+
+describe("existing node names in rows", () => {
+    const op = (partial: Partial<OpDiff>): OpDiff => ({
+        index: 0,
+        op: "update_node",
+        node_id: "runbook",
+        status: "pending",
+        stale: false,
+        fields: ["spec"],
+        current: null,
+        proposed: null,
+        relationship: null,
+        current_relationship: null,
+        ...partial,
+    });
+    const names = new Map([
+        ["runbook", "Operational runbook"],
+        ["a", "Platform"],
+        ["b", "Media boundary"],
+    ]);
+
+    it("names update, delete and connection rows from the lookup, falling back to ids", () => {
+        const d = diff([
+            op({}),
+            op({ index: 1, op: "delete_node", node_id: "runbook", fields: [] }),
+            op({ index: 2, op: "set_relationship", node_id: "a", fields: [], relationship: { id: "r", from: "a", to: "b", label: "", kind: "" } }),
+        ]);
+        const named = proposalRows(d, names);
+        expect(named[0].title).toBe("Operational runbook");
+        expect(named[0].summary).toBe("Update Operational runbook (spec)");
+        expect(named[1].summary).toBe("Delete Operational runbook");
+        expect(named[2].title).toBe("Platform → Media boundary");
+        expect(proposalRows(d)[2].title).toBe("a → b");
+    });
+
+    it("lists the ids no name covers yet", () => {
+        const d = diff([
+            op({}),
+            op({ index: 1, op: "set_relationship", node_id: "a", fields: [], relationship: { id: "r", from: "a", to: "b", label: "", kind: "" } }),
+        ]);
+        expect(unresolvedRowIds(d).sort()).toEqual(["a", "b", "runbook"]);
+        expect(unresolvedRowIds(d, names)).toEqual([]);
     });
 });

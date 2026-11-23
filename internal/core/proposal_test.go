@@ -975,3 +975,33 @@ func TestExplicitIDLengthIsCapped(t *testing.T) {
 		t.Fatalf("max id: %v", err)
 	}
 }
+
+func TestDeleteRelationshipListsInteriorNodesAndGoesStaleWhenTheyChange(t *testing.T) {
+	idx, _ := newModel(t)
+	a, _ := idx.Create(CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(CreateInput{Name: "B", Type: "service"})
+	rel, _ := idx.SetRelationship(SetRelationshipInput{From: a, To: b})
+	step, err := idx.Create(CreateInput{Name: "Step", Type: "step", RelationshipID: rel.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := idx.Stage(StageInput{Source: OpDeleteRelationship, Ops: []StageOp{{Op: OpDeleteRelationship, RelID: rel.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	diff, err := idx.ProposalDiff(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := diff.Operations[0].RemovesNodes
+	if len(got) != 1 || got[0].ID != string(step) || got[0].Name != "Step" || diff.Operations[0].Stale {
+		t.Fatalf("removes %+v stale %v", got, diff.Operations[0].Stale)
+	}
+	spec := "edited"
+	if err := idx.Update(step, UpdateInput{Spec: &spec}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.AcceptOperation(pid, 0, false); !errors.Is(err, ErrStale) {
+		t.Fatalf("expected stale after interior edit, got %v", err)
+	}
+}

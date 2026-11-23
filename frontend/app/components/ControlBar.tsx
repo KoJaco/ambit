@@ -4,6 +4,7 @@ import { Tooltip } from "./tooltip";
 import type { ControlBarTool } from "./types";
 import {
     BookOpenIcon,
+    ClipboardCheckIcon,
     HandGrabIcon,
     KeyboardIcon,
     MinusIcon,
@@ -146,8 +147,11 @@ export function ControlBar({
     onZoomIn,
     onUndo,
     onRedo,
+    onDelete,
     undoLabel,
     redoLabel,
+    reviewCount = 0,
+    onOpenReview,
 }: {
     selectedTool: ControlBarTool;
     onSelectTool: (tool: ControlBarTool) => void;
@@ -156,9 +160,14 @@ export function ControlBar({
     onZoomIn?: () => void;
     onUndo?: () => void;
     onRedo?: () => void;
+    // Delete/Backspace on the selected edge or node; undefined when nothing is selected.
+    onDelete?: () => void;
     // What the next undo/redo would change, for the tooltip.
     undoLabel?: string | null;
     redoLabel?: string | null;
+    // Proposals waiting for review; the Review entry shows only when there are some.
+    reviewCount?: number;
+    onOpenReview?: () => void;
 }) {
     const session = useSyncExternalStore(barStore.subscribe, barStore.get, barStore.getServerSnapshot);
     const mode = resolveBarMode(session);
@@ -222,6 +231,7 @@ export function ControlBar({
             "tool-grab": () => onSelectTool("grab"),
             undo: onUndo,
             redo: onRedo,
+            delete: onDelete,
             "zoom-in": onZoomIn,
             "zoom-out": onZoomOut,
             "fit-view": onRecenter,
@@ -301,6 +311,23 @@ export function ControlBar({
                     </div>
                 ))}
                 <div className="flex items-center gap-0.5">
+                    {reviewCount > 0 && onOpenReview ? (
+                        <span className="relative inline-flex">
+                            <BarButton
+                                label={`Review, ${reviewCount} pending ${reviewCount === 1 ? "proposal" : "proposals"}`}
+                                tooltip="Review proposals"
+                                onClick={onOpenReview}
+                            >
+                                <ClipboardCheckIcon className="h-4 w-4" />
+                            </BarButton>
+                            <span
+                                aria-hidden
+                                className="pointer-events-none absolute -top-1 -right-1 inline-flex min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-4 font-semibold text-primary-foreground"
+                            >
+                                {reviewCount}
+                            </span>
+                        </span>
+                    ) : null}
                     <BarButton
                         label="Keyboard shortcuts"
                         tooltip={withShortcut("Keyboard shortcuts", "open-shortcuts", platform)}

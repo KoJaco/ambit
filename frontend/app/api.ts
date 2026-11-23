@@ -56,6 +56,25 @@ export function loadGroupSizes(cacheKey: string): GroupSizes {
     }
 }
 
+// Group sizes are stored per base key. Keys with a `~<hash>` suffix are leftovers from when
+// auto-grown sizes were saved per expanded set; they are never read and are dropped.
+export function orphanedGroupSizeKeys(storageKeys: string[]): string[] {
+    return storageKeys.filter((key) => key.startsWith(groupSizesStoragePrefix) && key.includes("~"));
+}
+
+export function pruneOrphanedGroupSizes(): void {
+    try {
+        const keys: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i += 1) {
+            const key = window.localStorage.key(i);
+            if (key) keys.push(key);
+        }
+        for (const key of orphanedGroupSizeKeys(keys)) window.localStorage.removeItem(key);
+    } catch {
+        // Storage unavailable: nothing to clean.
+    }
+}
+
 export function saveGroupSizes(cacheKey: string, sizes: GroupSizes): void {
     try {
         window.localStorage.setItem(groupSizesStoragePrefix + cacheKey, JSON.stringify(sizes));
@@ -223,6 +242,12 @@ export function getNode(id: string, signal?: AbortSignal): Promise<NodeDetail> {
     return send<NodeDetail>(`/nodes/${encodeURIComponent(id)}`, { signal });
 }
 
+export type IconInfo = { id: string; label: string };
+
+export function getIcons(signal?: AbortSignal): Promise<{ icons: IconInfo[] }> {
+    return send<{ icons: IconInfo[] }>("/icons", { signal });
+}
+
 export function getIntegrity(): Promise<{ warnings: Warning[] }> {
     return send(`/integrity`);
 }
@@ -232,10 +257,15 @@ export function getRelationshipLevel(relationshipId: string, signal?: AbortSigna
 }
 
 export function createNode(input: {
+    id?: string;
     name: string;
     type: string;
     parent_id?: string;
     relationship_id?: string;
+    status?: string;
+    implementation?: string[];
+    scope?: string[];
+    protected?: boolean;
     markdown?: string;
     icon?: string;
     color?: string;
@@ -359,6 +389,7 @@ export type OpDiff = {
     proposed: NodeSnapshot | null;
     relationship: RelSnapshot | null;
     current_relationship: RelSnapshot | null;
+    removes_nodes?: { id: string; name: string }[];
     error?: string;
 };
 

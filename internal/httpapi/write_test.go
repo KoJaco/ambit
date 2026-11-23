@@ -196,3 +196,22 @@ func doJSON(t *testing.T, idx *core.Index, method, path string, body any) *httpt
 	Handler(idx).ServeHTTP(rec, req)
 	return rec
 }
+
+func TestCreateHonoursExplicitIDAndRejectsCollision(t *testing.T) {
+	idx, _ := newModel(t)
+	rec := doJSON(t, idx, http.MethodPost, "/nodes", map[string]any{"id": "orders", "name": "Order Service", "type": "service"})
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create %d %s", rec.Code, rec.Body.String())
+	}
+	var created nodeJSON
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ID != "orders" {
+		t.Fatalf("id %q", created.ID)
+	}
+	again := doJSON(t, idx, http.MethodPost, "/nodes", map[string]any{"id": "orders", "name": "Other", "type": "service"})
+	if again.Code == http.StatusCreated {
+		t.Fatalf("collision accepted: %s", again.Body.String())
+	}
+}

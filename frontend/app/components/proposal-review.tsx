@@ -1,6 +1,6 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
-import { ChevronDown, ChevronLeft, ListChecks, XCircle } from "lucide-react";
+import { Check, ChevronLeft, ListChecks, TriangleAlert, XCircle } from "lucide-react";
 import {
     acceptAll,
     acceptOperation,
@@ -14,10 +14,23 @@ import {
     type ProposalDiff,
     type ProposalSummary,
 } from "../api";
-import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks } from "../proposal-detail";
+import { detailCanAccept, detailNames, detailNeedsConfirm, proposalDetailBlocks, proposalDetailHead, proposalDetailView, unresolvedNodeIds } from "../proposal-detail";
+import { isEditableElement, reviewEscapeAction } from "../right-rail-state";
+import { useNodeSnapshots } from "../use-node-snapshots";
+import { ProposalVisual } from "./proposal-visuals";
 import { history } from "../history";
 import { acceptedEntry } from "../proposal-history";
-import { groupRows, proposalOrigin, proposalRows, type ReviewRow, type RowGroup, type RowVerb } from "../proposal-rows";
+import {
+    hierarchySections,
+    proposalOrigin,
+    proposalRows,
+    summarizeProposal,
+    unresolvedParentIds,
+    unresolvedRowIds,
+    type HierarchyItem,
+    type ReviewRow,
+    type RowVerb,
+} from "../proposal-rows";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { ReviewOpActions } from "./review-op-actions";
 
@@ -26,9 +39,17 @@ type DetailSelection = { proposalId: string; index: number };
 export function ProposalReview({
     refreshKey,
     onFocus,
+    open = true,
+    onClose,
+    onPendingChange,
 }: {
     refreshKey: number;
     onFocus?: () => void;
+    // When false the panel is hidden but proposals keep loading so the pending count stays current.
+    open?: boolean;
+    onClose?: () => void;
+    // Ids of proposals that still have pending operations; called after each load.
+    onPendingChange?: (ids: string[]) => void;
 }) {
     const [summaries, setSummaries] = useState<ProposalSummary[]>([]);
     const [diffs, setDiffs] = useState<Record<string, ProposalDiff>>({});
@@ -36,6 +57,26 @@ export function ProposalReview({
     const [detail, setDetail] = useState<DetailSelection | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
+    // Proposals whose per-change accept/reject controls are shown; collapsed by default.
+    const [individual, setIndividual] = useState<Record<string, boolean>>({});
+    const [loaded, setLoaded] = useState(false);
+    // Row that opened the detail view, so Back can return focus to it.
+    const openedFrom = useRef<string | null>(null);
+    const detailHeading = useRef<HTMLHeadingElement>(null);
+    const listRef = useRef<HTMLDivElement>(null);
+    const detailKey = detail ? `${detail.proposalId}:${detail.index}` : null;
+    const wasDetail = useRef(false);
+    const pendingCallback = useRef(onPendingChange);
+    pendingCallback.current = onPendingChange;
+
+    useEffect(() => {
+        if (!loaded) return;
+        const ids = summaries
+            .filter((proposal) => !proposal.unreadable)
+            .filter((proposal) => diffs[proposal.proposal_id]?.operations.some((op) => op.status === "pending"))
+            .map((proposal) => proposal.proposal_id);
+        pendingCallback.current?.(ids);
+    }, [loaded, summaries, diffs]);
 
     useEffect(() => {
         const ac = new AbortController();
@@ -54,6 +95,7 @@ export function ProposalReview({
                 if (ac.signal.aborted) return;
                 setSummaries(proposals);
                 setDiffs(next);
+                setLoaded(true);
             })
             .catch((err: unknown) => {
                 if (ac.signal.aborted) return;
@@ -110,46 +152,46 @@ export function ProposalReview({
         });
     }
 
-    function renderRow(proposalId: string, diff: ProposalDiff | undefined, row: ReviewRow): ReactNode {
+    function renderRow(proposalId: string, diff: ProposalDiff | undefined, { row, label }: HierarchyItem, showActions: boolean): ReactNode {
         const proposal = summaries.find((item) => item.proposal_id === proposalId);
         return (
             <li
                 key={row.key}
-                className={clsx(
-                    "group relative rounded-xl border bg-card transition-colors hover:bg-accent/50 focus-within:bg-accent/50",
-                    row.stale ? "border-amber-600/60 bg-amber-500/10" : "border-border",
-                )}
+                className="group relative -mx-2 border-b border-border/60 px-2 transition-colors last:border-b-0 hover:bg-accent/50 focus-within:bg-accent/50"
             >
                 <button
                     type="button"
-                    className="flex w-full cursor-pointer items-start gap-2.5 rounded-xl px-2.5 py-2 pr-[4.5rem] text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                    className={clsx("flex w-full cursor-pointer items-start gap-2.5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", showActions && row.status === "pending" && "pr-[4.5rem]")}
+                    data-row-key={`${proposalId}:${row.key}`}
                     onClick={() => {
                         onFocus?.();
+                        openedFrom.current = `${proposalId}:${row.key}`;
                         setDetail({ proposalId, index: row.index });
                     }}
                 >
                     <VerbChip verb={row.verb} done={row.status !== "pending"} />
                     <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-medium">
-                            {row.title}
+                        <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                            <span className="truncate" title={label}>{label}</span>
                             {row.stale ? (
-                                <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                                <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
                                     Stale
                                 </span>
                             ) : null}
                             {row.status !== "pending" ? (
-                                <span className="ml-2 text-xs font-normal text-muted-foreground">{row.status}</span>
+                                <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.status}</span>
                             ) : null}
                         </span>
-                        {row.change ? <span className="truncate text-xs text-muted-foreground">{row.change}</span> : null}
+                        {row.change ? <span className="truncate text-xs text-muted-foreground" title={row.change}>{row.change}</span> : null}
                     </span>
                 </button>
-                {row.status === "pending" ? (
+                {showActions && row.status === "pending" ? (
                     <ReviewOpActions
-                        className="absolute top-1.5 right-1.5 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                        className="absolute top-1.5 right-2"
                         canAccept={row.canAccept}
                         needsConfirm={row.needsConfirm}
                         busy={busy}
+                        label={label}
                         onAccept={() => void acceptRows(proposal ?? emptySummary(proposalId), diff, [row], row.title)}
                         onReject={() => void rejectRows(proposalId, [row])}
                     />
@@ -158,14 +200,45 @@ export function ProposalReview({
         );
     }
 
-    if (summaries.length === 0 && !error) return null;
-
+    // Hooks must run on every render, so this sits above the early return.
     const detailOp = detail ? findOp(diffs, detail) : null;
+    const fetchedNodes = useNodeSnapshots((known) =>
+        detail && detailOp && diffs[detail.proposalId]
+            ? unresolvedNodeIds(diffs[detail.proposalId], detailOp, known)
+            : Object.values(diffs).flatMap((d) => [...unresolvedParentIds(d, known), ...unresolvedRowIds(d, known)]),
+    );
+
+    const fetchedNodeNames = new Map([...fetchedNodes].map(([id, node]) => [id, node.name]));
+
+    // Focus follows the view: heading on entering detail, the opening row (or list heading) on leaving it.
+    useLayoutEffect(() => {
+        if (detailKey) {
+            wasDetail.current = true;
+            detailHeading.current?.focus();
+            return;
+        }
+        if (!wasDetail.current) return;
+        wasDetail.current = false;
+        const key = openedFrom.current;
+        const row = key ? Array.from(listRef.current?.querySelectorAll<HTMLElement>("[data-row-key]") ?? []).find((el) => el.dataset.rowKey === key) : null;
+        (row ?? document.getElementById("review-heading"))?.focus();
+    }, [detailKey]);
+
+    if (!open || (summaries.length === 0 && !error)) return null;
 
     return (
         <RightRailPanel
+            label="Review"
             onPointerDown={() => {
                 onFocus?.();
+            }}
+            onKeyDown={(event) => {
+                if (event.key !== "Escape" || event.defaultPrevented) return;
+                const action = reviewEscapeAction({ detailOpen: !!detail, editingFocus: isEditableElement(event.target as HTMLElement) });
+                if (action === "none") return;
+                event.stopPropagation();
+                if (action === "back") setDetail(null);
+                else onClose?.();
             }}
         >
             {detail && detailOp ? (
@@ -173,7 +246,7 @@ export function ProposalReview({
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
-                            className="inline-flex items-center gap-1 text-xs text-foreground/80"
+                            className="inline-flex min-h-6 items-center gap-1 rounded text-xs text-foreground/80 focus-visible:outline-2 focus-visible:outline-ring"
                             onClick={() => setDetail(null)}
                         >
                             <ChevronLeft className="size-4" aria-hidden />
@@ -184,12 +257,34 @@ export function ProposalReview({
                         </span>
                     </div>
                     <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
-                        {proposalDetailBlocks(detailOp).map((block, blockIndex) => (
-                            <DetailBlockView key={blockIndex} block={block} />
-                        ))}
+                        {(() => {
+                            const names = detailNames(diffs[detail.proposalId], fetchedNodes);
+                            const head = proposalDetailHead(detailOp, names);
+                            const rest = proposalDetailBlocks(detailOp, names).slice(head.length);
+                            const view = proposalDetailView(diffs[detail.proposalId], detailOp, fetchedNodes);
+                            return (
+                                <>
+                                    {head.map((block, i) => (
+                                        <DetailBlockView key={i} block={block} headingRef={i === 0 ? detailHeading : undefined} />
+                                    ))}
+                                    <ProposalVisual view={view} />
+                                    <details className="text-xs">
+                                        <summary className="cursor-pointer rounded text-foreground/80 focus-visible:outline-2 focus-visible:outline-ring">
+                                            Full details
+                                        </summary>
+                                        <div className="mt-2 flex flex-col gap-2">
+                                            {rest.map((block, i) => (
+                                                <DetailBlockView key={i} block={block} />
+                                            ))}
+                                        </div>
+                                    </details>
+                                </>
+                            );
+                        })()}
                     </div>
                     {detailOp.status === "pending" ? (
                         <ReviewOpActions
+                            label={proposalRows({ ...diffs[detail.proposalId], operations: [detailOp] }, fetchedNodeNames)[0]?.title ?? detailOp.node_id}
                             canAccept={detailCanAccept(detailOp)}
                             needsConfirm={detailNeedsConfirm(detailOp)}
                             busy={busy}
@@ -214,51 +309,60 @@ export function ProposalReview({
             ) : (
                 <>
                     <div className="flex shrink-0 items-center justify-between" onPointerDown={() => onFocus?.()}>
-                        <h2 className="flex items-center gap-2 font-semibold">
+                        <h2 id="review-heading" tabIndex={-1} className="flex items-center gap-2 font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
                             Review
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                            <span className={clsx("rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium", accentText)}>
                                 {summaries.length} {summaries.length === 1 ? "proposal" : "proposals"}
                             </span>
                         </h2>
-                        <PanelHeaderActions />
+                        <PanelHeaderActions onClose={onClose} closeLabel="Close Review" />
                     </div>
                     {error ? <p className="shrink-0 text-destructive">{error}</p> : null}
-                    <div className="-mx-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-1">
+                    <div ref={listRef} className="-mx-2 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-2 pb-1">
                         {summaries.map((proposal) => {
                             const diff = diffs[proposal.proposal_id];
-                            const rows = proposalRows(diff ?? emptyDiff(proposal));
+                            const rows = proposalRows(diff ?? emptyDiff(proposal), fetchedNodeNames);
                             const pending = rows.filter((row) => row.status === "pending").length;
                             const origin = proposalOrigin(proposal.source);
+                            const line = summarizeProposal(diff ?? emptyDiff(proposal));
+                            const sections = hierarchySections(diff ?? emptyDiff(proposal), fetchedNodeNames);
+                            const showIndividual = !!individual[proposal.proposal_id];
                             return (
                                 <section
                                     key={proposal.proposal_id}
-                                    aria-label={proposal.summary || proposal.proposal_id}
+                                    aria-labelledby={`proposal-title-${proposal.proposal_id}`}
                                     className="rounded-2xl border border-border bg-background/40"
                                 >
                                     <header className="sticky top-0 z-10 flex flex-col gap-2.5 rounded-t-2xl border-b border-border bg-card/95 p-3 backdrop-blur">
                                         <div className="flex flex-col gap-1">
-                                            <p className="text-sm leading-snug font-semibold">
+                                            <h3 id={`proposal-title-${proposal.proposal_id}`} className="text-sm leading-snug font-semibold">
                                                 {proposal.unreadable
                                                     ? `Unreadable ${proposal.proposal_id}`
                                                     : proposal.summary || `${proposal.source} ${proposal.proposal_id}`}
-                                            </p>
+                                            </h3>
                                             {proposal.error ? (
                                                 <p className="text-xs text-destructive">{proposal.error}</p>
                                             ) : (
-                                                <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                                                    <span
-                                                        className={clsx(
-                                                            "rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
-                                                            origin === "You" ? "bg-muted" : "bg-primary/10 text-primary",
-                                                        )}
-                                                    >
-                                                        {origin}
-                                                    </span>
-                                                    <span>
-                                                        {rows.length} {rows.length === 1 ? "change" : "changes"}
-                                                        {pending !== rows.length ? `, ${pending} pending` : ""}
-                                                    </span>
-                                                </p>
+                                                <div className="flex flex-col gap-1">
+                                                    <p className="text-sm font-medium text-foreground">{line.headline}</p>
+                                                    <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                                        <span
+                                                            className={clsx(
+                                                                "rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                                                                origin === "You" ? "bg-muted" : clsx("bg-primary/10", accentText),
+                                                            )}
+                                                        >
+                                                            {origin}
+                                                        </span>
+                                                        <span>{line.source}</span>
+                                                    </p>
+                                                    {line.staleCount > 0 ? (
+                                                        <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
+                                                            <TriangleAlert className="size-3.5 shrink-0" aria-hidden />
+                                                            {line.staleCount} out of date: the model changed since this was proposed
+                                                        </p>
+                                                    ) : null}
+                                                </div>
                                             )}
                                         </div>
                                         {proposal.unreadable ? (
@@ -302,6 +406,7 @@ export function ProposalReview({
                                                 <button
                                                     type="button"
                                                     className={outlineButton}
+                                                    aria-label={`Reject all changes in ${proposal.summary || proposal.proposal_id}`}
                                                     disabled={busy || pending === 0}
                                                     onClick={() =>
                                                         void run(async () => {
@@ -322,22 +427,39 @@ export function ProposalReview({
                                             {skipped[proposal.proposal_id].map((op) => `${op.node_id} (${op.reason})`).join(", ")}
                                         </p>
                                     ) : null}
-                                    <ul className="flex flex-col gap-1.5 p-2">
-                                        {groupRows(rows).map((item) =>
-                                            item.kind === "group" ? (
-                                                <GroupItem
-                                                    key={item.group.key}
-                                                    group={item.group}
-                                                    busy={busy}
-                                                    renderRow={(row) => renderRow(proposal.proposal_id, diff, row)}
-                                                    onAccept={() => acceptRows(proposal, diff, item.group.rows, item.group.title)}
-                                                    onReject={() => rejectRows(proposal.proposal_id, item.group.rows)}
-                                                />
-                                            ) : (
-                                                renderRow(proposal.proposal_id, diff, item.row)
-                                            ),
-                                        )}
-                                    </ul>
+                                    {proposal.unreadable ? null : (
+                                        <div className="flex flex-col gap-2 p-2">
+                                            <button
+                                                type="button"
+                                                aria-pressed={showIndividual}
+                                                className={clsx(
+                                                    "inline-flex w-fit items-center gap-1 rounded-md border px-1.5 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring",
+                                                    showIndividual ? "border-foreground/70 bg-accent text-foreground" : "border-transparent text-foreground/80",
+                                                )}
+                                                onClick={() =>
+                                                    setIndividual((current) => ({
+                                                        ...current,
+                                                        [proposal.proposal_id]: !current[proposal.proposal_id],
+                                                    }))
+                                                }
+                                            >
+                                                {showIndividual ? <Check className="size-4" aria-hidden /> : <ListChecks className="size-4" aria-hidden />}
+                                                Review individually
+                                            </button>
+                                            <div className="flex flex-col gap-3">
+                                                {sections.map((section) => (
+                                                    <section key={section.key} aria-labelledby={`sec-${proposal.proposal_id}-${section.key}`} className="flex flex-col gap-1.5">
+                                                        <h4 id={`sec-${proposal.proposal_id}-${section.key}`} className="text-xs font-semibold text-muted-foreground">{section.title}</h4>
+                                                        <ul className="flex flex-col">
+                                                            {section.items.map((item) =>
+                                                                renderRow(proposal.proposal_id, diff, item, showIndividual),
+                                                            )}
+                                                        </ul>
+                                                    </section>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </section>
                             );
                         })}
@@ -347,6 +469,9 @@ export function ProposalReview({
         </RightRailPanel>
     );
 }
+
+// Accent text that holds 4.5:1 on the primary tint in light mode; the dark primary already does.
+const accentText = "text-[color-mix(in_oklab,var(--primary)_75%,black)] dark:text-primary";
 
 const buttonBase =
     "inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50";
@@ -358,6 +483,7 @@ const VERB_STYLE: Record<RowVerb, string> = {
     Update: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
     Delete: "bg-red-500/15 text-red-800 dark:text-red-300",
     Connect: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+    "Remove connection": "bg-red-500/15 text-red-800 dark:text-red-300",
     Other: "bg-muted text-muted-foreground",
 };
 
@@ -365,7 +491,7 @@ function VerbChip({ verb, done }: { verb: RowVerb; done?: boolean }) {
     return (
         <span
             className={clsx(
-                "mt-0.5 inline-flex w-[3.75rem] shrink-0 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                "mt-0.5 inline-flex min-w-[3.75rem] shrink-0 text-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
                 VERB_STYLE[verb],
                 done && "opacity-50",
             )}
@@ -375,67 +501,23 @@ function VerbChip({ verb, done }: { verb: RowVerb; done?: boolean }) {
     );
 }
 
-// A run of identical edits (e.g. seven nodes moved to the root) as one expandable row.
-function GroupItem({
-    group,
-    busy,
-    renderRow,
-    onAccept,
-    onReject,
-}: {
-    group: RowGroup;
-    busy: boolean;
-    renderRow: (row: ReviewRow) => ReactNode;
-    onAccept: () => void;
-    onReject: () => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const pending = group.rows.filter((row) => row.status === "pending" && row.canAccept).length;
-    const id = `group-${group.key.replace(/[^a-z0-9]/gi, "-")}`;
-    return (
-        <li className="rounded-xl border border-border bg-card">
-            <div className="group relative">
-                <button
-                    type="button"
-                    aria-expanded={open}
-                    aria-controls={id}
-                    className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 pr-[4.5rem] text-left hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                    onClick={() => setOpen((value) => !value)}
-                >
-                    <VerbChip verb={group.verb} />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{group.title}</span>
-                    <ChevronDown
-                        className={clsx("size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", open && "rotate-180")}
-                        aria-hidden
-                    />
-                </button>
-                {pending > 0 ? (
-                    <ReviewOpActions
-                        className="absolute top-1.5 right-1.5"
-                        canAccept
-                        needsConfirm={false}
-                        busy={busy}
-                        onAccept={onAccept}
-                        onReject={onReject}
-                    />
-                ) : null}
-            </div>
-            {open ? (
-                <ul id={id} className="flex flex-col gap-1.5 border-t border-border p-2">
-                    {group.rows.map(renderRow)}
-                </ul>
-            ) : null}
-        </li>
-    );
-}
-
 function emptySummary(id: string): ProposalSummary {
     return { proposal_id: id, unreadable: false };
 }
 
-function DetailBlockView({ block }: { block: ReturnType<typeof proposalDetailBlocks>[number] }) {
+function DetailBlockView({
+    block,
+    headingRef,
+}: {
+    block: ReturnType<typeof proposalDetailBlocks>[number];
+    headingRef?: Ref<HTMLHeadingElement>;
+}) {
     if (block.kind === "heading") {
-        return <h3 className="text-sm font-semibold">{block.text}</h3>;
+        return (
+            <h3 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-sm font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
+                {block.text}
+            </h3>
+        );
     }
     if (block.kind === "line") {
         return <p className="text-xs text-foreground/80">{block.text}</p>;

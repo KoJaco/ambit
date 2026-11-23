@@ -8,6 +8,7 @@ export function ReviewOpActions({
     busy,
     onAccept,
     onReject,
+    label,
     className,
 }: {
     canAccept: boolean;
@@ -15,6 +16,8 @@ export function ReviewOpActions({
     busy: boolean;
     onAccept: () => void;
     onReject: () => void;
+    // What the change is, so each button has a unique accessible name.
+    label: string;
     className?: string;
 }) {
     return (
@@ -24,13 +27,13 @@ export function ReviewOpActions({
                 <button
                     type="button"
                     className={clsx(
-                        "inline-flex size-7 items-center justify-center rounded-md hover:bg-foreground/10",
+                        "inline-flex size-7 items-center justify-center rounded-md hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary",
                         needsConfirm
                             ? "text-amber-700 dark:text-amber-400"
                             : "text-emerald-600",
                     )}
                     disabled={busy}
-                    aria-label={needsConfirm ? "Apply over newer edit" : "Accept"}
+                    aria-label={`${needsConfirm ? "Apply over newer edit" : "Accept"}: ${label}`}
                     onClick={(event) => {
                         event.stopPropagation();
                         onAccept();
@@ -43,9 +46,9 @@ export function ReviewOpActions({
             <Tooltip label="Reject">
             <button
                 type="button"
-                className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10"
+                className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                 disabled={busy}
-                aria-label="Reject"
+                aria-label={`Reject: ${label}`}
                 onClick={(event) => {
                     event.stopPropagation();
                     onReject();

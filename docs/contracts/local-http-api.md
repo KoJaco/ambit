@@ -134,7 +134,9 @@ These **write directly** to the canonical model through `ambit-core`. Architect 
 in the UI need no review gate — the human is already in the seat. This is the asymmetry
 with MCP, where the same operations are staged.
 
-- `POST /nodes` — create. The id is derived from the name.
+- `POST /nodes` — create. The id is derived from the name unless the body carries an optional `id`
+  (a valid slug), which is used as-is; an id already in use is rejected like any
+  other create conflict. Undo of a node delete relies on this to restore the same id.
 - `PATCH /nodes/{id}` — update. `status` is a normal field. Omitted fields are left
   unchanged.
 - `DELETE /nodes/{id}` — delete.

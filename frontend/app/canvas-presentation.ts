@@ -2,7 +2,7 @@ import type { SchemaColumn } from "./api";
 
 export const RENDERER_IDS = ["card", "schema", "placeholder", "group"] as const;
 
-export type CanvasNodeType = "card" | "schema" | "placeholder" | "group" | "container";
+export type CanvasNodeType = "card" | "schema" | "placeholder" | "group" | "container" | "external";
 export type CanvasEdgeType = "arch" | "button" | "animated" | "data";
 
 // An open group is always a container. A collapsed node with children is a summary card, even
@@ -53,7 +53,11 @@ export function nodeLayoutSize(
         : base;
 }
 
+// Edge stub for a relationship that leaves the level: about half the width of a card.
+export const externalStubSize = { width: 110, height: 64 };
+
 function baseLayoutSize(renderer?: string, schemaLength = 0): { width: number; height: number } {
+    if (renderer === "external") return externalStubSize;
     switch (canvasNodeType(renderer)) {
         case "schema":
             return { width: 280, height: Math.max(120, 56 + Math.max(schemaLength, 1) * 28) };
