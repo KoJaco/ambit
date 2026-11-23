@@ -358,6 +358,7 @@ const VERB_STYLE: Record<RowVerb, string> = {
     Update: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
     Delete: "bg-red-500/15 text-red-800 dark:text-red-300",
     Connect: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
+    "Remove connection": "bg-red-500/15 text-red-800 dark:text-red-300",
     Other: "bg-muted text-muted-foreground",
 };
 
@@ -365,7 +366,7 @@ function VerbChip({ verb, done }: { verb: RowVerb; done?: boolean }) {
     return (
         <span
             className={clsx(
-                "mt-0.5 inline-flex w-[3.75rem] shrink-0 justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                "mt-0.5 inline-flex min-w-[3.75rem] shrink-0 text-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
                 VERB_STYLE[verb],
                 done && "opacity-50",
             )}

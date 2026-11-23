@@ -19,7 +19,7 @@ export type ReviewRow = {
     groupKey: string;
 };
 
-export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Other";
+export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Remove connection" | "Other";
 
 const missingNode = "node is missing";
 
@@ -149,6 +149,8 @@ function verbOf(op: OpDiff): RowVerb {
             return "Delete";
         case "set_relationship":
             return "Connect";
+        case "delete_relationship":
+            return "Remove connection";
         default:
             return "Other";
     }
@@ -156,6 +158,10 @@ function verbOf(op: OpDiff): RowVerb {
 
 function titleOf(op: OpDiff, names: Map<string, string>): string {
     if (op.op === "set_relationship" && op.relationship) {
+        const { from, to } = op.relationship;
+        return `${names.get(from) ?? from} → ${names.get(to) ?? to}`;
+    }
+    if (op.op === "delete_relationship" && op.relationship) {
         const { from, to } = op.relationship;
         return `${names.get(from) ?? from} → ${names.get(to) ?? to}`;
     }
@@ -172,6 +178,7 @@ function changeOf(op: OpDiff, names: Map<string, string>): string {
         return `${op.proposed.type} in ${parentName(op.proposed.parent_id, names)}`;
     }
     if (op.op === "delete_node") return "Removes the node";
+    if (op.op === "delete_relationship") return removeConnectionChange(op);
     if (op.op === "set_relationship" && op.relationship) {
         return [op.relationship.label, op.relationship.kind].filter(Boolean).join(" · ");
     }
@@ -187,6 +194,14 @@ function changeOf(op: OpDiff, names: Map<string, string>): string {
             .join("; ");
     }
     return "";
+}
+
+function removeConnectionChange(op: OpDiff): string {
+    const label = op.relationship?.label;
+    const removed = op.removes_nodes ?? [];
+    const base = label ? `Removes connection "${label}"` : "Removes the connection";
+    if (!removed.length) return base;
+    return `${base} and ${removed.length} inside it: ${removed.map((n) => n.name || n.id).join(", ")}`;
 }
 
 // Rows with the same key are interchangeable edits, e.g. seven nodes moved to the root.
@@ -231,6 +246,7 @@ function groupTitle(group: RowGroup): string {
     const [kind, fields, target] = group.key.split("|");
     if (group.verb === "Create") return `Create ${n} nodes`;
     if (group.verb === "Delete") return `Delete ${n} nodes`;
+    if (group.verb === "Remove connection") return `Remove ${n} connections`;
     if (group.verb === "Connect") return `Connect ${n} relationships`;
     if (kind === "update" && fields === "parent_id") return `Move ${n} nodes to ${target || "root"}`;
     return `Update ${n} nodes (${(fields ?? "").split(",").map(humanField).join(", ")})`;

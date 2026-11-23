@@ -60,6 +60,15 @@ export function proposalDetailBlocks(op: OpDiff): DetailBlock[] {
                 blocks.push(...relationshipBlocks(op.relationship, op.current_relationship));
             }
             break;
+        case "delete_relationship":
+            if (op.relationship) {
+                blocks.push(...relationshipBlocks(op.relationship, op.current_relationship));
+            }
+            if (op.removes_nodes?.length) {
+                blocks.push({ kind: "heading", text: "Also removes" });
+                for (const n of op.removes_nodes) blocks.push({ kind: "line", text: `${n.name || n.id} (${n.id})` });
+            }
+            break;
         default:
             blocks.push({ kind: "line", text: `${op.op} ${op.node_id}` });
     }
@@ -100,6 +109,9 @@ function summarizeOp(op: OpDiff): string {
     }
     if (op.op === "set_relationship" && op.relationship) {
         return `Set relationship · ${op.relationship.from} → ${op.relationship.to}`;
+    }
+    if (op.op === "delete_relationship" && op.relationship) {
+        return `Remove connection · ${op.relationship.from} → ${op.relationship.to}`;
     }
     return `${op.op} ${op.node_id}`;
 }

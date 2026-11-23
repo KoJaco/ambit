@@ -117,7 +117,15 @@ type OpDiff struct {
 	Proposed            *NodeSnapshot `json:"proposed"`
 	Relationship        *RelSnapshot  `json:"relationship"`
 	CurrentRelationship *RelSnapshot  `json:"current_relationship"`
-	Error               string        `json:"error,omitempty"`
+	// RemovesNodes lists the interior nodes a delete_relationship also deletes.
+	RemovesNodes []RemovedNode `json:"removes_nodes,omitempty"`
+	Error        string        `json:"error,omitempty"`
+}
+
+// RemovedNode names an interior node that a delete_relationship cascades to.
+type RemovedNode struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // NodeSnapshot is the node body a diff row renders.
@@ -501,7 +509,7 @@ func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materi
 	if rel == nil {
 		return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelID)
 	}
-	hash, err := idx.hashFor(rel.From, material)
+	hash, err := idx.deleteRelHash(rel, func(id NodeID) (string, error) { return idx.hashFor(id, material) })
 	if err != nil {
 		return operation{}, nil, err
 	}
@@ -518,6 +526,39 @@ func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materi
 		Status:   opStatusPending,
 	}
 	return op, nil, nil
+}
+
+// removedByRelationship lists the interior nodes (sorted) that deleting rel also removes.
+func (idx *Index) removedByRelationship(rel *Relationship) []string {
+	var out []string
+	for nid := range idx.relationshipClosure(rel.ID).nodes {
+		out = append(out, string(nid))
+	}
+	sort.Strings(out)
+	return out
+}
+
+// deleteRelHash folds the source node and every interior node the delete would
+// remove into one hash, so a change to any of them makes the operation stale.
+func (idx *Index) deleteRelHash(rel *Relationship, hashOf func(NodeID) (string, error)) (string, error) {
+	h, err := hashOf(rel.From)
+	if err != nil {
+		return "", err
+	}
+	interior := idx.removedByRelationship(rel)
+	if len(interior) == 0 {
+		return h, nil
+	}
+	sum := sha256.New()
+	sum.Write([]byte(h))
+	for _, nid := range interior {
+		ih, err := hashOf(NodeID(nid))
+		if err != nil {
+			return "", err
+		}
+		sum.Write([]byte("\x00" + nid + "\x00" + ih))
+	}
+	return "sha256:" + hex.EncodeToString(sum.Sum(nil)), nil
 }
 
 func (idx *Index) hashFor(id NodeID, material map[NodeID]materialBody) (string, error) {
@@ -925,6 +966,20 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 		if rel.Label != deref(op.Label) || rel.Kind != deref(op.Kind) {
 			return true, staleMismatch
 		}
+		hash, err := idx.deleteRelHash(rel, func(id NodeID) (string, error) {
+			h, ok, err := idx.hashOnDisk(id)
+			if err == nil && !ok {
+				err = ErrNotFound
+			}
+			return h, err
+		})
+		if err != nil {
+			return true, staleMissing
+		}
+		if op.BaseHash == nil || *op.BaseHash != hash {
+			return true, staleMismatch
+		}
+		return false, ""
 	}
 	hash, ok, err := idx.hashOnDisk(NodeID(op.NodeID))
 	if err != nil || !ok {
@@ -1308,6 +1363,13 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		row.Relationship = &RelSnapshot{ID: op.RelID, From: op.From, To: op.To, Label: label, Kind: kind}
 		if rel, _ := idx.relByID(RelID(op.RelID)); rel != nil {
 			row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
+			for _, nid := range idx.removedByRelationship(rel) {
+				removed := RemovedNode{ID: nid}
+				if n := idx.Nodes[NodeID(nid)]; n != nil {
+					removed.Name = n.Name
+				}
+				row.RemovesNodes = append(row.RemovesNodes, removed)
+			}
 		}
 	case OpSetRelationship:
 		label, kind := deref(op.Label), deref(op.Kind)

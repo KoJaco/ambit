@@ -129,16 +129,21 @@ export default function NodeInspector({
         }
     }
 
+    // Children and relationship count come from the server each time they are needed.
+    async function checkDelete(target: NodeDetail) {
+        const own = await getLevel(target.id);
+        const parentLevel = target.relationship_id
+            ? await getRelationshipLevel(target.relationship_id)
+            : await getLevel(target.parent_id || undefined);
+        return checkNodeDelete(target.id, own.children?.length ?? 0, parentLevel);
+    }
+
     async function startDelete() {
         if (!node || deleteBusy) return;
         setDeleteBusy(true);
         setError(null);
         try {
-            const own = await getLevel(node.id);
-            const parentLevel = node.relationship_id
-                ? await getRelationshipLevel(node.relationship_id)
-                : await getLevel(node.parent_id || undefined);
-            const check = checkNodeDelete(node.id, own.children?.length ?? 0, parentLevel);
+            const check = await checkDelete(node);
             if (check.ok) setDeletePlan({ count: check.relationshipCount });
             else setError(check.reason);
         } catch (err) {
@@ -153,7 +158,16 @@ export default function NodeInspector({
         setDeleteBusy(true);
         setError(null);
         try {
-            await deleteNodeUndoable(node, deletePlan.count, { history, deleteNode, createNode });
+            // The model may have changed since the prompt; re-check so undo is only offered when
+            // the delete took nothing but the node (a changed count clears history instead).
+            const fresh = await checkDelete(node);
+            if (!fresh.ok) {
+                setDeletePlan(null);
+                setError(fresh.reason);
+                return;
+            }
+            const count = fresh.relationshipCount === deletePlan.count ? deletePlan.count : Math.max(1, fresh.relationshipCount);
+            await deleteNodeUndoable(node, count, { history, deleteNode, createNode });
             onClose();
             onDeleted?.();
         } catch (err) {
@@ -163,12 +177,21 @@ export default function NodeInspector({
         }
     }
 
+    // A request that arrives while the node is still loading is held and run once it has loaded.
+    const deleteWaiting = useRef(false);
     useEffect(() => {
         if (deleteRequest === seenDeleteRequest.current) return;
         seenDeleteRequest.current = deleteRequest;
         if (node) void startDelete();
+        else deleteWaiting.current = true;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [deleteRequest]);
+    useEffect(() => {
+        if (!node || !deleteWaiting.current) return;
+        deleteWaiting.current = false;
+        void startDelete();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [node]);
 
     async function save() {
         if (!node) return;

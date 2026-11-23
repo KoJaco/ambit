@@ -51,16 +51,17 @@ describe("nodeCreateInput", () => {
 });
 
 describe("deleteNodeUndoable", () => {
-    it("records an entry that recreates the node and redoes against the new id", async () => {
+    it("records an entry that recreates the node with its original id", async () => {
         const history = createHistory();
         const deleteNode = vi.fn(async () => undefined);
-        const createNode = vi.fn(async () => ({ id: "n2" }));
+        const createNode = vi.fn(async () => ({ id: "n1" }));
         await deleteNodeUndoable(node, 0, { history, deleteNode, createNode });
         expect(deleteNode).toHaveBeenCalledWith("n1");
         expect(await history.undo()).toBe("delete Cache");
         expect(createNode).toHaveBeenCalledWith(nodeCreateInput(node));
+        expect(createNode).toHaveBeenCalledWith(expect.objectContaining({ id: "n1" }));
         await history.redo();
-        expect(deleteNode).toHaveBeenLastCalledWith("n2");
+        expect(deleteNode).toHaveBeenLastCalledWith("n1");
     });
 
     it("clears history instead when relationships were removed", async () => {

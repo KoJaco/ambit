@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeGroupSizes, containerPadding, containerSize, layoutCompound, layoutLevel, maxSizes, seedPositions } from "./layout";
+import { computeGroupSizes, containerPadding, containerSize, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions } from "./layout";
 
 describe("layoutCompound", () => {
     it("lays out a flat level like layoutLevel", async () => {
@@ -169,5 +169,42 @@ describe("group growth on toggle", () => {
             a: { width: 5, height: 9 },
             b: { width: 3, height: 3 },
         });
+    });
+});
+
+describe("pushOverlaps", () => {
+    const nodes = [{ id: "g" }, { id: "right" }, { id: "below" }, { id: "far" }, { id: "other", parentId: "p" }, { id: "p" }];
+    const old = { g: { width: 220, height: 96 } };
+
+    it("pushes an overlapped sibling right just far enough and never moves the grower", () => {
+        const pos = { g: { x: 0, y: 0 }, right: { x: 260, y: 0 }, below: { x: 0, y: 500 }, far: { x: 2000, y: 0 }, p: { x: 0, y: 900 }, other: { x: 0, y: 0 } };
+        const out = pushOverlaps(nodes, pos, old, { g: { width: 500, height: 96 } });
+        expect(out.g).toEqual({ x: 0, y: 0 });
+        expect(out.right).toEqual({ x: 540, y: 0 });
+        expect(out.below).toEqual({ x: 0, y: 500 });
+        expect(out.far).toEqual({ x: 2000, y: 0 });
+    });
+
+    it("pushes down for siblings below and cascades to keep order", () => {
+        const pos = { g: { x: 0, y: 0 }, right: { x: 260, y: 0 }, below: { x: 0, y: 136 }, far: { x: 600, y: 0 }, p: { x: 0, y: 900 }, other: { x: 5, y: 5 } };
+        const out = pushOverlaps(nodes, pos, old, { g: { width: 500, height: 300 } });
+        expect(out.below.y).toBe(340);
+        expect(out.right.x).toBe(540);
+        // "far" was clear of g but is now run into by "right" and moves on, keeping its place in the row.
+        expect(out.far.x).toBeGreaterThan(out.right.x + 220);
+    });
+
+    it("leaves nodes alone when nothing grew or nothing overlaps", () => {
+        const pos = { g: { x: 0, y: 0 }, right: { x: 260, y: 0 }, below: { x: 0, y: 136 }, far: { x: 600, y: 0 }, p: { x: 0, y: 900 }, other: { x: 0, y: 0 } };
+        expect(pushOverlaps(nodes, pos, old, { g: { width: 220, height: 96 } })).toEqual(pos);
+        // Growth below the 0.5px tolerance is ignored; real growth only moves by what it takes.
+        expect(pushOverlaps(nodes, pos, old, { g: { width: 220.4, height: 96 } })).toEqual(pos);
+        expect(pushOverlaps(nodes, pos, old, { g: { width: 230, height: 96 } }).right.x).toBe(270);
+    });
+
+    it("only interacts with siblings under the same parent", () => {
+        const pos = { g: { x: 0, y: 0 }, right: { x: 2000, y: 0 }, below: { x: 0, y: 2000 }, far: { x: 3000, y: 0 }, p: { x: 0, y: 900 }, other: { x: 300, y: 0 } };
+        const out = pushOverlaps(nodes, pos, old, { g: { width: 600, height: 96 } });
+        expect(out.other).toEqual({ x: 300, y: 0 });
     });
 });

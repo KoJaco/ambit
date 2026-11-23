@@ -30,6 +30,7 @@ export function nodeDeleteMessage(name: string, relationshipCount: number): stri
 }
 
 export type NodeCreateInput = {
+    id?: string;
     name: string;
     type: string;
     parent_id?: string;
@@ -47,6 +48,7 @@ export type NodeCreateInput = {
 
 export function nodeCreateInput(node: NodeDetail): NodeCreateInput {
     return {
+        id: node.id,
         name: node.name,
         type: node.type,
         ...(node.parent_id ? { parent_id: node.parent_id } : {}),
@@ -65,7 +67,7 @@ export function nodeCreateInput(node: NodeDetail): NodeCreateInput {
 
 // Deletes a node and records how to bring it back. A node that had relationships took them with
 // it and undo cannot restore those, so the stack is cleared instead. Undo recreates the node
-// through the create API, so it comes back with a new id; redo deletes that new id.
+// through the create API, with its original id; redo deletes it again.
 export async function deleteNodeUndoable(
     node: NodeDetail,
     relationshipCount: number,
@@ -80,14 +82,12 @@ export async function deleteNodeUndoable(
         deps.history.clear();
         return;
     }
-    let currentId = node.id;
     const input = nodeCreateInput(node);
     deps.history.record({
         label: `delete ${node.name}`,
         undo: async () => {
-            const created = await deps.createNode(input);
-            currentId = created.id;
+            await deps.createNode(input);
         },
-        redo: () => deps.deleteNode(currentId),
+        redo: () => deps.deleteNode(node.id),
     });
 }

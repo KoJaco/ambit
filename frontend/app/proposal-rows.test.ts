@@ -127,6 +127,30 @@ describe("proposal rows", () => {
     });
 });
 
+describe("delete_relationship rows", () => {
+    it("renders a Remove connection row naming the interior nodes it removes", () => {
+        const rows = proposalRows(
+            diff([
+                {
+                    index: 0,
+                    op: "delete_relationship",
+                    node_id: "a",
+                    status: "pending",
+                    stale: false,
+                    current: node({ id: "a", name: "Alpha" }),
+                    proposed: null,
+                    relationship: { id: "r1", from: "a", to: "b", label: "calls", kind: "" },
+                    current_relationship: null,
+                    removes_nodes: [{ id: "s1", name: "Step one" }],
+                },
+            ]),
+        );
+        expect(rows[0].verb).toBe("Remove connection");
+        expect(rows[0].title).toBe("Alpha → b");
+        expect(rows[0].change).toContain("Step one");
+    });
+});
+
 describe("review presentation", () => {
     const move = (id: string, parent: string): OpDiff => ({
         index: 0,

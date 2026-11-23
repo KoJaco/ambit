@@ -271,6 +271,70 @@ export function seedPositions(
     return positions;
 }
 
+// After a kept node grows in place (collapsed card -> container, or a container that gained
+// members), later siblings it now overlaps are pushed right or down, just far enough to clear it
+// by `seedGap`, in the direction they already lay from the node's old box. Pushed nodes push the
+// siblings they in turn run into, so relative order is kept. The growing node never moves, and only
+// nodes sharing a parent interact. `oldSizes` holds sizes of nodes that were on screen; a node with
+// no old size cannot be a grower. Positions are returned as a new map.
+export function pushOverlaps(
+    nodes: CompoundNode[],
+    positions: Record<string, Point>,
+    oldSizes: Record<string, NodeSize>,
+    newSizes: Record<string, NodeSize>,
+): Record<string, Point> {
+    const out: Record<string, Point> = {};
+    for (const [id, point] of Object.entries(positions)) out[id] = { ...point };
+    const known = new Set(nodes.map((node) => node.id));
+    const byParent = new Map<string, string[]>();
+    for (const node of nodes) {
+        const parent = node.parentId && known.has(node.parentId) ? node.parentId : "";
+        byParent.set(parent, [...(byParent.get(parent) ?? []), node.id]);
+    }
+    const eps = 0.5;
+    const sizeOf = (id: string) => newSizes[id] ?? { width: nodeWidth, height: nodeHeight };
+    for (const siblings of byParent.values()) {
+        const growers = siblings.filter((id) => {
+            const old = oldSizes[id];
+            const now = newSizes[id];
+            return !!old && !!now && !!out[id] && (now.width > old.width + eps || now.height > old.height + eps);
+        });
+        if (growers.length === 0) continue;
+        const isGrower = new Set(growers);
+        // `origin` is the box a node's neighbours were laid out against; pushes only go away from it.
+        const push = (origin: { x: number; y: number; width: number; height: number }, source: string, budget: number) => {
+            if (budget <= 0) return;
+            const box = { x: out[source].x, y: out[source].y, ...sizeOf(source) };
+            for (const id of siblings) {
+                if (id === source || isGrower.has(id) || !out[id]) continue;
+                const at = out[id];
+                const size = sizeOf(id);
+                const overlapX = at.x < box.x + box.width + seedGap && at.x + size.width + seedGap > box.x;
+                const overlapY = at.y < box.y + box.height + seedGap && at.y + size.height + seedGap > box.y;
+                if (!overlapX || !overlapY) continue;
+                const right = at.x >= origin.x + origin.width - eps;
+                const below = at.y >= origin.y + origin.height - eps;
+                const needX = box.x + box.width + seedGap - at.x;
+                const needY = box.y + box.height + seedGap - at.y;
+                if (right && (!below || needX <= needY)) {
+                    const from = { x: at.x, y: at.y, ...size };
+                    out[id] = { x: at.x + needX, y: at.y };
+                    push(from, id, budget - 1);
+                } else if (below) {
+                    const from = { x: at.x, y: at.y, ...size };
+                    out[id] = { x: at.x, y: at.y + needY };
+                    push(from, id, budget - 1);
+                }
+            }
+        };
+        for (const id of growers) {
+            const old = oldSizes[id];
+            push({ x: out[id].x, y: out[id].y, ...old }, id, siblings.length);
+        }
+    }
+    return out;
+}
+
 // Per-id larger of two size maps: a group grows to fit but is never pushed below a size it had.
 export function maxSizes(
     left: Record<string, NodeSize>,

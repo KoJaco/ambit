@@ -17,6 +17,7 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			return
 		}
 		id, err := idx.Create(core.CreateInput{
+			ID:             core.NodeID(body.ID),
 			Name:           body.Name,
 			Type:           body.Type,
 			Spec:           body.Markdown,
@@ -222,6 +223,7 @@ func writeBadRequest(w http.ResponseWriter, err error) {
 }
 
 type createJSON struct {
+	ID             string              `json:"id"`
 	Name           string              `json:"name"`
 	Type           string              `json:"type"`
 	Status         string              `json:"status"`

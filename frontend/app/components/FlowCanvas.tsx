@@ -21,6 +21,7 @@ import {
     loadLayoutSig,
     loadViewModes,
     saveGroupSizes,
+    pruneOrphanedGroupSizes,
     saveLayoutSig,
     putLayout,
     relationshipDrillId,
@@ -49,7 +50,7 @@ import { history } from "../history";
 import { useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { buildExternalStubs } from "../external-stubs";
-import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, seedPositions, type NodeSize, type Point } from "../layout";
+import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions, type NodeSize, type Point } from "../layout";
 import {
     canExpandChild,
     expandedGroups,
@@ -486,6 +487,14 @@ export default function FlowCanvas({
     cacheKeyRef.current = cacheKey;
     // Base and full key of the layout last applied; a change of only the full key is a group toggle.
     const appliedRef = useRef<{ base: string; key: string } | null>(null);
+    // Set while a toggle's layout is still in flight, so toggling straight back (same key as the
+    // one on screen) still takes the keep-positions path instead of refitting the viewport.
+    const toggleIntentRef = useRef(false);
+
+    // Older builds saved auto-grown sizes under `<base>~<hash>` keys that nothing reads any more.
+    useEffect(() => {
+        pruneOrphanedGroupSizes();
+    }, []);
 
     useEffect(() => {
         if (!activeLevel) return;
@@ -505,7 +514,9 @@ export default function FlowCanvas({
         ];
         const nested = kids.some((c) => c.group_id);
         const last = appliedRef.current;
-        const toggled = !!last && last.base === baseKey && last.key !== cacheKey && nodesRef.current.length > 0;
+        const toggled =
+            !!last && last.base === baseKey && (last.key !== cacheKey || toggleIntentRef.current) && nodesRef.current.length > 0;
+        if (toggled) toggleIntentRef.current = true;
         getLayout(cacheKey)
             .then(async (cached) => {
                 if (cancelled) return;
@@ -535,19 +546,39 @@ export default function FlowCanvas({
                         usable ? stored : {},
                     );
                     const floor: Record<string, NodeSize> = {};
+                    // Sizes kept nodes had on screen: the floor for containers, and the baseline
+                    // growth is measured against when pushing siblings clear.
+                    const oldSizes: Record<string, NodeSize> = {};
                     for (const item of prev) {
                         const width = item.style?.width;
                         const height = item.style?.height;
                         if (item.type === "container" && typeof width === "number" && typeof height === "number") {
                             floor[item.id] = { width, height };
+                            oldSizes[item.id] = { width, height };
+                        } else {
+                            const w = item.measured?.width ?? item.width;
+                            const h = item.measured?.height ?? item.height;
+                            if (typeof w === "number" && typeof h === "number") oldSizes[item.id] = { width: w, height: h };
                         }
                     }
-                    const containers = containerSizing(compound, seeded, sizes, baseKey, floor);
-                    saveGroupSizes(baseKey, maxSizes(loadGroupSizes(baseKey), containers.applied));
+                    // Growth (card -> container, or a container gaining members) can run into later
+                    // siblings; push them clear, then re-measure since moved members can grow a parent.
+                    let placed = seeded;
+                    let containers = containerSizing(compound, placed, sizes, baseKey, floor);
+                    for (let round = 0; round < 4; round += 1) {
+                        const nextSizes = { ...sizes, ...containers.applied };
+                        const pushed = pushOverlaps(compound, placed, oldSizes, nextSizes);
+                        if (compound.every((item) => pushed[item.id]?.x === placed[item.id]?.x && pushed[item.id]?.y === placed[item.id]?.y)) break;
+                        placed = pushed;
+                        containers = containerSizing(compound, placed, sizes, baseKey, floor);
+                    }
+                    // Auto-grown sizes are deliberately not persisted: only the architect's own
+                    // resizes (onResizeGroup) are a permanent floor, so groups shrink on a relayout.
                     appliedRef.current = { base: baseKey, key: cacheKey };
-                    setNodes(buildArchNodes(activeLevel, seeded, containers, onToggleMode, onUngroup, onResizeGroup));
+                    toggleIntentRef.current = false;
+                    setNodes(buildArchNodes(activeLevel, placed, containers, onToggleMode, onUngroup, onResizeGroup));
                     await putLayout(cacheKey, {
-                        positions: ids.map((id) => ({ id, x: seeded[id]?.x ?? 0, y: seeded[id]?.y ?? 0 })),
+                        positions: ids.map((id) => ({ id, x: placed[id]?.x ?? 0, y: placed[id]?.y ?? 0 })),
                         ports: cached.ports,
                         attachments: cached.attachments,
                     });
@@ -556,6 +587,7 @@ export default function FlowCanvas({
                 }
                 if (usable) {
                     appliedRef.current = { base: baseKey, key: cacheKey };
+                    toggleIntentRef.current = false;
                     setNodes(buildArchNodes(activeLevel, stored, containerSizing(compound, stored, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                     setFitToken((v) => v + 1);
                     return;
@@ -565,6 +597,7 @@ export default function FlowCanvas({
                     : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
                 appliedRef.current = { base: baseKey, key: cacheKey };
+                toggleIntentRef.current = false;
                 setNodes(buildArchNodes(activeLevel, laid, containerSizing(compound, laid, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                 setFitToken((v) => v + 1);
                 await putLayout(cacheKey, {
