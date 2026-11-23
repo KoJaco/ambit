@@ -35,12 +35,12 @@ func (r DriftReport) Findings() int {
 	return len(r.Unowned) + len(r.Unmatched) + len(r.Overlaps)
 }
 
-// TrackedFiles lists git-tracked paths in dir (git ls-files), slash separated.
+// TrackedFiles lists git-tracked paths in dir (git ls-files -z), slash separated.
 func TrackedFiles(dir string) ([]string, error) {
 	if dir == "" {
 		dir = "."
 	}
-	cmd := exec.Command("git", "ls-files")
+	cmd := exec.Command("git", "ls-files", "-z")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -53,8 +53,7 @@ func TrackedFiles(dir string) ([]string, error) {
 		return nil, fmt.Errorf("git ls-files: %s", msg)
 	}
 	var files []string
-	for _, line := range strings.Split(stdout.String(), "\n") {
-		line = strings.TrimRight(line, "\r")
+	for _, line := range strings.Split(stdout.String(), "\x00") {
 		if line != "" {
 			files = append(files, toSlash(line))
 		}
@@ -73,9 +72,20 @@ func Drift(idx *Index, root string) (DriftReport, error) {
 	if err != nil {
 		return DriftReport{}, err
 	}
+	// Snapshot what matching needs under the lock; match after releasing it.
 	idx.mu.Lock()
-	defer idx.mu.Unlock()
-	return driftLocked(idx, files)
+	snap := &Index{Order: append([]NodeID(nil), idx.Order...), Nodes: make(map[NodeID]*Node, len(idx.Nodes))}
+	for id, n := range idx.Nodes {
+		if n == nil {
+			continue
+		}
+		c := *n
+		c.Implementation = append([]string(nil), n.Implementation...)
+		c.Scope = append([]string(nil), n.Scope...)
+		snap.Nodes[id] = &c
+	}
+	idx.mu.Unlock()
+	return driftLocked(snap, files)
 }
 
 func driftLocked(idx *Index, files []string) (DriftReport, error) {

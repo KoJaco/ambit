@@ -648,8 +648,8 @@ func (idx *Index) RejectOperation(id string, index int) error {
 // all-or-nothing for failures: if any operation fails validation, every operation
 // this call already applied is rolled back (node files, index.json and the manifest
 // are restored), nothing is reported as applied, and the failing operation is
-// reported in Failed. Operations after the failing one are not attempted. Cached
-// layouts invalidated by the rolled-back operations are not restored.
+// reported in Failed. Operations after the failing one are not attempted. The cached
+// layout files are restored too, so user-arranged positions survive a rollback.
 func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -681,20 +681,20 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 			})
 			continue
 		}
-		if err := idx.applyOp(id, op); err != nil {
-			if len(result.Applied) > 0 {
-				if rerr := idx.rollbackAccept(snap, &m, original); rerr != nil {
-					return result, fmt.Errorf("rollback after failed %s %s: %w", op.Op, op.NodeID, rerr)
-				}
+		opErr := idx.applyOp(id, op)
+		if opErr == nil {
+			opErr = idx.finishOp(&m, i, opStatusAccepted)
+		}
+		if opErr != nil {
+			// A failed op may have written partway, so always restore the snapshot.
+			if rerr := idx.rollbackAccept(snap, &m, original); rerr != nil {
+				return result, fmt.Errorf("rollback after failed %s %s: %w", op.Op, op.NodeID, rerr)
 			}
 			result.Applied = []int{}
 			result.Failed = append(result.Failed, FailedOp{
-				Index: i, Op: op.Op, NodeID: op.NodeID, Error: err.Error(),
+				Index: i, Op: op.Op, NodeID: op.NodeID, Error: opErr.Error(),
 			})
 			return result, nil
-		}
-		if err := idx.finishOp(&m, i, opStatusAccepted); err != nil {
-			return result, err
 		}
 		result.Applied = append(result.Applied, i)
 		if _, err := os.Stat(filepath.Join(idx.mustProposalPath(id), "manifest.json")); err != nil {
@@ -704,25 +704,21 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 	return result, nil
 }
 
-// modelSnapshot is the canonical model on disk: index.json and every node file.
+// modelSnapshot is the model on disk: index.json, every node file and the cached layouts.
 type modelSnapshot struct {
-	index []byte
-	nodes map[string][]byte
+	index   []byte
+	nodes   map[string][]byte
+	layouts map[string][]byte
 }
 
-func (idx *Index) snapshotModel() (modelSnapshot, error) {
-	index, err := os.ReadFile(filepath.Join(idx.arch(), "index.json"))
-	if err != nil {
-		return modelSnapshot{}, err
-	}
-	snap := modelSnapshot{index: index, nodes: map[string][]byte{}}
-	dir := filepath.Join(idx.arch(), "nodes")
+func readDirFiles(dir string) (map[string][]byte, error) {
+	out := map[string][]byte{}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return snap, nil
+			return out, nil
 		}
-		return modelSnapshot{}, err
+		return nil, err
 	}
 	for _, e := range entries {
 		if e.IsDir() {
@@ -730,29 +726,27 @@ func (idx *Index) snapshotModel() (modelSnapshot, error) {
 		}
 		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
 		if err != nil {
-			return modelSnapshot{}, err
+			return nil, err
 		}
-		snap.nodes[e.Name()] = data
+		out[e.Name()] = data
 	}
-	return snap, nil
+	return out, nil
 }
 
-// rollbackAccept restores the model and the proposal manifest to their state before
-// an AcceptAll call started.
-func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []operation) error {
-	dir := filepath.Join(idx.arch(), "nodes")
+// restoreDirFiles makes the files directly in dir equal want.
+func restoreDirFiles(dir string, want map[string][]byte) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	for _, e := range entries {
-		if _, ok := snap.nodes[e.Name()]; !ok && !e.IsDir() {
+		if _, ok := want[e.Name()]; !ok && !e.IsDir() {
 			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 		}
 	}
-	for name, data := range snap.nodes {
+	for name, data := range want {
 		path := filepath.Join(dir, name)
 		if cur, err := os.ReadFile(path); err == nil && bytes.Equal(cur, data) {
 			continue
@@ -760,6 +754,38 @@ func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []ope
 		if err := writeAtomic(path, data); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (idx *Index) layoutDir() string {
+	return filepath.Join(idx.arch(), ".cache", "layout")
+}
+
+func (idx *Index) snapshotModel() (modelSnapshot, error) {
+	index, err := os.ReadFile(filepath.Join(idx.arch(), "index.json"))
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	nodes, err := readDirFiles(filepath.Join(idx.arch(), "nodes"))
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	layouts, err := readDirFiles(idx.layoutDir())
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	return modelSnapshot{index: index, nodes: nodes, layouts: layouts}, nil
+}
+
+// rollbackAccept restores the model and the proposal manifest to their state before
+// an AcceptAll call started.
+func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []operation) error {
+	if err := restoreDirFiles(filepath.Join(idx.arch(), "nodes"), snap.nodes); err != nil {
+		return err
+	}
+	if err := restoreDirFiles(idx.layoutDir(), snap.layouts); err != nil {
+		return err
 	}
 	if err := writeAtomic(filepath.Join(idx.arch(), "index.json"), snap.index); err != nil {
 		return err
@@ -890,6 +916,15 @@ func (idx *Index) pendingCreateIDs() map[string]bool {
 func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 	if op.Op == OpCreateNode || op.Status != opStatusPending {
 		return false, ""
+	}
+	if op.Op == OpDeleteRelationship {
+		rel, _ := idx.relByID(RelID(op.RelID))
+		if rel == nil {
+			return true, staleMissing
+		}
+		if rel.Label != deref(op.Label) || rel.Kind != deref(op.Kind) {
+			return true, staleMismatch
+		}
 	}
 	hash, ok, err := idx.hashOnDisk(NodeID(op.NodeID))
 	if err != nil || !ok {
@@ -1376,10 +1411,15 @@ func (idx *Index) allocateDuring(base string, extra map[NodeID]*Node) NodeID {
 	}
 }
 
+const maxExplicitIDLen = 64
+
 // checkExplicitID validates a caller-supplied node id: it must be a slug and must not
 // collide with an existing node, a node earlier in the same proposal (extra), or an id
 // reserved by a pending create in any staged proposal.
 func (idx *Index) checkExplicitID(id NodeID, extra map[NodeID]*Node) error {
+	if len(id) > maxExplicitIDLen {
+		return fmt.Errorf("%w: id must be at most %d characters", ErrBadOperation, maxExplicitIDLen)
+	}
 	if !slugPattern.MatchString(string(id)) {
 		return fmt.Errorf("%w: id %q must be lowercase letters and digits separated by single hyphens", ErrBadOperation, id)
 	}

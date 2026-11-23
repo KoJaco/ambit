@@ -47,7 +47,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 		return toolErr(fmt.Errorf("%w: transcript is required", core.ErrBadOperation))
 	}
 	if len(in.Nodes) == 0 && len(in.Updates) == 0 && len(in.DeleteRelationships) == 0 && len(in.DeleteNodes) == 0 {
-		return toolErr(fmt.Errorf("%w: nodes must not be empty", core.ErrBadOperation))
+		return toolErr(fmt.Errorf("%w: proposal must contain at least one node, update, or delete", core.ErrBadOperation))
 	}
 	defaultParent := core.NodeID(in.ParentID)
 	var ops []core.StageOp
@@ -95,7 +95,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 	for _, nid := range in.DeleteNodes {
 		ops = append(ops, core.StageOp{Op: core.OpDeleteNode, NodeID: core.NodeID(nid)})
 	}
-	summary := fmt.Sprintf("%d node(s) from transcript", len(in.Nodes))
+	summary := fmt.Sprintf("%d operation(s) from transcript", len(ops))
 	if len(in.Transcript) > 80 {
 		summary += ": " + in.Transcript[:80] + "..."
 	} else {

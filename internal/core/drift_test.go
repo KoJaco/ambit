@@ -77,3 +77,17 @@ func TestDriftIgnoresArchAndRequiresGit(t *testing.T) {
 		t.Fatal("expected git error outside a repository")
 	}
 }
+
+func TestTrackedFilesKeepsNonASCIIPaths(t *testing.T) {
+	dir := t.TempDir()
+	gitInitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "docs", "café.md"), "x\n")
+	gitCmd(t, dir, "add", "-A")
+	files, err := TrackedFiles(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0] != "docs/café.md" {
+		t.Fatalf("files %q", files)
+	}
+}

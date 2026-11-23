@@ -851,3 +851,127 @@ func TestAcceptAllRollsBackWhenAnOperationFails(t *testing.T) {
 		t.Fatal("in-memory index still has billing")
 	}
 }
+
+func TestAcceptAllRollbackRestoresLayoutsAndDeletedRelationship(t *testing.T) {
+	idx, dir := newModel(t)
+	a, _ := idx.Create(CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(CreateInput{Name: "B", Type: "service"})
+	rel, err := idx.SetRelationship(SetRelationshipInput{From: a, To: b, Label: "calls"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpDeleteRelationship, RelID: rel.ID},
+		{Op: OpCreateNode, Create: CreateInput{Name: "Orders", Type: "service"}},
+		{Op: OpCreateNode, Create: CreateInput{Name: "Billing", Type: "service"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Create(CreateInput{Name: "Billing", Type: "service", Spec: "mine"}); err != nil {
+		t.Fatal(err)
+	}
+	key := RelationshipLayoutKey(rel.ID)
+	if err := idx.PutLayout(key, Layout{Positions: []Position{{ID: "x", X: 5, Y: 6}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.PutLayout(RootLayoutKey, Layout{Positions: []Position{{ID: string(a), X: 1, Y: 2}}}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := idx.AcceptAll(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Applied) != 0 || len(res.Failed) != 1 || res.Failed[0].Index != 2 {
+		t.Fatalf("result %+v", res)
+	}
+	got := reopen(t, dir)
+	if len(got.Relationships) != 1 || got.Nodes["orders"] != nil {
+		t.Fatalf("model not restored: rels %+v", got.Relationships)
+	}
+	for _, k := range []string{key, RootLayoutKey} {
+		l, err := idx.Layout(k)
+		if err != nil || len(l.Positions) != 1 {
+			t.Fatalf("layout %s not restored: %+v %v", k, l, err)
+		}
+	}
+}
+
+func TestAcceptAllRollsBackWhenTheFirstOperationFailsPartway(t *testing.T) {
+	idx, dir := newModel(t)
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{Name: "Billing", Type: "service", Spec: "b"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := nodeFileNames(t, dir)
+	t.Cleanup(func() { applyHook = nil })
+	applyHook = func(step string) error {
+		if step == "index" {
+			return errors.New("injected")
+		}
+		return nil
+	}
+	res, err := idx.AcceptAll(pid)
+	applyHook = nil
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Failed) != 1 || len(res.Applied) != 0 {
+		t.Fatalf("result %+v", res)
+	}
+	if after := nodeFileNames(t, dir); strings.Join(after, ",") != strings.Join(before, ",") {
+		t.Fatalf("files %v -> %v", before, after)
+	}
+	if _, ok := reopen(t, dir).Nodes["billing"]; ok {
+		t.Fatal("billing survived")
+	}
+}
+
+func TestDeleteRelationshipAlreadyRemovedIsSkippedAsStale(t *testing.T) {
+	idx, _ := newModel(t)
+	a, _ := idx.Create(CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(CreateInput{Name: "B", Type: "service"})
+	rel, _ := idx.SetRelationship(SetRelationshipInput{From: a, To: b, Label: "calls"})
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpDeleteRelationship, RelID: rel.ID},
+		{Op: OpCreateNode, Create: CreateInput{Name: "C", Type: "service"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.DeleteRelationship(rel.ID); err != nil {
+		t.Fatal(err)
+	}
+	res, err := idx.AcceptAll(pid)
+	if err != nil || len(res.Failed) != 0 || len(res.Skipped) != 1 || res.Skipped[0].Reason != staleMissing || len(res.Applied) != 1 {
+		t.Fatalf("result %+v %v", res, err)
+	}
+
+	// A changed label since staging is stale too.
+	rel2, _ := idx.SetRelationship(SetRelationshipInput{From: a, To: b, Label: "calls"})
+	pid, err = idx.Stage(StageInput{Source: OpDeleteRelationship, Ops: []StageOp{{Op: OpDeleteRelationship, RelID: rel2.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.SetRelationship(SetRelationshipInput{ID: rel2.ID, From: a, To: b, Label: "renamed"}); err != nil {
+		t.Fatal(err)
+	}
+	res, err = idx.AcceptAll(pid)
+	if err != nil || len(res.Skipped) != 1 || len(idx.Relationships) != 1 {
+		t.Fatalf("result %+v %v", res, err)
+	}
+}
+
+func TestExplicitIDLengthIsCapped(t *testing.T) {
+	idx, _ := newModel(t)
+	long := NodeID(strings.Repeat("a", maxExplicitIDLen+1))
+	if _, err := idx.Create(CreateInput{ID: long, Name: "X", Type: "service"}); !errors.Is(err, ErrBadOperation) {
+		t.Fatalf("long id: %v", err)
+	}
+	ok := NodeID(strings.Repeat("a", maxExplicitIDLen))
+	if _, err := idx.Create(CreateInput{ID: ok, Name: "X", Type: "service"}); err != nil {
+		t.Fatalf("max id: %v", err)
+	}
+}
