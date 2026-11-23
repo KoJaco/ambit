@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import clsx from "clsx";
-import { Check, ChevronLeft, ListChecks, TriangleAlert, XCircle } from "lucide-react";
+import { Check, ChevronLeft, Eye, EyeOff, ListChecks, TriangleAlert, XCircle } from "lucide-react";
 import {
     acceptAll,
     acceptOperation,
@@ -19,6 +19,7 @@ import { isEditableElement, reviewEscapeAction } from "../right-rail-state";
 import { useNodeSnapshots } from "../use-node-snapshots";
 import { ProposalVisual } from "./proposal-visuals";
 import { history } from "../history";
+import { ghostKey } from "../ghost-preview";
 import { acceptedEntry } from "../proposal-history";
 import {
     hierarchySections,
@@ -42,6 +43,10 @@ export function ProposalReview({
     open = true,
     onClose,
     onPendingChange,
+    onPreviewChange,
+    onHighlight,
+    highlightKey,
+    openItem,
 }: {
     refreshKey: number;
     onFocus?: () => void;
@@ -50,6 +55,14 @@ export function ProposalReview({
     onClose?: () => void;
     // Ids of proposals that still have pending operations; called after each load.
     onPendingChange?: (ids: string[]) => void;
+    // Proposals whose "Preview on canvas" is on (empty while the panel is closed).
+    onPreviewChange?: (diffs: ProposalDiff[]) => void;
+    // The op a row (or the open detail) points at; null when nothing does.
+    onHighlight?: (key: string | null) => void;
+    // The op the canvas currently points at, so its row can show it too.
+    highlightKey?: string | null;
+    // A ghost on the canvas was activated: open this item's detail.
+    openItem?: { proposalId: string; index: number; nonce: number } | null;
 }) {
     const [summaries, setSummaries] = useState<ProposalSummary[]>([]);
     const [diffs, setDiffs] = useState<Record<string, ProposalDiff>>({});
@@ -68,6 +81,32 @@ export function ProposalReview({
     const wasDetail = useRef(false);
     const pendingCallback = useRef(onPendingChange);
     pendingCallback.current = onPendingChange;
+    // Per-proposal "Preview on canvas" choice; until chosen it is on only for a lone pending proposal.
+    const [previewChoice, setPreviewChoice] = useState<Record<string, boolean>>({});
+    const pendingProposals = summaries.filter(
+        (proposal) => !proposal.unreadable && diffs[proposal.proposal_id]?.operations.some((op) => op.status === "pending"),
+    );
+    const previewOn = (id: string) => previewChoice[id] ?? pendingProposals.length === 1;
+    const previewKey = pendingProposals
+        .filter((proposal) => previewOn(proposal.proposal_id))
+        .map((proposal) => proposal.proposal_id)
+        .join("\0");
+    const previewCallback = useRef(onPreviewChange);
+    previewCallback.current = onPreviewChange;
+    useEffect(() => {
+        if (!loaded) return;
+        const ids = !open || !previewKey ? [] : previewKey.split("\0");
+        previewCallback.current?.(ids.map((id) => diffs[id]).filter((diff): diff is ProposalDiff => !!diff));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loaded, open, previewKey, diffs]);
+    const highlightCallback = useRef(onHighlight);
+    highlightCallback.current = onHighlight;
+    useEffect(() => {
+        if (!open) highlightCallback.current?.(null);
+    }, [open]);
+    useEffect(() => {
+        if (openItem) setDetail({ proposalId: openItem.proposalId, index: openItem.index });
+    }, [openItem?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         if (!loaded) return;
@@ -107,6 +146,12 @@ export function ProposalReview({
     useEffect(() => {
         setDetail(null);
     }, [refreshKey]);
+
+    // While an item is open its element stays highlighted on the canvas.
+    useEffect(() => {
+        if (detailKey) highlightCallback.current?.(detailKey);
+        else highlightCallback.current?.(null);
+    }, [detailKey]);
 
     async function run(action: () => Promise<void>) {
         setBusy(true);
@@ -157,7 +202,14 @@ export function ProposalReview({
         return (
             <li
                 key={row.key}
-                className="group relative -mx-2 border-b border-border/60 px-2 transition-colors last:border-b-0 hover:bg-accent/50 focus-within:bg-accent/50"
+                className={clsx(
+                    "group relative -mx-2 border-b border-border/60 px-2 transition-colors last:border-b-0 hover:bg-accent/50 focus-within:bg-accent/50",
+                    highlightKey === ghostKey(proposalId, row.index) && "bg-accent/50",
+                )}
+                onMouseEnter={() => onHighlight?.(ghostKey(proposalId, row.index))}
+                onMouseLeave={() => onHighlight?.(null)}
+                onFocus={() => onHighlight?.(ghostKey(proposalId, row.index))}
+                onBlur={() => onHighlight?.(null)}
             >
                 <button
                     type="button"
@@ -420,6 +472,25 @@ export function ProposalReview({
                                                 </button>
                                             </div>
                                         )}
+                                        {!proposal.unreadable && pending > 0 ? (
+                                            <button
+                                                type="button"
+                                                aria-pressed={previewOn(proposal.proposal_id)}
+                                                className={clsx(
+                                                    "inline-flex min-h-8 w-fit items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                                                    previewOn(proposal.proposal_id) ? "border-foreground/70 bg-accent text-foreground" : "border-border text-foreground/80",
+                                                )}
+                                                onClick={() =>
+                                                    setPreviewChoice((current) => ({
+                                                        ...current,
+                                                        [proposal.proposal_id]: !previewOn(proposal.proposal_id),
+                                                    }))
+                                                }
+                                            >
+                                                {previewOn(proposal.proposal_id) ? <Eye className="size-4" aria-hidden /> : <EyeOff className="size-4" aria-hidden />}
+                                                Preview on canvas
+                                            </button>
+                                        ) : null}
                                     </header>
                                     {skipped[proposal.proposal_id]?.length ? (
                                         <p className="px-3 pt-2 text-xs text-amber-700 dark:text-amber-400">

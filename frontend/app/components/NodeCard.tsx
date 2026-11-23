@@ -44,6 +44,8 @@ export type ArchNodeData = {
     onToggleMode?: (id: string) => void;
     // Opens the ungroup form for a group (summary card or container header).
     onUngroup?: (id: string) => void;
+    // Set only on ghost-preview nodes (type "ghost"): a pending new node, never real model data.
+    ghost?: { container: boolean };
 };
 
 export type ArchNode = Node<ArchNodeData, CanvasNodeType>;
