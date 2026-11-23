@@ -170,7 +170,7 @@ export function ProposalVisual({ view }: { view: DetailView }) {
             return (
                 <Preview description={view.description}>
                     <Badge tone="changed">Update</Badge>
-                    <div className="grid grid-cols-[repeat(auto-fit,minmax(11rem,1fr))] gap-2">
+                    <div className="flex flex-col gap-3">
                         <div className="flex min-w-0 flex-col gap-1">
                             <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Current</p>
                             <NodePreviewCard node={{ ...view.before, changed: [] }} muted />

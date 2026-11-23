@@ -143,7 +143,7 @@ export function ProposalReview({
         return (
             <li
                 key={row.key}
-                className="group relative border-b border-border/60 transition-colors last:border-b-0 hover:bg-accent/50 focus-within:bg-accent/50"
+                className="group relative -mx-2 border-b border-border/60 px-2 transition-colors last:border-b-0 hover:bg-accent/50 focus-within:bg-accent/50"
             >
                 <button
                     type="button"
@@ -171,7 +171,7 @@ export function ProposalReview({
                 </button>
                 {showActions && row.status === "pending" ? (
                     <ReviewOpActions
-                        className="absolute top-1.5 right-0"
+                        className="absolute top-1.5 right-2"
                         canAccept={row.canAccept}
                         needsConfirm={row.needsConfirm}
                         busy={busy}
