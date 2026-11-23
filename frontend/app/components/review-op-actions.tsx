@@ -8,6 +8,7 @@ export function ReviewOpActions({
     busy,
     onAccept,
     onReject,
+    label,
     className,
 }: {
     canAccept: boolean;
@@ -15,6 +16,8 @@ export function ReviewOpActions({
     busy: boolean;
     onAccept: () => void;
     onReject: () => void;
+    // What the change is, so each button has a unique accessible name.
+    label: string;
     className?: string;
 }) {
     return (
@@ -30,7 +33,7 @@ export function ReviewOpActions({
                             : "text-emerald-600",
                     )}
                     disabled={busy}
-                    aria-label={needsConfirm ? "Apply over newer edit" : "Accept"}
+                    aria-label={`${needsConfirm ? "Apply over newer edit" : "Accept"}: ${label}`}
                     onClick={(event) => {
                         event.stopPropagation();
                         onAccept();
@@ -45,7 +48,7 @@ export function ReviewOpActions({
                 type="button"
                 className="inline-flex size-7 items-center justify-center rounded-md text-red-600 hover:bg-foreground/10"
                 disabled={busy}
-                aria-label="Reject"
+                aria-label={`Reject: ${label}`}
                 onClick={(event) => {
                     event.stopPropagation();
                     onReject();

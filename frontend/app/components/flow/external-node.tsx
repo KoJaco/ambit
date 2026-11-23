@@ -57,6 +57,8 @@ export function ExternalStub({ data, selected }: NodeProps<ArchNode>) {
         <div
             className={clsx(
                 "flex h-16 w-[110px] items-center border bg-card px-2.5 select-none",
+                // The focusable wrapper is the react-flow node (group/stub); ring is solid, full-opacity.
+                "group-focus-visible/stub:ring-2 group-focus-visible/stub:ring-ring group-focus-visible/stub:ring-offset-1 group-focus-visible/stub:ring-offset-background",
                 straightLeft ? "rounded-l-none rounded-r-[14px] border-l-2" : "rounded-l-[14px] rounded-r-none border-r-2",
                 stub.drillable ? "cursor-pointer" : "cursor-default",
                 selected ? "border-primary shadow-[0_0_0_4px_var(--selection-ring)]" : "border-border",

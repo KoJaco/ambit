@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { hierarchySections, proposalRows, summarizeProposal } from "./proposal-rows";
+import { hierarchySections, proposalRows, summarizeProposal, unresolvedParentIds } from "./proposal-rows";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -171,15 +171,6 @@ describe("review presentation", () => {
         expect(rows[0].title).toBe("A");
         expect(rows[0].change).toBe("Parent: walkflow-platform → root");
     });
-
-    it("collapses three or more identical moves and leaves pairs alone", async () => {
-        const { groupRows } = await import("./proposal-rows");
-        const seven = proposalRows(diff(["a", "b", "c", "d", "e", "f", "g"].map((id) => move(id, ""))));
-        const items = groupRows(seven);
-        expect(items).toHaveLength(1);
-        expect(items[0]).toMatchObject({ kind: "group", group: { title: "Move 7 nodes to root" } });
-        expect(groupRows(seven.slice(0, 2)).every((item) => item.kind === "row")).toBe(true);
-    });
 });
 
 function op(partial: Partial<OpDiff> & { op: string; index: number }): OpDiff {
@@ -251,5 +242,17 @@ describe("hierarchySections", () => {
         ]);
         expect(sections[0].items.map((i) => i.label)).toContain('API → DB "reads"');
         expect(sections[2].items[0].label).toBe('API → ext "calls"');
+    });
+
+    it("lists existing parents that nothing names yet", () => {
+        const d = diff([create(0, "lone", "Cache", "root1"), create(1, "z", "Z", "lone")]);
+        expect(unresolvedParentIds(d)).toEqual(["root1"]);
+        expect(unresolvedParentIds(d, new Map([["root1", 1]]))).toEqual([]);
+    });
+
+    it("names existing parent zones from the lookup, falling back to the id", () => {
+        const d = diff([create(0, "lone", "Cache", "root1")]);
+        expect(hierarchySections(d, new Map([["root1", "Platform"]]))[0].title).toBe("In Platform");
+        expect(hierarchySections(d)[0].title).toBe("In root1");
     });
 });

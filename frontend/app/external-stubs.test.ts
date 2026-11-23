@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Crossing } from "./api";
-import { buildExternalStubs, isStubId, straightSideFor, stubTitle } from "./external-stubs";
+import { buildExternalStubs, isStubActivationKey, isStubId, stubAriaLabel, straightSideFor, stubTitle } from "./external-stubs";
 
 const crossing = (over: Partial<Crossing>): Crossing => ({
     node_id: "a",
@@ -36,7 +36,7 @@ describe("buildExternalStubs", () => {
 
     it("only treats stubs as drillable with a relationship id, and ignores duplicates", () => {
         const { stubs } = buildExternalStubs([
-            crossing({ drillable: true, relationship_id: undefined }),
+            crossing({ drillable: true, relationship_id: undefined, label: "other" }),
             crossing({ drillable: true }),
             crossing({ drillable: true }),
         ]);
@@ -48,10 +48,36 @@ describe("buildExternalStubs", () => {
     });
 });
 
+describe("buildExternalStubs duplicates", () => {
+    it("collapses crossings identical in node, direction, other end and label, keeping the first id", () => {
+        const { stubs, edges } = buildExternalStubs([
+            crossing({ relationship_id: "x", drillable: true }),
+            crossing({ relationship_id: "x-2", drillable: true }),
+            crossing({ relationship_id: "y", label: "reads" }),
+            crossing({ relationship_id: "z", direction: "in" }),
+        ]);
+        expect(stubs.map((s) => s.relationshipId)).toEqual(["x", "y", "z"]);
+        expect(edges).toHaveLength(3);
+    });
+});
+
 describe("stubTitle", () => {
     it("prefers the node name, then the label, then the id", () => {
         expect(stubTitle("Billing", "calls", "z")).toBe("Billing");
         expect(stubTitle(undefined, "calls", "z")).toBe("calls");
         expect(stubTitle(" ", "", "z")).toBe("z");
+    });
+});
+
+describe("stub accessibility helpers", () => {
+    it("names a stub by relationship and direction", () => {
+        expect(stubAriaLabel("calls", "in", "Billing")).toBe("Open relationship: calls (incoming from Billing)");
+        expect(stubAriaLabel(" ", "out", "Billing")).toBe("Open relationship: unnamed (outgoing to Billing)");
+    });
+
+    it("activates on Enter and Space only", () => {
+        expect(isStubActivationKey("Enter")).toBe(true);
+        expect(isStubActivationKey(" ")).toBe(true);
+        expect(isStubActivationKey("a")).toBe(false);
     });
 });

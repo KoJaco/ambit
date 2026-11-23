@@ -137,7 +137,9 @@ function Preview({ description, children }: { description: string; children: Rea
     return (
         <figure className="m-0 flex flex-col gap-2 rounded-xl border border-border bg-background/40 p-3">
             <figcaption className="sr-only">{description}</figcaption>
-            {children}
+            <div className="flex flex-col gap-2" aria-hidden>
+                {children}
+            </div>
         </figure>
     );
 }
@@ -189,7 +191,8 @@ export function ProposalVisual({ view }: { view: DetailView }) {
                             <li key={c.field} className="flex flex-wrap gap-x-1.5">
                                 <span className="font-medium text-foreground">{c.label}</span>
                                 <span className="text-muted-foreground line-through">{c.before}</span>
-                                <span aria-label="changed to">→</span>
+                                <span aria-hidden>→</span>
+                                <span className="sr-only">changed to</span>
                                 <span className="text-foreground">{c.after}</span>
                             </li>
                         ))}

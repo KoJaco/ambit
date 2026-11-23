@@ -24,6 +24,7 @@ import {
     proposalOrigin,
     proposalRows,
     summarizeProposal,
+    unresolvedParentIds,
     type HierarchyItem,
     type ReviewRow,
     type RowVerb,
@@ -155,15 +156,15 @@ export function ProposalReview({
                 >
                     <VerbChip verb={row.verb} done={row.status !== "pending"} />
                     <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-medium">
-                            {label}
+                        <span className="flex min-w-0 items-center gap-2 text-sm font-medium">
+                            <span className="truncate">{label}</span>
                             {row.stale ? (
-                                <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                                <span className="shrink-0 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-800 dark:text-amber-300">
                                     Stale
                                 </span>
                             ) : null}
                             {row.status !== "pending" ? (
-                                <span className="ml-2 text-xs font-normal text-muted-foreground">{row.status}</span>
+                                <span className="shrink-0 text-xs font-normal text-muted-foreground">{row.status}</span>
                             ) : null}
                         </span>
                         {row.change ? <span className="truncate text-xs text-muted-foreground">{row.change}</span> : null}
@@ -175,6 +176,7 @@ export function ProposalReview({
                         canAccept={row.canAccept}
                         needsConfirm={row.needsConfirm}
                         busy={busy}
+                        label={label}
                         onAccept={() => void acceptRows(proposal ?? emptySummary(proposalId), diff, [row], row.title)}
                         onReject={() => void rejectRows(proposalId, [row])}
                     />
@@ -186,8 +188,12 @@ export function ProposalReview({
     // Hooks must run on every render, so this sits above the early return.
     const detailOp = detail ? findOp(diffs, detail) : null;
     const fetchedNodes = useNodeSnapshots((known) =>
-        detail && detailOp && diffs[detail.proposalId] ? unresolvedNodeIds(diffs[detail.proposalId], detailOp, known) : [],
+        detail && detailOp && diffs[detail.proposalId]
+            ? unresolvedNodeIds(diffs[detail.proposalId], detailOp, known)
+            : Object.values(diffs).flatMap((d) => unresolvedParentIds(d, known)),
     );
+
+    const fetchedNodeNames = new Map([...fetchedNodes].map(([id, node]) => [id, node.name]));
 
     if (summaries.length === 0 && !error) return null;
 
@@ -237,8 +243,9 @@ export function ProposalReview({
                             );
                         })()}
                     </div>
-                    {detailOp.status === "pending" && individual[detail.proposalId] ? (
+                    {detailOp.status === "pending" ? (
                         <ReviewOpActions
+                            label={proposalRows({ ...diffs[detail.proposalId], operations: [detailOp] })[0]?.title ?? detailOp.node_id}
                             canAccept={detailCanAccept(detailOp)}
                             needsConfirm={detailNeedsConfirm(detailOp)}
                             busy={busy}
@@ -279,17 +286,17 @@ export function ProposalReview({
                             const pending = rows.filter((row) => row.status === "pending").length;
                             const origin = proposalOrigin(proposal.source);
                             const line = summarizeProposal(diff ?? emptyDiff(proposal));
-                            const sections = hierarchySections(diff ?? emptyDiff(proposal));
+                            const sections = hierarchySections(diff ?? emptyDiff(proposal), fetchedNodeNames);
                             const showIndividual = !!individual[proposal.proposal_id];
                             return (
                                 <section
                                     key={proposal.proposal_id}
-                                    aria-label={proposal.summary || proposal.proposal_id}
+                                    aria-labelledby={`proposal-title-${proposal.proposal_id}`}
                                     className="rounded-2xl border border-border bg-background/40"
                                 >
                                     <header className="sticky top-0 z-10 flex flex-col gap-2.5 rounded-t-2xl border-b border-border bg-card/95 p-3 backdrop-blur">
                                         <div className="flex flex-col gap-1">
-                                            <p className="text-sm leading-snug font-semibold">
+                                            <p id={`proposal-title-${proposal.proposal_id}`} className="text-sm leading-snug font-semibold">
                                                 {proposal.unreadable
                                                     ? `Unreadable ${proposal.proposal_id}`
                                                     : proposal.summary || `${proposal.source} ${proposal.proposal_id}`}
@@ -360,6 +367,7 @@ export function ProposalReview({
                                                 <button
                                                     type="button"
                                                     className={outlineButton}
+                                                    aria-label={`Reject all changes in ${proposal.summary || proposal.proposal_id}`}
                                                     disabled={busy || pending === 0}
                                                     onClick={() =>
                                                         void run(async () => {
@@ -369,7 +377,7 @@ export function ProposalReview({
                                                     }
                                                 >
                                                     <XCircle className="size-4" aria-hidden />
-                                                    Reject
+                                                    Reject all
                                                 </button>
                                             </div>
                                         )}
@@ -401,8 +409,8 @@ export function ProposalReview({
                                             </button>
                                             <div className="flex flex-col gap-3">
                                                 {sections.map((section) => (
-                                                    <section key={section.key} aria-label={section.title} className="flex flex-col gap-1.5">
-                                                        <h3 className="text-xs font-semibold text-muted-foreground">{section.title}</h3>
+                                                    <section key={section.key} aria-labelledby={`sec-${proposal.proposal_id}-${section.key}`} className="flex flex-col gap-1.5">
+                                                        <h3 id={`sec-${proposal.proposal_id}-${section.key}`} className="text-xs font-semibold text-muted-foreground">{section.title}</h3>
                                                         <ul className="flex flex-col">
                                                             {section.items.map((item) =>
                                                                 renderRow(proposal.proposal_id, diff, item, showIndividual),

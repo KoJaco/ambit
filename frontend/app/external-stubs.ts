@@ -43,7 +43,12 @@ export function buildExternalStubs(crossings: Crossing[] | undefined): { stubs: 
     const stubs: ExternalStub[] = [];
     const edges: StubEdge[] = [];
     const seen = new Set<string>();
+    // Duplicate relationships (same ends and label) would draw doubled stubs; keep the first.
+    const shapes = new Set<string>();
     for (const crossing of crossings ?? []) {
+        const shape = JSON.stringify([crossing.node_id, crossing.direction, crossing.other_id, crossing.label]);
+        if (shapes.has(shape)) continue;
+        shapes.add(shape);
         const base = crossing.relationship_id || `${crossing.node_id}>${crossing.direction}>${crossing.other_id}`;
         const id = `${stubIdPrefix}${base}`;
         if (seen.has(id)) continue;
@@ -82,4 +87,15 @@ export function buildExternalStubs(crossings: Crossing[] | undefined): { stubs: 
 // Name shown on a stub: the other node's name once known, else the relationship label, else its id.
 export function stubTitle(name: string | undefined, label: string, otherId: string): string {
     return name?.trim() || label.trim() || otherId;
+}
+
+// Accessible name of a drillable stub's focus target.
+export function stubAriaLabel(label: string, direction: string, otherName: string): string {
+    const rel = label.trim() || "unnamed";
+    return `Open relationship: ${rel} (${direction === "in" ? "incoming from" : "outgoing to"} ${otherName})`;
+}
+
+// Keys that act like a double-click on a focused stub.
+export function isStubActivationKey(key: string): boolean {
+    return key === "Enter" || key === " ";
 }

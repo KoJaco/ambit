@@ -213,45 +213,6 @@ function groupKeyOf(op: OpDiff, names: Map<string, string>): string {
     return op.op === "set_relationship" ? "set_relationship" : op.op;
 }
 
-export type RowGroup = { key: string; verb: RowVerb; title: string; rows: ReviewRow[] };
-export type RowItem = { kind: "row"; row: ReviewRow } | { kind: "group"; group: RowGroup };
-
-const GROUP_MIN = 3;
-
-// Collapses runs (same group key, 3 or more) into one expandable item, keeping order of first sight.
-export function groupRows(rows: ReviewRow[]): RowItem[] {
-    const counts = new Map<string, number>();
-    for (const row of rows) counts.set(row.groupKey, (counts.get(row.groupKey) ?? 0) + 1);
-    const items: RowItem[] = [];
-    const open = new Map<string, RowGroup>();
-    for (const row of rows) {
-        if ((counts.get(row.groupKey) ?? 0) < GROUP_MIN) {
-            items.push({ kind: "row", row });
-            continue;
-        }
-        let group = open.get(row.groupKey);
-        if (!group) {
-            group = { key: row.groupKey, verb: row.verb, title: "", rows: [] };
-            open.set(row.groupKey, group);
-            items.push({ kind: "group", group });
-        }
-        group.rows.push(row);
-    }
-    for (const group of open.values()) group.title = groupTitle(group);
-    return items;
-}
-
-function groupTitle(group: RowGroup): string {
-    const n = group.rows.length;
-    const [kind, fields, target] = group.key.split("|");
-    if (group.verb === "Create") return `Create ${n} nodes`;
-    if (group.verb === "Delete") return `Delete ${n} nodes`;
-    if (group.verb === "Remove connection") return `Remove ${n} connections`;
-    if (group.verb === "Connect") return `Connect ${n} relationships`;
-    if (kind === "update" && fields === "parent_id") return `Move ${n} nodes to ${target || "root"}`;
-    return `Update ${n} nodes (${(fields ?? "").split(",").map(humanField).join(", ")})`;
-}
-
 const CANVAS_SOURCES = new Set(["group_nodes", "ungroup_node", "reparent_node"]);
 
 // Proposals staged from the canvas are the architect's own; anything else came through MCP.
@@ -301,6 +262,19 @@ export function summarizeProposal(diff: ProposalDiff): ProposalSummaryLine {
     };
 }
 
+// Ids of existing parent zones that hierarchySections would title, but no snapshot in the
+// proposal names and `known` does not yet cover.
+export function unresolvedParentIds(diff: ProposalDiff, known?: ReadonlyMap<string, unknown>): string[] {
+    const names = nameLookup(diff);
+    const out = new Set<string>();
+    for (const op of diff.operations) {
+        if (op.op === "set_relationship" || op.op === "delete_relationship") continue;
+        const parent = (op.op === "create_node" ? op.proposed : (op.current ?? op.proposed))?.parent_id;
+        if (parent && !names.has(parent) && !known?.has(parent)) out.add(parent);
+    }
+    return [...out];
+}
+
 export type HierarchyItem = { row: ReviewRow; label: string };
 export type HierarchySection = {
     key: string;
@@ -311,11 +285,11 @@ export type HierarchySection = {
 
 // Groups a proposal's rows by where they land: each new zone (a created node with created
 // descendants, with the nodes and connections inside it), each existing zone that gets other
-// changes, then one Connections section for edges that reach outside a new zone.
-export function hierarchySections(diff: ProposalDiff): HierarchySection[] {
+// changes (named from the proposal, else from `existingNames`), then one Connections section for edges that reach outside a new zone.
+export function hierarchySections(diff: ProposalDiff, existingNames?: ReadonlyMap<string, string>): HierarchySection[] {
     const rows = proposalRows(diff);
     const names = nameLookup(diff);
-    const nameOf = (id: string) => names.get(id) ?? id;
+    const nameOf = (id: string) => names.get(id) ?? existingNames?.get(id) ?? id;
     const opByIndex = new Map(diff.operations.map((op) => [op.index, op]));
     const parentOf = new Map<string, string>();
     for (const op of diff.operations) {

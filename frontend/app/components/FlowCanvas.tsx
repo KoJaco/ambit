@@ -49,7 +49,7 @@ import { barStore } from "../bottom-bar";
 import { history } from "../history";
 import { useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
-import { buildExternalStubs } from "../external-stubs";
+import { buildExternalStubs, isStubActivationKey, stubAriaLabel } from "../external-stubs";
 import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions, type NodeSize, type Point } from "../layout";
 import {
     canExpandChild,
@@ -208,6 +208,11 @@ function buildArchNodes(
         id: stub.id,
         type: "external" as const,
         selectable: false,
+        // Only a stub that opens a relationship is a keyboard stop; it is then a button.
+        focusable: stub.drillable,
+        ariaRole: stub.drillable ? ("button" as const) : undefined,
+        ariaLabel: stub.drillable ? stubAriaLabel(stub.label, stub.direction, "outside this level") : undefined,
+        className: "group/stub",
         // Movable (layout only, persisted with the level's positions) but never selectable or deletable.
         draggable: true,
         deletable: false,
@@ -723,12 +728,25 @@ export default function FlowCanvas({
 
     // Drilling is only for summary cards. An expanded group already shows its children
     // on this level, so opening it would repeat the same picture (decision 0010).
+    const openStub = (node: ArchNode) => {
+        const stub = node.data.external;
+        if (stub?.drillable && stub.relationshipId) {
+            navigate(`/relationship/${stub.relationshipId}`, { state: { fromNodeId: nodeId } });
+        }
+    };
+    // Enter/Space on a focused stub acts like a double-click.
+    const onStubKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+        if (!isStubActivationKey(event.key)) return;
+        const target = event.target as HTMLElement;
+        if (!target.classList?.contains("react-flow__node")) return;
+        const node = nodes.find((n) => n.id === target.getAttribute("data-id"));
+        if (node?.type !== "external") return;
+        event.preventDefault();
+        openStub(node);
+    };
     const onNodeDoubleClick: NodeMouseHandler<ArchNode> = (_event, node) => {
         if (node.type === "external") {
-            const stub = node.data.external;
-            if (stub?.drillable && stub.relationshipId) {
-                navigate(`/relationship/${stub.relationshipId}`, { state: { fromNodeId: nodeId } });
-            }
+            openStub(node);
             return;
         }
         if (!drillsOnDoubleClick(node.type)) return;
@@ -948,6 +966,7 @@ export default function FlowCanvas({
                 multiSelectionKeyCode={multiSelectionKeys}
                 edgeTypes={edgeTypes}
                 onNodesChange={onNodesChange}
+                onKeyDown={onStubKeyDown}
                 onNodeClick={onNodeClick}
                 onNodeDoubleClick={onNodeDoubleClick}
                 onEdgeClick={onEdgeClick}
