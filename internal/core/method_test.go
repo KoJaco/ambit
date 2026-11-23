@@ -402,3 +402,54 @@ func TestWatchReloadsMethodChanges(t *testing.T) {
 	writeMethod(t, dir, "mine.md", "edited")
 	wait(func() bool { return idx.activeMethodLocked().Guidance == "edited" })
 }
+
+// N5: a method/stage change made by another process (atomic rename of config.json) must
+// reach a running watcher and be reflected without restart.
+func TestWatchSeesCrossProcessSetMethodAndStage(t *testing.T) {
+	idx, dir := newModel(t)
+	if _, err := idx.SetMethod("design-first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SetStage("build"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	notices := make(chan WatchNotice, 16)
+	if err := idx.WatchNotices(ctx, func(n WatchNotice) { notices <- n }); err != nil {
+		t.Fatal(err)
+	}
+	other := reopen(t, dir)
+	if other.ActiveMethod().ID != "design-first" || other.EffectiveStage() != "build" {
+		t.Fatal("second instance did not load state")
+	}
+	expect := func(method, stage string) {
+		t.Helper()
+		deadline := time.After(4 * time.Second)
+		for {
+			select {
+			case n := <-notices:
+				if n.Err != nil {
+					t.Fatal(n.Err)
+				}
+				if n.ModelChanged && idx.ActiveMethod().ID == method && idx.EffectiveStage() == stage {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("watcher never reflected %s/%s (have %s/%s)", method, stage, idx.ActiveMethod().ID, idx.EffectiveStage())
+			}
+		}
+	}
+	if err := other.SetStage("design"); err != nil {
+		t.Fatal(err)
+	}
+	expect("design-first", "design")
+	if _, err := other.SetMethod("freeform"); err != nil {
+		t.Fatal(err)
+	}
+	expect("freeform", "")
+	if _, err := other.SetMethod("design-first"); err != nil {
+		t.Fatal(err)
+	}
+	expect("design-first", "design")
+}

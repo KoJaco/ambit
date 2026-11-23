@@ -204,8 +204,12 @@ are not stage-gated. There is no auth beyond the loopback bind.
   is 409 `stage_unsupported`; an id not in the method is 400 `unknown_stage`.
 - `GET /check-model?include_drift=1&all=1` — `{ok, method, stage?, findings: [{rule,
   severity, node_id?, relationship_id?, message}], counts: {advisory, enforced, total},
-  drift?, drift_error?}`. Both flags are optional (`1` or `true`); `include_drift` also
-  turns on when the method's `check.include_drift` is set. Never blocks anything.
+  drift?, drift_error?, method_warning?}`. Both flags are optional. `include_drift` is
+  tri-state: absent follows the method's `check.include_drift`; `1`/`true`/`yes` forces
+  drift on; `0`/`false`/`no` forces it off even when the method enables it. `all` is `1` or
+  `true`. `method_warning` (string, omitted when none) is set when the method named in
+  `config.json` did not load and the result was computed under `freeform`, so that
+  method's enforced rules were not checked. Never blocks anything.
 
 ### Layout
 
@@ -320,8 +324,7 @@ operation without confirmation, `500` for an unreadable or malformed model.
 
 Error bodies are `{"error": "<message>"}`. The workflow-method errors add a stable `code`
 (additive; other errors carry none): `stage_gate` (409), `unknown_method` (400),
-`bad_method` (409), `unknown_stage` (400), `stage_unsupported` (409), `bad_lint_rule`
-(400). Clients should branch on `code`, not on the message.
+`bad_method` (409), `unknown_stage` (400), `stage_unsupported` (409). Clients should branch on `code`, not on the message.
 
 Every error body carries a human-readable message naming the specific node, operation, or
 rule involved. These surface directly in the architect's UI, so "invalid request" is not an

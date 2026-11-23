@@ -164,10 +164,24 @@ func queryFlag(r *http.Request, key string) bool {
 	return false
 }
 
+// queryTriState returns nil when the key is absent or unrecognised, else the flag value.
+func queryTriState(r *http.Request, key string) *bool {
+	var v bool
+	switch r.URL.Query().Get(key) {
+	case "1", "true", "yes":
+		v = true
+	case "0", "false", "no":
+		v = false
+	default:
+		return nil
+	}
+	return &v
+}
+
 func getCheckModel(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res, err := core.CheckModel(idx, core.CheckModelOptions{
-			IncludeDrift: queryFlag(r, "include_drift"),
+			IncludeDrift: queryTriState(r, "include_drift"),
 			AllRules:     queryFlag(r, "all"),
 		})
 		if err != nil {

@@ -83,42 +83,80 @@ func promptMethod(in io.Reader, out io.Writer, methods []core.MethodSummary, hig
 	return "", fmt.Errorf("unknown method %q", text)
 }
 
-// cmdInit scaffolds .arch and optionally selects a method. interactive enables the prompt.
+// stdoutIsTerminal reports whether w is an interactive terminal (ANSI is only emitted then).
+func stdoutIsTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	return ok && isTerminal(f)
+}
+
+// cmdInit scaffolds .arch and optionally selects a method. interactive enables the prompt,
+// which only appears for a fresh project: no method key in config.json and .arch just
+// created (or still empty). Re-running init never changes an existing method or stage
+// unless --method is given.
 func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io.Writer) int {
 	dir, method, err := parseInitArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "ambit init: %v\n", err)
-		return 2
+		return 1
+	}
+	// Inspect an existing project before scaffolding anything.
+	var existing *core.Index
+	if st, statErr := os.Stat(filepath.Join(dir, ".arch")); statErr == nil && st.IsDir() {
+		existing, _ = core.Open(dir)
+	}
+	if method != "" {
+		var known bool
+		if existing != nil {
+			_, merr := existing.MethodByID(method)
+			known = merr == nil
+		} else {
+			_, known = core.BuiltinMethod(method)
+		}
+		if !known {
+			fmt.Fprintf(stderr, "ambit init: unknown method %q (run `ambit method list` in an initialised project to see them)\n", method)
+			return 1
+		}
 	}
 	if err := core.Init(dir); err != nil {
 		fmt.Fprintf(stderr, "ambit init: %v\n", err)
 		return 1
 	}
-	if method == "" && interactive {
-		idx, err := core.Open(dir)
-		if err != nil {
-			fmt.Fprintf(stderr, "ambit init: %v\n", err)
-			return 1
-		}
-		method, err = promptMethod(stdin, stdout, idx.ListMethods(), true)
+	idx, err := core.Open(dir)
+	if err != nil {
+		fmt.Fprintf(stderr, "ambit init: %v\n", err)
+		return 1
+	}
+	prev := idx.MethodID
+	if prev == "" {
+		prev = core.FreeformMethod
+	}
+	fresh := existing == nil || (len(existing.Order) == 0 && existing.MethodID == "" && existing.StageID == "")
+	if method == "" && interactive && fresh {
+		method, err = promptMethod(stdin, stdout, idx.ListMethods(), stdoutIsTerminal(stdout))
 		if err != nil {
 			fmt.Fprintf(stderr, "ambit init: %v\n", err)
 			return 1
 		}
 	}
-	if method != "" {
-		idx, err := core.Open(dir)
-		if err != nil {
-			fmt.Fprintf(stderr, "ambit init: %v\n", err)
-			return 1
-		}
+	if method != "" && method == prev && existing != nil {
+		fmt.Fprintf(stdout, "method: %s (unchanged)\n", prev)
+	} else if method != "" {
 		res, err := idx.SetMethod(method)
 		if err != nil {
 			fmt.Fprintf(stderr, "ambit init: %v\n", err)
 			return 1
 		}
-		fmt.Fprintf(stdout, "method: %s\n", res.Method)
-		if res.Stage != "" {
+		if existing != nil && prev != res.Method {
+			fmt.Fprintf(stdout, "method changed: %s -> %s\n", prev, res.Method)
+		} else {
+			fmt.Fprintf(stdout, "method: %s\n", res.Method)
+		}
+		switch {
+		case res.StageReset && res.Stage != "":
+			fmt.Fprintf(stdout, "stage reset from %q to %q (not valid in this method)\n", res.PreviousStage, res.Stage)
+		case res.StageReset:
+			fmt.Fprintf(stdout, "stage %q cleared (this method has no stages)\n", res.PreviousStage)
+		case res.Stage != "":
 			fmt.Fprintf(stdout, "stage: %s\n", res.Stage)
 		}
 	}
@@ -126,12 +164,12 @@ func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io
 	return 0
 }
 
-const methodUsage = "usage: ambit method list\n       ambit method show [id]\n       ambit method set <id>\n       ambit method export-skill [--target claude|cursor] [--out path|-]\n"
+const methodUsage = "usage: ambit method list\n       ambit method show [id]\n       ambit method set <id>\n       ambit method export-skill [--target claude|cursor] [--out path|-] [--force]\n"
 
 func cmdMethod(dir string, args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, methodUsage)
-		return 2
+		return 1
 	}
 	idx, err := core.Open(dir)
 	if err != nil {
@@ -145,7 +183,7 @@ func cmdMethod(dir string, args []string, stdout, stderr io.Writer) int {
 	case "list":
 		if len(args) != 1 {
 			fmt.Fprint(stderr, methodUsage)
-			return 2
+			return 1
 		}
 		for _, m := range idx.ListMethods() {
 			mark := " "
@@ -157,7 +195,7 @@ func cmdMethod(dir string, args []string, stdout, stderr io.Writer) int {
 	case "show":
 		if len(args) > 2 {
 			fmt.Fprint(stderr, methodUsage)
-			return 2
+			return 1
 		}
 		m := idx.ActiveMethod()
 		if len(args) == 2 {
@@ -170,7 +208,7 @@ func cmdMethod(dir string, args []string, stdout, stderr io.Writer) int {
 	case "set":
 		if len(args) != 2 {
 			fmt.Fprint(stderr, methodUsage)
-			return 2
+			return 1
 		}
 		res, err := idx.SetMethod(args[1])
 		if err != nil {
@@ -190,7 +228,7 @@ func cmdMethod(dir string, args []string, stdout, stderr io.Writer) int {
 		return exportSkill(dir, idx.ActiveMethod(), args[1:], stdout, stderr)
 	default:
 		fmt.Fprint(stderr, methodUsage)
-		return 2
+		return 1
 	}
 	return 0
 }
@@ -225,7 +263,9 @@ func showMethod(w io.Writer, m *core.Method, active bool, stage string) {
 	fmt.Fprintf(w, "check include_drift: %t\n\nguidance:\n%s\n", m.Check.IncludeDrift, m.Guidance)
 }
 
-const generatedNote = "Generated by `ambit method export-skill`. Do not edit. The ambit MCP server is the source of truth: call get_started for the live guidance and regenerate this file after changing the method."
+const generatedMarker = "Generated by `ambit method export-skill`"
+
+const generatedNote = generatedMarker + ". Do not edit. The ambit MCP server is the source of truth: call get_started for the live guidance and regenerate this file after changing the method."
 
 // formatSkill renders the method as a Claude Code skill or a Cursor rule.
 func formatSkill(m *core.Method, target string) (string, error) {
@@ -244,9 +284,11 @@ func formatSkill(m *core.Method, target string) (string, error) {
 }
 
 func exportSkill(dir string, m *core.Method, args []string, stdout, stderr io.Writer) int {
-	target, out := "claude", ""
+	target, out, force := "claude", "", false
 	for i := 0; i < len(args); i++ {
 		switch {
+		case args[i] == "--force":
+			force = true
 		case args[i] == "--target" && i+1 < len(args):
 			target = args[i+1]
 			i++
@@ -255,13 +297,13 @@ func exportSkill(dir string, m *core.Method, args []string, stdout, stderr io.Wr
 			i++
 		default:
 			fmt.Fprint(stderr, methodUsage)
-			return 2
+			return 1
 		}
 	}
 	text, err := formatSkill(m, target)
 	if err != nil {
 		fmt.Fprintf(stderr, "ambit method export-skill: %v\n", err)
-		return 2
+		return 1
 	}
 	if out == "-" {
 		fmt.Fprint(stdout, text)
@@ -272,6 +314,10 @@ func exportSkill(dir string, m *core.Method, args []string, stdout, stderr io.Wr
 		if target == "cursor" {
 			out = filepath.Join(dir, ".cursor", "rules", "ambit-method.mdc")
 		}
+	}
+	if existing, rerr := os.ReadFile(out); rerr == nil && !force && !strings.Contains(string(existing), generatedMarker) {
+		fmt.Fprintf(stderr, "ambit method export-skill: %s exists and was not generated by ambit; pass --force to overwrite it\n", out)
+		return 1
 	}
 	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
 		fmt.Fprintf(stderr, "ambit method export-skill: %v\n", err)
@@ -293,6 +339,9 @@ func cmdStage(dir string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ambit stage: %v\n", err)
 		return 1
 	}
+	for _, w := range idx.Warnings() {
+		fmt.Fprintln(stderr, w.String())
+	}
 	m := idx.ActiveMethod()
 	switch {
 	case len(args) == 0 || (len(args) == 1 && args[0] == "show"):
@@ -313,7 +362,7 @@ func cmdStage(dir string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "stage: %s\n", args[1])
 	default:
 		fmt.Fprint(stderr, stageUsage)
-		return 2
+		return 1
 	}
 	return 0
 }
@@ -326,12 +375,16 @@ func cmdCheckModel(dir string, args []string, stdout, stderr io.Writer) int {
 		case "--strict":
 			strict = true
 		case "--drift":
-			opts.IncludeDrift = true
+			t := true
+			opts.IncludeDrift = &t
+		case "--no-drift":
+			f := false
+			opts.IncludeDrift = &f
 		case "--all":
 			opts.AllRules = true
 		default:
-			fmt.Fprintln(stderr, "usage: ambit check-model [--strict] [--drift] [--all]")
-			return 2
+			fmt.Fprintln(stderr, "usage: ambit check-model [--strict] [--drift|--no-drift] [--all]")
+			return 1
 		}
 	}
 	idx, err := core.Open(dir)
@@ -339,10 +392,16 @@ func cmdCheckModel(dir string, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "ambit check-model: %v\n", err)
 		return 1
 	}
+	for _, w := range idx.Warnings() {
+		fmt.Fprintln(stderr, w.String())
+	}
 	res, err := core.CheckModel(idx, opts)
 	if err != nil {
 		fmt.Fprintf(stderr, "ambit check-model: %v\n", err)
 		return 1
+	}
+	if res.MethodWarning != "" {
+		fmt.Fprintf(stderr, "ambit check-model: warning: %s\n", res.MethodWarning)
 	}
 	fmt.Fprint(stdout, formatLint(res))
 	if res.Drift != nil {
@@ -352,6 +411,10 @@ func cmdCheckModel(dir string, args []string, stdout, stderr io.Writer) int {
 	}
 	if res.DriftError != "" {
 		fmt.Fprintf(stderr, "ambit check-model: drift: %s\n", res.DriftError)
+	}
+	if strict && res.MethodWarning != "" {
+		fmt.Fprintln(stderr, "ambit check-model: --strict cannot pass: the configured method did not load, so its enforced rules were not checked")
+		return 1
 	}
 	if strict && !res.OK {
 		return 1

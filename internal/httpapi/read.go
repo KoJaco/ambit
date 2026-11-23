@@ -357,8 +357,6 @@ func methodErrorCode(err error) (string, int) {
 		return "unknown_stage", http.StatusBadRequest
 	case errors.Is(err, core.ErrStageUnsupported):
 		return "stage_unsupported", http.StatusConflict
-	case errors.Is(err, core.ErrBadLintRule):
-		return "bad_lint_rule", http.StatusBadRequest
 	}
 	return "", 0
 }

@@ -100,10 +100,7 @@ type updateStatusOut struct {
 
 func (e *toolEnv) handleUpdateNodeStatus(_ context.Context, _ *sdkmcp.CallToolRequest, in updateStatusIn) (*sdkmcp.CallToolResult, updateStatusOut, error) {
 	st := core.Status(in.Status)
-	if err := e.idx.StageGate(st); err != nil {
-		return nil, updateStatusOut{}, err
-	}
-	if err := e.idx.Update(core.NodeID(in.NodeID), core.UpdateInput{Status: &st}); err != nil {
+	if err := e.idx.UpdateStatusGated(core.NodeID(in.NodeID), st); err != nil {
 		return nil, updateStatusOut{}, err
 	}
 	return nil, updateStatusOut{NodeID: in.NodeID, Status: in.Status}, nil

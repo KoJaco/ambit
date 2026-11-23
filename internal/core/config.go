@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 )
 
@@ -16,9 +17,19 @@ func (idx *Index) SetConfigKeys(kv map[string]any) error {
 }
 
 func (idx *Index) setConfigKeysLocked(kv map[string]any) error {
-	obj := cloneRaw(idx.configUnknown)
-	if obj == nil {
-		obj = map[string]jsonRaw{}
+	// Re-read from disk so edits made by another process (CLI, editor) are not lost.
+	path := filepath.Join(idx.arch(), "config.json")
+	obj := map[string]jsonRaw{}
+	data, err := os.ReadFile(path)
+	switch {
+	case err == nil:
+		if parsed, perr := parseObject(data); perr != nil {
+			return fmt.Errorf("%s: %w", path, perr)
+		} else if parsed != nil {
+			obj = parsed
+		}
+	case !os.IsNotExist(err):
+		return fmt.Errorf("%s: %w", path, err)
 	}
 	for k, v := range kv {
 		if v == nil {
@@ -31,11 +42,11 @@ func (idx *Index) setConfigKeysLocked(kv map[string]any) error {
 		}
 		obj[k] = raw
 	}
-	data, err := encodeObject(nil, nil, obj)
+	data, err = encodeObject(nil, nil, obj)
 	if err != nil {
 		return err
 	}
-	if err := writeAtomic(filepath.Join(idx.arch(), "config.json"), data); err != nil {
+	if err := writeAtomic(path, data); err != nil {
 		return err
 	}
 	return idx.reload()

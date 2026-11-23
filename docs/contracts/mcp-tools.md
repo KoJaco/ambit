@@ -261,7 +261,9 @@ are reused and duplicates avoided.
 No arguments. Returns `{method: {id, name}, stage: {id, name} | null, guidance, stages:
 [{id, name}], next_steps: [string]}` for the active workflow method (ADR 0013). `guidance`
 is the method's text, the same string served as the MCP server `instructions`. `next_steps`
-are short method- and stage-aware pointers composed by the MCP layer. Read-only. The server
+are short pointers derived from the method's data (stage gates, lint severities, stages
+and `check.include_drift`), not from built-in method ids, so a user method gets advice
+matching what it declares. Read-only. The server
 `instructions` are fixed when the session starts (the SDK reads them at `initialize`), so
 after a method change `get_started` is the live source.
 
@@ -269,10 +271,14 @@ after a method change `get_started` is the live source.
 
 Lints the model against the active method's rules (same implementation as `ambit
 check-model` and `GET /check-model`). Returns `{ok, method, stage?, findings[], counts:
-{advisory, enforced, total}, drift?, drift_error?}`. Each finding is `{rule, severity:
+{advisory, enforced, total}, drift?, drift_error?, method_warning?}`. `method_warning`
+(string, omitted when none) is set when the method named in `config.json` did not load
+(for example an invalid file in `.arch/methods/`) and the result was computed under
+`freeform`, so its enforced rules were not checked. Each finding is `{rule, severity:
 "advisory"|"enforced", node_id?, relationship_id?, message}`. `ok` is false only when an
 enforced finding exists; it never blocks a mutation. `include_drift` defaults to the
-method's `check.include_drift`; `all_rules` runs every rule as advisory. Read-only.
+method's `check.include_drift` when omitted; an explicit `false` turns drift off even when
+the method enables it; `all_rules` runs every rule as advisory. Read-only.
 
 #### `list_proposals()`
 
@@ -321,7 +327,11 @@ gated.
    the project stage or the active method (no tool takes a `stage` or `method` argument);
    they change only through the UI, `ambit stage|method set` or `PUT /stage|/method`.
    Authoring tools, `check_scope`, `get_context`, `check_model` and `get_started` are never
-   gated.
+   gated. The gate binds the MCP tool path only: `update_node_status` re-reads `config.json`
+   and checks the gate and writes the status under one lock, so a stage change from another
+   process is honoured at once, but an agent with a shell could still run `ambit stage set`
+   or edit `config.json` directly. It is a guard rail for tool-driven agents, not a security
+   boundary.
 4. **All tools go through `ambit-core`.** No MCP-specific validation or write path exists.
 5. **`get_context` names forbidden paths explicitly.** Omission is not prohibition.
 6. **`check_scope` and `ambit check` share one implementation.** They cannot disagree about

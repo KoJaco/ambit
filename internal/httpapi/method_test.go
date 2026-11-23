@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
+	"net/http/httptest"
+	"time"
 
 	"encoding/json"
 	"github.com/KoJaco/ambit/internal/core"
@@ -111,7 +114,6 @@ func TestMethodErrorCodeMapping(t *testing.T) {
 	}{
 		{wrapErr(coreErr("stage")), "stage_gate", 409},
 		{wrapErr(coreErr("bad")), "bad_method", 409},
-		{wrapErr(coreErr("lint")), "bad_lint_rule", 400},
 	} {
 		code, status := methodErrorCode(c.err)
 		if code != c.code || status != c.status {
@@ -147,3 +149,74 @@ func coreErr(kind string) error {
 }
 
 func wrapErr(err error) error { return fmt.Errorf("ctx: %w", err) }
+
+// N5: a CLI-style change from a second Index reaches a running server (watcher + SSE).
+func TestCrossProcessMethodChangeReachesServer(t *testing.T) {
+	idx, dir := newModel(t)
+	if _, err := idx.SetMethod("design-first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.SetStage("build"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	h := newHub(idx)
+	if err := h.start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(routes(idx, h))
+	defer ts.Close()
+	resp, err := http.Get(ts.URL + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	other, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := other.SetMethod("freeform"); err != nil {
+		t.Fatal(err)
+	}
+	events := collectEvents(t, resp, 4*time.Second, func(name, data string) bool { return name == "model-changed" })
+	if len(events) == 0 {
+		t.Fatal("no model-changed event after cross-process method change")
+	}
+	if m := decodeMap(t, getJSON(t, idx, "/method")); m["id"] != "freeform" || m["stage"] != nil {
+		t.Fatalf("server still reports %v", m)
+	}
+	if res := decodeMap(t, getJSON(t, idx, "/check-model")); res["method"] != "freeform" {
+		t.Fatalf("%v", res)
+	}
+}
+
+func TestCheckModelExplicitDriftFalseHonoured(t *testing.T) {
+	idx, _ := newModel(t)
+	doJSON(t, idx, http.MethodPut, "/method", map[string]string{"id": "map-existing"})
+	if res := decodeMap(t, getJSON(t, idx, "/check-model")); res["drift"] == nil && res["drift_error"] == nil {
+		t.Fatalf("method default should run drift: %v", res)
+	}
+	for _, q := range []string{"0", "false"} {
+		res := decodeMap(t, getJSON(t, idx, "/check-model?include_drift="+q))
+		if res["drift"] != nil || res["drift_error"] != nil {
+			t.Fatalf("include_drift=%s ignored: %v", q, res)
+		}
+	}
+}
+
+func TestHumanStatusPatchIsUngatedInDesignStage(t *testing.T) {
+	idx, _ := newModel(t)
+	id, err := idx.Create(core.CreateInput{Name: "Orders", Type: "service", Spec: "s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := doJSON(t, idx, http.MethodPut, "/method", map[string]string{"id": "design-first"}); rec.Code != http.StatusOK {
+		t.Fatal(rec.Body.String())
+	}
+	rec := doJSON(t, idx, http.MethodPatch, "/nodes/"+string(id), map[string]string{"status": "done"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("human path gated: %d %s", rec.Code, rec.Body.String())
+	}
+}

@@ -29,7 +29,7 @@ Ambit core stays neutral. It offers three mechanisms: a project `stage`, a model
 3.  **Text hooks.** Method `guidance` is the MCP server `instructions`, is returned by the `get_started` tool, and a method/stage preamble is prepended to every `get_context` brief. `get_graph` returns `method` and `stage`.
 4.  **Method = files.** JSON, with long text allowed as `{"file": "x.md"}` beside it. Built-ins are embedded; user methods live in `.arch/methods/<id>.json`. A user id equal to a built-in id shadows it with a warning. `extends` (built-in id only) inherits missing keys.
 5.  **Selection.** `config.json` key `method` (absent = `freeform`). `ambit init` prompts on a TTY, accepts `--method <id>`, and defaults to `freeform` non-interactively. `ambit method list|show|set` and a UI setting change it. Switching changes policy only, never model data. If the current stage is invalid in the new method, it resets to the new method's initial stage and says so.
-6.  **One hard gate, agents only.** `gates.status` maps a stage to refused statuses. In v1 only `design-first` declares one: while `stage = design`, MCP `update_node_status` rejects `assigned`, `in_progress` and `done` with `ErrStageGate`. `draft`, `specified` and `blocked` stay allowed. Authoring tools, `check_scope` and `get_context` are never gated. The human UI status control is not gated.
+6.  **One hard gate, agents only.** `gates.status` maps a stage to refused statuses. In v1 only `design-first` declares one: while `stage = design`, MCP `update_node_status` rejects `assigned`, `in_progress` and `done` with `ErrStageGate`. `draft`, `specified` and `blocked` stay allowed. Authoring tools, `check_scope` and `get_context` are never gated. The human UI status control is not gated. The gate binds the MCP tool path only: an agent with a shell could run `ambit stage set` or edit `config.json`. It is a guard rail, not a security boundary. `update_node_status` re-reads `config.json` and writes the status under one lock so a stage change made by another process takes effect immediately.
 7.  **Portability.** `ambit method export-skill [--target claude|cursor]` writes the active method as a skill/rule file marked "generated, MCP is the source of truth". Core has no harness-specific logic.
 
 ## Method file format
@@ -57,7 +57,7 @@ Ambit core stays neutral. It offers three mechanisms: a project `stage`, a model
 
 ## Initial lint rules
 
-`leaf-implementation`, `leaf-contract`, `spec-present`, `icon-set`, `edge-label`, `edge-kind`, `max-depth` (param `max_depth`, default 2), `glob-overlap`, `orphan-node`, `dependency-cycle`. `note` and `external` node types are exempt from the leaf rules.
+`leaf-implementation`, `leaf-contract`, `spec-present`, `icon-set`, `edge-label`, `edge-kind`, `max-depth` (param `max_depth`, default 2), `glob-overlap`, `orphan-node`, `dependency-cycle`. `note` and `external` node types are exempt from the leaf rules and from `orphan-node`. Method files and `{file}` texts must be regular files of at most 64 KiB inside `.arch/methods/` (symlinks and special files are rejected and the method is skipped with a warning).
 
 ## Built-in methods
 
@@ -69,8 +69,8 @@ Ambit core stays neutral. It offers three mechanisms: a project `stage`, a model
 
 -   **MCP** 15 -> 17 tools: `get_started` (`{method, stage, guidance, stages, next_steps}`) and `check_model` (`{include_drift?, all_rules?}` returns `{ok, method, stage, findings[], counts, drift?}`). `update_node_status` can return `stage_gate`. `get_graph` returns `method` and `stage`. `get_context` has a preamble. No tool sets stage or method.
 -   **HTTP:** `GET /method`, `GET /methods`, `PUT /method`, `GET /stage`, `PUT /stage`, `GET /check-model`. Error bodies gain an additive `code` field.
--   **CLI:** `ambit init [--method id]`, `ambit method list|show|set|export-skill`, `ambit stage [show|set <id>]`, `ambit check-model [--strict] [--drift] [--all]`.
--   **Errors:** `ErrStageGate`, `ErrUnknownMethod`, `ErrBadMethod`, `ErrUnknownStage`, `ErrStageUnsupported`, `ErrBadLintRule`.
+-   **CLI:** `ambit init [--method id]`, `ambit method list|show|set|export-skill`, `ambit stage [show|set <id>]`, `ambit check-model [--strict] [--drift|--no-drift] [--all]`. CLI usage errors exit 1 (as elsewhere in `ambit`). `--strict` also exits 1 when the configured method did not load. `ambit init` prompts only for a fresh project (no `method` key and `.arch` newly created or empty); `--method` validates the id before scaffolding and reports a change on an existing project. `export-skill` refuses to overwrite a file it did not generate unless `--force`.
+-   **Errors:** `ErrStageGate`, `ErrUnknownMethod`, `ErrBadMethod`, `ErrUnknownStage`, `ErrStageUnsupported`, `ErrBadLintRule` (core only; surfaced over HTTP as `bad_method` because a bad lint value makes the method file invalid).
 -   **Compatibility:** no `method` key = `freeform`; `schema_version` stays 1; old binaries keep new keys as unknown config. A project naming a missing user method falls back to `freeform` with a warning.
 
 ## Rationale

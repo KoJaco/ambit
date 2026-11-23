@@ -251,14 +251,14 @@ func TestCheckModelDrift(t *testing.T) {
 	idx, dir := newModel(t)
 	mk(t, idx, CreateInput{Name: "A", Type: "service", Implementation: []string{"a/**"}})
 	// Not a git repo: requested drift is reported softly.
-	res := findingsFor(t, idx, CheckModelOptions{IncludeDrift: true})
+	res := findingsFor(t, idx, CheckModelOptions{IncludeDrift: boolPtr(true)})
 	if res.Drift != nil || res.DriftError == "" {
 		t.Fatalf("%+v", res)
 	}
 	gitInitRepo(t, dir)
 	writeFile(t, filepath.Join(dir, "stray.txt"), "x")
 	gitCmd(t, dir, "add", "stray.txt")
-	res = findingsFor(t, idx, CheckModelOptions{IncludeDrift: true})
+	res = findingsFor(t, idx, CheckModelOptions{IncludeDrift: boolPtr(true)})
 	if res.Drift == nil || len(res.Drift.Unowned) != 1 || res.DriftError != "" {
 		t.Fatalf("%+v", res)
 	}
@@ -279,6 +279,45 @@ func TestCheckModelReportsStage(t *testing.T) {
 	mk(t, idx, CreateInput{Name: "A", Type: "service"})
 	res := findingsFor(t, idx, CheckModelOptions{})
 	if res.Stage != "design" || res.OK {
+		t.Fatalf("%+v", res)
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
+
+func TestCheckModelExplicitDriftFalseOverridesMethod(t *testing.T) {
+	idx, _ := newModel(t)
+	if _, err := idx.SetMethod("map-existing"); err != nil {
+		t.Fatal(err)
+	}
+	if res := findingsFor(t, idx, CheckModelOptions{}); res.Drift == nil && res.DriftError == "" {
+		t.Fatal("nil option should follow the method")
+	}
+	if res := findingsFor(t, idx, CheckModelOptions{IncludeDrift: boolPtr(false)}); res.Drift != nil || res.DriftError != "" {
+		t.Fatalf("explicit false ignored: %+v", res)
+	}
+}
+
+func TestLintOrphanExemptsNoteAndExternal(t *testing.T) {
+	idx, _ := lintIdx(t, "advisory", RuleOrphanNode)
+	mk(t, idx, CreateInput{Name: "Memo", Type: "note"})
+	mk(t, idx, CreateInput{Name: "Stripe", Type: "external"})
+	if f := onlyRule(findingsFor(t, idx, CheckModelOptions{}), RuleOrphanNode); len(f) != 0 {
+		t.Fatalf("%+v", f)
+	}
+}
+
+func TestCheckModelMethodWarning(t *testing.T) {
+	idx, dir := newModel(t)
+	if res := findingsFor(t, idx, CheckModelOptions{}); res.MethodWarning != "" {
+		t.Fatalf("%q", res.MethodWarning)
+	}
+	writeMethod(t, dir, "mine.json", `{broken`)
+	if err := idx.SetConfigKeys(map[string]any{"method": "mine"}); err != nil {
+		t.Fatal(err)
+	}
+	res := findingsFor(t, idx, CheckModelOptions{})
+	if res.Method != "freeform" || !strings.Contains(res.MethodWarning, `"mine"`) {
 		t.Fatalf("%+v", res)
 	}
 }

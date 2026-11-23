@@ -75,6 +75,28 @@ func (idx *Index) SetStage(id string) error {
 func (idx *Index) StageGate(status Status) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.stageGateLocked(status)
+}
+
+// UpdateStatusGated is the agent path for setting a node status. Under one lock it
+// re-reads the model and config.json (method and stage) from disk, so a stage change made
+// by another process or Index is honoured immediately, checks the gate, and writes the
+// status. There is no window between the check and the write within this process. The gate
+// binds callers of this function only; it is not a security boundary against a process
+// that edits files or runs the CLI.
+func (idx *Index) UpdateStatusGated(id NodeID, status Status) error {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	if err := idx.reload(); err != nil {
+		return err
+	}
+	if err := idx.stageGateLocked(status); err != nil {
+		return err
+	}
+	return idx.updateLocked(id, UpdateInput{Status: &status})
+}
+
+func (idx *Index) stageGateLocked(status Status) error {
 	m := idx.activeMethodLocked()
 	stage := idx.effectiveStageLocked()
 	if stage == "" {

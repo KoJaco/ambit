@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -235,7 +236,7 @@ func parseMethod(data []byte, wantID string, base *Method, read func(string) (st
 		}
 		s, err := read(t.file)
 		if err != nil {
-			return "", badMethod("%s: cannot read %q", field, t.file)
+			return "", badMethod("%s: cannot read %q: %v", field, t.file, err)
 		}
 		return s, nil
 	}
@@ -385,7 +386,7 @@ func (idx *Index) loadMethods() {
 	}
 	m := idx.lookupMethod(want)
 	if m == nil {
-		idx.warn("config.json", fmt.Sprintf("method %q is not defined; using %s", want, FreeformMethod))
+		idx.warn(filepath.Join(idx.arch(), "config.json"), fmt.Sprintf("method %q is not defined; using %s", want, FreeformMethod))
 		m = idx.lookupMethod(FreeformMethod)
 		if m == nil {
 			m = mustFreeform()
@@ -395,15 +396,44 @@ func (idx *Index) loadMethods() {
 	if idx.StageID != "" {
 		switch {
 		case len(m.Stages) == 0:
-			idx.warn("config.json", fmt.Sprintf("stage %q ignored: method %q has no stages", idx.StageID, m.ID))
+			idx.warn(filepath.Join(idx.arch(), "config.json"), fmt.Sprintf("stage %q ignored: method %q has no stages", idx.StageID, m.ID))
 		case m.StageIndex(idx.StageID) < 0:
-			idx.warn("config.json", fmt.Sprintf("stage %q is not a stage of method %q; using %q", idx.StageID, m.ID, m.InitialStage))
+			idx.warn(filepath.Join(idx.arch(), "config.json"), fmt.Sprintf("stage %q is not a stage of method %q; using %q", idx.StageID, m.ID, m.InitialStage))
 		}
 	}
 }
 
+// maxMethodFileBytes caps how much of a method JSON or {file} text is read.
+const maxMethodFileBytes = 64 << 10
+
+// readMethodFile reads a regular file of at most maxMethodFileBytes. Symlinks, FIFOs,
+// devices and other non-regular files are rejected without being opened, so a method
+// cannot make ambit read outside .arch or block on a pipe.
+func readMethodFile(path string) ([]byte, error) {
+	st, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !st.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file (symlinks and special files are not allowed)", filepath.Base(path))
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxMethodFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxMethodFileBytes {
+		return nil, fmt.Errorf("%s is larger than %d KiB", filepath.Base(path), maxMethodFileBytes>>10)
+	}
+	return data, nil
+}
+
 func loadUserMethod(dir, id string) (*Method, []string, error) {
-	data, err := os.ReadFile(filepath.Join(dir, id+".json"))
+	data, err := readMethodFile(filepath.Join(dir, id+".json"))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -420,7 +450,7 @@ func loadUserMethod(dir, id string) (*Method, []string, error) {
 		base = b
 	}
 	read := func(name string) (string, error) {
-		b, err := os.ReadFile(filepath.Join(dir, name))
+		b, err := readMethodFile(filepath.Join(dir, name))
 		return string(b), err
 	}
 	return parseMethod(data, id, base, read, methodSourceUser)

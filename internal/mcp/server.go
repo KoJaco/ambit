@@ -25,13 +25,13 @@ func Run(ctx context.Context, dir string) error {
 	}
 	watchCtx, cancelWatch := context.WithCancel(ctx)
 	defer cancelWatch()
-	go func() {
-		_ = idx.WatchNotices(watchCtx, func(n core.WatchNotice) {
-			if n.Err != nil {
-				fmt.Fprintf(os.Stderr, "ambit mcp: watch reload: %v\n", n.Err)
-			}
-		})
-	}()
+	if err := idx.WatchNotices(watchCtx, func(n core.WatchNotice) {
+		if n.Err != nil {
+			fmt.Fprintf(os.Stderr, "ambit mcp: watch reload: %v\n", n.Err)
+		}
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "ambit mcp: warning: file watcher not started (model changes made outside this session will not be seen until restart): %v\n", err)
+	}
 
 	// Instructions are fixed for the life of the session (the SDK reads them at
 	// initialize), so a later method change is only visible through get_started.

@@ -221,3 +221,116 @@ func TestServerInstructionsFromMethod(t *testing.T) {
 		t.Fatalf("instructions %q", got)
 	}
 }
+
+func writeUserMethod(t *testing.T, dir, name, body string) {
+	t.Helper()
+	p := filepath.Join(dir, ".arch", "methods", name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func startedSteps(t *testing.T, idx *core.Index, dir string) string {
+	t.Helper()
+	env := &toolEnv{idx: idx, dir: dir}
+	_, out, err := env.handleGetStarted(context.Background(), nil, getStartedIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(out.NextSteps, "\n")
+}
+
+func TestGetStartedNextStepsFollowMethodData(t *testing.T) {
+	idx, dir := openFixture(t)
+	// Extends design-first under another id: same gate, so the same advice.
+	writeUserMethod(t, dir, "ours.json", `{"schema_version":1,"id":"ours","extends":"design-first"}`)
+	if err := idx.SetConfigKeys(map[string]any{"method": "ours"}); err != nil {
+		t.Fatal(err)
+	}
+	steps := startedSteps(t, idx, dir)
+	if !strings.Contains(steps, "refuses assigned, in_progress, done") || !strings.Contains(steps, "to build") || !strings.Contains(steps, "enforced findings") || strings.Contains(steps, "get_build_order") {
+		t.Fatalf("%s", steps)
+	}
+	if err := idx.SetStage("build"); err != nil {
+		t.Fatal(err)
+	}
+	if steps := startedSteps(t, idx, dir); !strings.Contains(steps, "get_build_order") || strings.Contains(steps, "refuses") {
+		t.Fatalf("%s", steps)
+	}
+
+	// A shadowed design-first with different stage ids and a different gate.
+	writeUserMethod(t, dir, "design-first.json", `{"schema_version":1,"id":"design-first","stages":[{"id":"plan"},{"id":"ship"}],"gates":{"status":{"plan":["done"]}},"lint":{"icon-set":"advisory"}}`)
+	idx2, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx2.SetMethod("design-first"); err != nil {
+		t.Fatal(err)
+	}
+	steps = startedSteps(t, idx2, dir)
+	if !strings.Contains(steps, "Stage is plan.") || !strings.Contains(steps, "refuses done until a human advances the stage to ship") || !strings.Contains(steps, "advisory (rules: icon-set)") || strings.Contains(steps, "enforced findings") {
+		t.Fatalf("%s", steps)
+	}
+	if err := idx2.SetStage("ship"); err != nil {
+		t.Fatal(err)
+	}
+	if steps := startedSteps(t, idx2, dir); !strings.Contains(steps, "Stage is ship.") || !strings.Contains(steps, "get_build_order") {
+		t.Fatalf("%s", steps)
+	}
+}
+
+func TestUpdateNodeStatusSeesStageChangeFromAnotherProcess(t *testing.T) {
+	idx, dir := openFixture(t)
+	id, _ := idx.Create(core.CreateInput{Name: "Orders", Type: "service"})
+	if _, err := idx.SetMethod("design-first"); err != nil {
+		t.Fatal(err)
+	}
+	env := &toolEnv{idx: idx, dir: dir}
+	set := func() error {
+		_, _, err := env.handleUpdateNodeStatus(context.Background(), nil, updateStatusIn{NodeID: string(id), Status: "done"})
+		return err
+	}
+	if err := set(); !errors.Is(err, core.ErrStageGate) {
+		t.Fatal(err)
+	}
+	other, _ := core.Open(dir) // stands in for `ambit stage set build` in another process
+	if err := other.SetStage("build"); err != nil {
+		t.Fatal(err)
+	}
+	if err := set(); err != nil {
+		t.Fatalf("stale in-memory stage: %v", err)
+	}
+}
+
+func TestCheckModelToolMethodWarningAndExplicitDriftFalse(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	_, res, _ := env.handleCheckModel(context.Background(), nil, checkModelIn{})
+	if res.MethodWarning != "" {
+		t.Fatal(res.MethodWarning)
+	}
+	raw, _ := json.Marshal(res)
+	if strings.Contains(string(raw), "method_warning") {
+		t.Fatalf("must be omitted: %s", raw)
+	}
+	writeUserMethod(t, dir, "mine.json", `{broken`)
+	if err := idx.SetConfigKeys(map[string]any{"method": "mine"}); err != nil {
+		t.Fatal(err)
+	}
+	_, res, _ = env.handleCheckModel(context.Background(), nil, checkModelIn{})
+	raw, _ = json.Marshal(res)
+	if res.Method != "freeform" || !strings.Contains(string(raw), `"method_warning"`) {
+		t.Fatalf("%s", raw)
+	}
+	if _, err := idx.SetMethod("map-existing"); err != nil {
+		t.Fatal(err)
+	}
+	no := false
+	_, res, _ = env.handleCheckModel(context.Background(), nil, checkModelIn{IncludeDrift: &no})
+	if res.Drift != nil || res.DriftError != "" {
+		t.Fatalf("explicit false ignored: %+v", res)
+	}
+}

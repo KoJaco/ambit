@@ -76,8 +76,12 @@ func TestInitPromptsWhenInteractive(t *testing.T) {
 	if code := cmdInit([]string{dir}, strings.NewReader("2\n"), true, &out, &errw); code != 0 {
 		t.Fatalf("%d %s", code, errw.String())
 	}
-	if !strings.Contains(out.String(), "\x1b[1m  1) freeform") || !strings.Contains(out.String(), "(default)") {
-		t.Fatalf("prompt:\n%q", out.String())
+	if strings.Contains(out.String(), "\x1b") || !strings.Contains(out.String(), "1) freeform") || !strings.Contains(out.String(), "(default)") {
+		t.Fatalf("non-terminal output must have no ANSI:\n%q", out.String())
+	}
+	var hl bytes.Buffer
+	if _, err := promptMethod(strings.NewReader("\n"), &hl, []core.MethodSummary{{ID: "freeform", Name: "Freeform"}}, true); err != nil || !strings.Contains(hl.String(), "\x1b[1m") {
+		t.Fatalf("highlight: %v %q", err, hl.String())
 	}
 	idx, _ := core.Open(dir)
 	if idx.ActiveMethod().ID != "design-first" {
@@ -137,7 +141,7 @@ func TestMethodAndStageCommands(t *testing.T) {
 	if code, out, _ := runCmd(method, "set", "map-existing"); code != 0 || !strings.Contains(out, `stage "build" cleared`) {
 		t.Fatalf("%d %s", code, out)
 	}
-	if code, _, _ := runCmd(method, "bogus"); code != 2 {
+	if code, _, _ := runCmd(method, "bogus"); code != 1 {
 		t.Fatal(code)
 	}
 }
@@ -176,7 +180,7 @@ func TestCheckModelExitCodes(t *testing.T) {
 	if code := cmdCheckModel(free, []string{"--strict"}, &out, &errw); code != 0 || !strings.Contains(out.String(), "no findings") {
 		t.Fatalf("freeform %d\n%s", code, out.String())
 	}
-	if code := cmdCheckModel(dir, []string{"--bogus"}, &out, &errw); code != 2 {
+	if code := cmdCheckModel(dir, []string{"--bogus"}, &out, &errw); code != 1 {
 		t.Fatal(code)
 	}
 }
@@ -240,7 +244,129 @@ func TestExportSkillWritesFiles(t *testing.T) {
 	if _, err := os.Stat(custom); err != nil {
 		t.Fatal(err)
 	}
-	if code := cmdMethod(dir, []string{"export-skill", "--target", "vim"}, &out, &errw); code != 2 {
+	if code := cmdMethod(dir, []string{"export-skill", "--target", "vim"}, &out, &errw); code != 1 {
 		t.Fatal(code)
+	}
+}
+
+func TestInitRerunKeepsExistingMethodAndStage(t *testing.T) {
+	dir := initDir(t, "--method", "design-first")
+	idx, _ := core.Open(dir)
+	if err := idx.SetStage("build"); err != nil {
+		t.Fatal(err)
+	}
+	var out, errw bytes.Buffer
+	// Enter at a prompt would have picked freeform; an existing method means no prompt.
+	if code := cmdInit([]string{dir}, strings.NewReader("\n"), true, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	if strings.Contains(out.String(), "Choose a workflow method") {
+		t.Fatalf("prompted on an existing project:\n%s", out.String())
+	}
+	idx, _ = core.Open(dir)
+	if idx.ActiveMethod().ID != "design-first" || idx.EffectiveStage() != "build" {
+		t.Fatalf("%s %s", idx.ActiveMethod().ID, idx.EffectiveStage())
+	}
+	// A populated freeform project is not prompted either.
+	free := initDir(t)
+	fidx, _ := core.Open(free)
+	_, _ = fidx.Create(core.CreateInput{Name: "Orders", Type: "service"})
+	out.Reset()
+	cmdInit([]string{free}, strings.NewReader("2\n"), true, &out, &errw)
+	if strings.Contains(out.String(), "Choose") {
+		t.Fatal("prompted on a populated project")
+	}
+	// An explicit --method on an existing project says what changed.
+	out.Reset()
+	if code := cmdInit([]string{dir, "--method", "map-existing"}, nil, false, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	if !strings.Contains(out.String(), "method changed: design-first -> map-existing") || !strings.Contains(out.String(), "cleared") {
+		t.Fatalf("%s", out.String())
+	}
+}
+
+func TestInitUnknownMethodCreatesNothing(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "p")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	var out, errw bytes.Buffer
+	if code := cmdInit([]string{dir, "--method", "nope"}, nil, false, &out, &errw); code != 1 {
+		t.Fatalf("%d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".arch")); !os.IsNotExist(err) {
+		t.Fatalf(".arch was scaffolded: %v", err)
+	}
+}
+
+func brokenMethodDir(t *testing.T) string {
+	t.Helper()
+	dir := initDir(t)
+	if err := os.MkdirAll(filepath.Join(dir, ".arch", "methods"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".arch", "methods", "mine.json"), []byte(`{broken`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".arch", "config.json"), []byte(`{"method":"mine"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func TestCheckModelStrictFailsWhenMethodDidNotLoad(t *testing.T) {
+	dir := brokenMethodDir(t)
+	var out, errw bytes.Buffer
+	if code := cmdCheckModel(dir, nil, &out, &errw); code != 0 {
+		t.Fatalf("non-strict %d %s", code, errw.String())
+	}
+	if !strings.Contains(errw.String(), "mine") || !strings.Contains(errw.String(), "skipped") {
+		t.Fatalf("warnings not printed:\n%s", errw.String())
+	}
+	errw.Reset()
+	if code := cmdCheckModel(dir, []string{"--strict"}, &out, &errw); code != 1 || !strings.Contains(errw.String(), "did not load") {
+		t.Fatalf("strict %d\n%s", code, errw.String())
+	}
+	errw.Reset()
+	if code := cmdStage(dir, []string{"show"}, &out, &errw); code != 0 || !strings.Contains(errw.String(), "mine") {
+		t.Fatalf("stage warnings %d\n%s", code, errw.String())
+	}
+}
+
+func TestCheckModelNoDriftOverridesMethod(t *testing.T) {
+	dir := initDir(t, "--method", "map-existing")
+	var out, errw bytes.Buffer
+	cmdCheckModel(dir, nil, &out, &errw)
+	if !strings.Contains(out.String()+errw.String(), "drift") {
+		t.Fatalf("map-existing should run drift by default:\n%s%s", out.String(), errw.String())
+	}
+	out.Reset()
+	errw.Reset()
+	cmdCheckModel(dir, []string{"--no-drift"}, &out, &errw)
+	if strings.Contains(out.String()+errw.String(), "drift") {
+		t.Fatalf("--no-drift ignored:\n%s%s", out.String(), errw.String())
+	}
+}
+
+func TestExportSkillRefusesToOverwriteForeignFile(t *testing.T) {
+	dir := initDir(t)
+	target := filepath.Join(dir, "mine.md")
+	if err := os.WriteFile(target, []byte("hand written"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errw bytes.Buffer
+	if code := cmdMethod(dir, []string{"export-skill", "--out", target}, &out, &errw); code != 1 || !strings.Contains(errw.String(), "--force") {
+		t.Fatalf("%d %s", code, errw.String())
+	}
+	if b, _ := os.ReadFile(target); string(b) != "hand written" {
+		t.Fatal("file was overwritten")
+	}
+	if code := cmdMethod(dir, []string{"export-skill", "--out", target, "--force"}, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	// A generated file is overwritten without --force.
+	if code := cmdMethod(dir, []string{"export-skill", "--out", target}, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
 	}
 }

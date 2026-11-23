@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/KoJaco/ambit/internal/core"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -56,30 +58,49 @@ func (e *toolEnv) handleGetStarted(_ context.Context, _ *sdkmcp.CallToolRequest,
 	return nil, out, nil
 }
 
-// nextSteps composes short pointers from the method and stage. It is deliberately small:
-// the method guidance carries the real workflow text.
+// nextSteps composes short pointers from the method data (gates, lint severities,
+// stages, check settings) and the current stage, never from built-in method ids. It is
+// deliberately small: the method guidance carries the real workflow text.
 func nextSteps(m *core.Method, stage string) []string {
 	steps := []string{"Call get_graph to read the current model before authoring."}
-	switch m.ID {
-	case "design-first":
-		if stage == "design" {
-			steps = append(steps,
-				"Stage is design: model the system with seed_model, create_node and set_relationship; the architect accepts proposals in the UI.",
-				"Fill specs, implementation globs and contracts on leaf nodes, then call check_model and fix enforced findings.",
-				"update_node_status refuses assigned, in_progress and done until a human advances the stage to build.")
-		} else {
-			steps = append(steps,
-				"Stage is build: call get_build_order, pick a node whose blocked_by is empty, then get_context and check_scope before editing code.",
-				"Use update_node_status to move nodes through assigned, in_progress and done.")
+	refused := m.Gates.Status[stage]
+	if stage != "" {
+		line := fmt.Sprintf("Stage is %s.", stage)
+		if len(refused) > 0 {
+			next := "a human advances the stage"
+			if i := m.StageIndex(stage); i >= 0 && i+1 < len(m.Stages) {
+				next = fmt.Sprintf("a human advances the stage to %s", m.Stages[i+1].ID)
+			}
+			line += fmt.Sprintf(" update_node_status refuses %s until %s.", strings.Join(refused, ", "), next)
 		}
-	case "map-existing":
+		steps = append(steps, line)
+	}
+	if len(refused) > 0 {
+		steps = append(steps, "Model the system with seed_model, create_node and set_relationship; the architect accepts proposals in the UI.")
+	} else {
 		steps = append(steps,
-			"Read the repository layout first, then seed_model with shallow nodes whose implementation globs match real paths.",
-			"Call check_drift and check_model to find unowned files and overlapping globs. Do not change application code.")
+			"Call get_build_order, pick a node whose blocked_by is empty, then get_context and check_scope before editing code.",
+			"Use update_node_status to move nodes through assigned, in_progress and done.")
+	}
+	var enforced, advisory []string
+	for _, id := range core.LintRuleIDs() {
+		switch m.Lint[id].Severity {
+		case core.LintEnforced:
+			enforced = append(enforced, id)
+		case core.LintAdvisory:
+			advisory = append(advisory, id)
+		}
+	}
+	switch {
+	case len(enforced) > 0:
+		steps = append(steps, fmt.Sprintf("Call check_model and fix enforced findings (rules: %s).", strings.Join(enforced, ", ")))
+	case len(advisory) > 0:
+		steps = append(steps, fmt.Sprintf("Call check_model; findings are advisory (rules: %s).", strings.Join(advisory, ", ")))
 	default:
-		steps = append(steps,
-			"Use get_build_order and get_context before building a node.",
-			"check_model is available on demand; this method enforces nothing.")
+		steps = append(steps, "check_model is available on demand; this method enforces nothing.")
+	}
+	if m.Check.IncludeDrift {
+		steps = append(steps, "check_model includes check_drift output by default for this method; use it to find unowned files and overlapping globs.")
 	}
 	if len(m.Stages) > 0 {
 		steps = append(steps, "The stage is set by a human only; no tool changes it.")
@@ -93,12 +114,7 @@ type checkModelIn struct {
 }
 
 func (e *toolEnv) handleCheckModel(_ context.Context, _ *sdkmcp.CallToolRequest, in checkModelIn) (*sdkmcp.CallToolResult, core.LintResult, error) {
-	opts := core.CheckModelOptions{AllRules: in.AllRules}
-	if in.IncludeDrift != nil {
-		opts.IncludeDrift = *in.IncludeDrift
-	} else {
-		opts.IncludeDrift = e.idx.ActiveMethod().Check.IncludeDrift
-	}
+	opts := core.CheckModelOptions{AllRules: in.AllRules, IncludeDrift: in.IncludeDrift}
 	res, err := core.CheckModel(e.idx, opts)
 	if err != nil {
 		return nil, core.LintResult{}, err

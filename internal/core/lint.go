@@ -101,9 +101,9 @@ type LintCounts struct {
 
 // CheckModelOptions selects what CheckModel runs.
 type CheckModelOptions struct {
-	// IncludeDrift also runs Drift against idx.Dir (the method's check.include_drift
-	// turns it on as well).
-	IncludeDrift bool
+	// IncludeDrift also runs Drift against idx.Dir. Nil uses the method's
+	// check.include_drift; an explicit false turns drift off even when the method enables it.
+	IncludeDrift *bool
 	// AllRules runs every rule as advisory, ignoring the method's severities.
 	AllRules bool
 }
@@ -116,6 +116,9 @@ type LintResult struct {
 	Findings []LintFinding `json:"findings"`
 	Counts   LintCounts    `json:"counts"`
 	Drift    *DriftReport  `json:"drift,omitempty"`
+	// MethodWarning is set when the method named in config.json is not usable and the
+	// result was computed under another method (freeform), so enforced rules are not running.
+	MethodWarning string `json:"method_warning,omitempty"`
 	// DriftError is set when drift was requested but could not run (for example no git).
 	DriftError string `json:"drift_error,omitempty"`
 }
@@ -181,7 +184,13 @@ func CheckModel(idx *Index, opts CheckModelOptions) (LintResult, error) {
 		})
 	}
 	root := idx.Dir
-	wantDrift := opts.IncludeDrift || m.Check.IncludeDrift
+	wantDrift := m.Check.IncludeDrift
+	if opts.IncludeDrift != nil {
+		wantDrift = *opts.IncludeDrift
+	}
+	if idx.MethodID != "" && idx.MethodID != m.ID {
+		res.MethodWarning = fmt.Sprintf("configured method %q is not usable; checked under %q instead, so its rules are not applied (see warnings)", idx.MethodID, m.ID)
+	}
 	idx.mu.Unlock()
 
 	for _, f := range res.Findings {
@@ -360,11 +369,6 @@ func globSample(g string) string {
 				b.WriteByte(class[0])
 			}
 			i += end
-		case '\\':
-			if i+1 < len(g) {
-				i++
-				b.WriteByte(g[i])
-			}
 		default:
 			b.WriteByte(c)
 		}
@@ -400,7 +404,7 @@ func lintOrphanNode(idx *Index, _ LintSetting, emit func(LintFinding)) {
 		}
 	}
 	for _, id := range idx.Order {
-		if idx.Nodes[id] != nil && !linked[id] {
+		if n := idx.Nodes[id]; n != nil && !linked[id] && !exemptFromLeafRules(n) {
 			emit(LintFinding{NodeID: id, Message: fmt.Sprintf("node %s has no parent, children, relationships or dependencies", id)})
 		}
 	}
