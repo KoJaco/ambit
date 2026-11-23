@@ -18,7 +18,13 @@ import { RightRailStack, type RightRailFront } from "../components/right-rail-st
 import { EdgeActions } from "../components/edge-actions";
 import type { Relationship } from "../api";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
-import { floatingToggleMode, useRailState } from "../right-rail-state";
+import {
+    floatingToggleMode,
+    isEditableElement,
+    isInspectorDirty,
+    shouldAutoOpenReview,
+    useRailState,
+} from "../right-rail-state";
 import { history, isOutsideChange, useHistory } from "../history";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
@@ -77,6 +83,25 @@ export default function Home() {
         setRefreshKey((value) => value + 1);
     }
     const [frontPanel, setFrontPanel] = useState<RightRailFront>("review");
+    const [pendingReviewIds, setPendingReviewIds] = useState<string[]>([]);
+    // Proposals already offered to the user. null until the first load, so proposals that were
+    // waiting when the page opened do not count as new.
+    const seenProposals = useRef<Set<string> | null>(null);
+    function onPendingReview(ids: string[]) {
+        setPendingReviewIds(ids);
+        if (seenProposals.current === null) {
+            seenProposals.current = new Set(ids);
+            return;
+        }
+        const open = shouldAutoOpenReview({
+            pendingIds: ids,
+            seenIds: seenProposals.current,
+            editingFocus: isEditableElement(document.activeElement),
+            inspectorDirty: isInspectorDirty(),
+        });
+        ids.forEach((id) => seenProposals.current?.add(id));
+        if (open) setFrontPanel("review");
+    }
     const recenterRef = useRef<null | (() => void)>(null);
     const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void } | null>(
         null
@@ -164,6 +189,11 @@ export default function Home() {
                         onRedo={historyView.canRedo && !historyView.busy ? () => void stepHistory("redo") : undefined}
                         undoLabel={historyView.undoLabel}
                         redoLabel={historyView.redoLabel}
+                        reviewCount={pendingReviewIds.length}
+                        onOpenReview={() => {
+                            setFrontPanel("review");
+                            window.requestAnimationFrame(() => document.getElementById("review-heading")?.focus());
+                        }}
                     />
                 </div>
                 <div
@@ -221,6 +251,7 @@ export default function Home() {
                         <ProposalReview
                             refreshKey={refreshKey + proposalRefreshKey}
                             onFocus={() => setFrontPanel("review")}
+                            onPendingChange={onPendingReview}
                         />
                     }
                 />

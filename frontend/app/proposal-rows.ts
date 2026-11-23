@@ -258,3 +258,131 @@ const CANVAS_SOURCES = new Set(["group_nodes", "ungroup_node", "reparent_node"])
 export function proposalOrigin(source: string | undefined): "You" | "Agent" {
     return source && CANVAS_SOURCES.has(source) ? "You" : "Agent";
 }
+
+// ---- proposal-level summary and hierarchy ----------------------------------------------------
+
+export type ProposalSummaryLine = {
+    headline: string;
+    source: string;
+    // Pending operations whose target changed since the proposal was staged.
+    staleCount: number;
+};
+
+function plural(n: number, one: string, many = `${one}s`): string {
+    return `${n} ${n === 1 ? one : many}`;
+}
+
+// Plain-language count of what accepting the proposal would still do, e.g.
+// "Adds 5 nodes · 4 connections; Changes 1; Removes 1 connection".
+export function summarizeProposal(diff: ProposalDiff): ProposalSummaryLine {
+    const pending = diff.operations.filter((op) => op.status === "pending");
+    const count = (name: string) => pending.filter((op) => op.op === name).length;
+    const nodesAdded = count("create_node");
+    const edgesAdded = count("set_relationship");
+    const changed = count("update_node");
+    const nodesRemoved = count("delete_node");
+    const edgesRemoved = count("delete_relationship");
+
+    const sections: string[] = [];
+    const adds = [nodesAdded ? plural(nodesAdded, "node") : "", edgesAdded ? plural(edgesAdded, "connection") : ""].filter(Boolean);
+    if (adds.length) sections.push(`Adds ${adds.join(" · ")}`);
+    if (changed) sections.push(`Changes ${changed}`);
+    const removes = [nodesRemoved ? plural(nodesRemoved, "node") : "", edgesRemoved ? plural(edgesRemoved, "connection") : ""].filter(Boolean);
+    if (removes.length) sections.push(`Removes ${removes.join(" · ")}`);
+    const other = pending.length - nodesAdded - edgesAdded - changed - nodesRemoved - edgesRemoved;
+    if (other > 0) sections.push(plural(other, "other change"));
+
+    const origin = proposalOrigin(diff.source);
+    const source = origin === "You" ? "Staged by you" : diff.source ? `Proposed by ${diff.source}` : "Proposed by an agent";
+    return {
+        headline: sections.length ? sections.join("; ") : "No pending changes",
+        source,
+        staleCount: pending.filter((op) => op.stale).length,
+    };
+}
+
+export type HierarchyItem = { row: ReviewRow; label: string };
+export type HierarchySection = {
+    key: string;
+    kind: "new-zone" | "existing-zone" | "connections";
+    title: string;
+    items: HierarchyItem[];
+};
+
+// Groups a proposal's rows by where they land: each new zone (a created node with created
+// descendants, with the nodes and connections inside it), each existing zone that gets other
+// changes, then one Connections section for edges that reach outside a new zone.
+export function hierarchySections(diff: ProposalDiff): HierarchySection[] {
+    const rows = proposalRows(diff);
+    const names = nameLookup(diff);
+    const nameOf = (id: string) => names.get(id) ?? id;
+    const opByIndex = new Map(diff.operations.map((op) => [op.index, op]));
+    const parentOf = new Map<string, string>();
+    for (const op of diff.operations) {
+        if (op.op === "create_node" && op.proposed) parentOf.set(op.node_id, op.proposed.parent_id ?? "");
+    }
+    // The created ancestor with no created parent: the root of the new subtree a created node sits in.
+    const newRoot = (id: string): string => {
+        let current = id;
+        for (let depth = 0; depth < 64; depth++) {
+            const parent = parentOf.get(current);
+            if (!parent || !parentOf.has(parent)) return current;
+            current = parent;
+        }
+        return current;
+    };
+    const rootsWithChildren = new Set<string>();
+    for (const id of parentOf.keys()) {
+        const root = newRoot(id);
+        if (root !== id) rootsWithChildren.add(root);
+    }
+
+    const zones = new Map<string, HierarchySection>();
+    const sectionFor = (key: string, kind: HierarchySection["kind"], title: string) => {
+        let section = zones.get(key);
+        if (!section) {
+            section = { key, kind, title, items: [] };
+            zones.set(key, section);
+        }
+        return section;
+    };
+    const connections: HierarchySection = { key: "connections", kind: "connections", title: "Connections", items: [] };
+    const label = (row: ReviewRow): string => {
+        const rel = opByIndex.get(row.index)?.relationship;
+        return rel?.label ? `${row.title} "${rel.label}"` : row.title;
+    };
+    const existingZone = (parentId: string | undefined) =>
+        sectionFor(`in:${parentId ?? ""}`, "existing-zone", parentId ? `In ${nameOf(parentId)}` : "At the top level");
+
+    for (const row of rows) {
+        const op = opByIndex.get(row.index);
+        const item = { row, label: label(row) };
+        if (!op) continue;
+        if (op.op === "set_relationship" || op.op === "delete_relationship") {
+            const rel = op.relationship;
+            const from = rel ? newRoot(rel.from) : "";
+            const to = rel ? newRoot(rel.to) : "";
+            const inside = rel && parentOf.has(rel.from) && parentOf.has(rel.to) && from === to && rootsWithChildren.has(from);
+            if (inside) sectionFor(`new:${from}`, "new-zone", `New zone: ${nameOf(from)}`).items.push(item);
+            else connections.items.push(item);
+            continue;
+        }
+        if (op.op === "create_node") {
+            const root = newRoot(op.node_id);
+            if (rootsWithChildren.has(root)) {
+                sectionFor(`new:${root}`, "new-zone", `New zone: ${nameOf(root)}`).items.push(item);
+            } else {
+                existingZone(op.proposed?.parent_id).items.push(item);
+            }
+            continue;
+        }
+        existingZone((op.current ?? op.proposed)?.parent_id).items.push(item);
+    }
+    const all = [...zones.values()];
+    const ordered = [
+        ...all.filter((s) => s.kind === "new-zone"),
+        ...all.filter((s) => s.kind === "existing-zone"),
+        ...(connections.items.length ? [connections] : []),
+    ];
+    return ordered;
+}

@@ -208,7 +208,8 @@ function buildArchNodes(
         id: stub.id,
         type: "external" as const,
         selectable: false,
-        draggable: false,
+        // Movable (layout only, persisted with the level's positions) but never selectable or deletable.
+        draggable: true,
         deletable: false,
         position: positions[stub.id] ?? { x: -200, y: index * 80 },
         data: {
@@ -798,7 +799,7 @@ export default function FlowCanvas({
 
     // A top-level node dropped on an open container moves into it (via proposal). Null otherwise.
     function dropInTarget(event: MouseEvent | TouchEvent, node: ArchNode): string | null {
-        if (node.parentId || node.type === "container") return null;
+        if (node.parentId || node.type === "container" || node.type === "external") return null;
         const pointer = pointerPoint(event);
         if (!pointer) return null;
         return containerAt(screenToFlowPosition(pointer), containerRects(), [node.id]);

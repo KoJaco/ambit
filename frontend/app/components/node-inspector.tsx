@@ -30,6 +30,7 @@ import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
 import { CollapsibleSection } from "./collapsible-section";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { nodeSettingsSummary } from "../node-settings";
+import { setInspectorDirty } from "../right-rail-state";
 
 const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
 
@@ -83,6 +84,13 @@ export default function NodeInspector({
             });
         return () => ac.abort();
     }, [nodeId]);
+
+    // Tell the page whether unsaved edits are open, so a new proposal does not cover them.
+    useEffect(() => {
+        const dirty = !!node && (presentationTouched || JSON.stringify(node) !== JSON.stringify(baseline.current));
+        setInspectorDirty(dirty);
+    }, [node, presentationTouched]);
+    useEffect(() => () => setInspectorDirty(false), []);
 
     const [assignment, setAssignmentState] = useState<Assignment | null>(null);
     const [otherName, setOtherName] = useState<string | null>(null);

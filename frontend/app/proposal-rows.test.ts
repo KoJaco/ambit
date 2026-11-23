@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { proposalRows } from "./proposal-rows";
+import { hierarchySections, proposalRows, summarizeProposal } from "./proposal-rows";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -179,5 +179,77 @@ describe("review presentation", () => {
         expect(items).toHaveLength(1);
         expect(items[0]).toMatchObject({ kind: "group", group: { title: "Move 7 nodes to root" } });
         expect(groupRows(seven.slice(0, 2)).every((item) => item.kind === "row")).toBe(true);
+    });
+});
+
+function op(partial: Partial<OpDiff> & { op: string; index: number }): OpDiff {
+    return {
+        node_id: "",
+        status: "pending",
+        stale: false,
+        current: null,
+        proposed: null,
+        relationship: null,
+        current_relationship: null,
+        ...partial,
+    };
+}
+
+const create = (index: number, id: string, name: string, parent?: string) =>
+    op({ index, op: "create_node", node_id: id, proposed: node({ id, name, parent_id: parent }) });
+const connect = (index: number, from: string, to: string, label = "") =>
+    op({ index, op: "set_relationship", relationship: { from, to, label, kind: "" } });
+
+describe("summarizeProposal", () => {
+    it("counts adds, changes and removals in plain language", () => {
+        const s = summarizeProposal(
+            diff([
+                create(0, "z", "Zone"),
+                create(1, "a", "A", "z"),
+                connect(2, "z", "a"),
+                op({ index: 3, op: "update_node", node_id: "x", fields: ["name"], current: node({ id: "x", name: "X" }), proposed: node({ id: "x", name: "Y" }) }),
+                op({ index: 4, op: "delete_relationship", relationship: { from: "a", to: "b", label: "", kind: "" } }),
+            ]),
+        );
+        expect(s.headline).toBe("Adds 2 nodes · 1 connection; Changes 1; Removes 1 connection");
+        expect(s.source).toBe("Proposed by seed_model");
+        expect(s.staleCount).toBe(0);
+    });
+
+    it("ignores settled ops, counts stale pending ones and names canvas proposals", () => {
+        const s = summarizeProposal({
+            ...diff([
+                { ...create(0, "a", "A"), status: "accepted" },
+                { ...create(1, "b", "B"), stale: true },
+            ]),
+            source: "group_nodes",
+        });
+        expect(s.headline).toBe("Adds 1 node");
+        expect(s.staleCount).toBe(1);
+        expect(s.source).toBe("Staged by you");
+        expect(summarizeProposal(diff([])).headline).toBe("No pending changes");
+    });
+});
+
+describe("hierarchySections", () => {
+    it("puts a new subtree and its inner edges in a new zone, outer edges in Connections", () => {
+        const sections = hierarchySections(
+            diff([
+                create(0, "z", "Billing"),
+                create(1, "a", "API", "z"),
+                create(2, "b", "DB", "z"),
+                connect(3, "a", "b", "reads"),
+                connect(4, "a", "ext", "calls"),
+                create(5, "lone", "Cache", "root1"),
+                op({ index: 6, op: "delete_node", node_id: "old", current: node({ id: "old", name: "Old", parent_id: "root1" }) }),
+            ]),
+        );
+        expect(sections.map((s) => [s.kind, s.title, s.items.length])).toEqual([
+            ["new-zone", "New zone: Billing", 4],
+            ["existing-zone", "In root1", 2],
+            ["connections", "Connections", 1],
+        ]);
+        expect(sections[0].items.map((i) => i.label)).toContain('API → DB "reads"');
+        expect(sections[2].items[0].label).toBe('API → ext "calls"');
     });
 });

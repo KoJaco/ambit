@@ -208,3 +208,16 @@ describe("pushOverlaps", () => {
         expect(out.other).toEqual({ x: 300, y: 0 });
     });
 });
+
+describe("seedPositions with external stubs", () => {
+    it("keeps a dragged stub where it is across a toggle", () => {
+        const nodes = [{ id: "a" }, { id: "ext:r1" }, { id: "b" }];
+        const placed = [
+            { id: "a", position: { x: 0, y: 0 } },
+            { id: "ext:r1", position: { x: 777, y: -55 } },
+        ];
+        const out = seedPositions(nodes, placed, {});
+        expect(out["ext:r1"]).toEqual({ x: 777, y: -55 });
+        expect(out.a).toEqual({ x: 0, y: 0 });
+    });
+});
