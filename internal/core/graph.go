@@ -23,8 +23,22 @@ type GraphEdge struct {
 	HasContract bool `json:"has_contract,omitempty"`
 }
 
+// GraphView is the get_graph payload: the graph plus the active method and stage.
+type GraphView struct {
+	Method string      `json:"method"`
+	Stage  string      `json:"stage,omitempty"`
+	Nodes  []GraphNode `json:"nodes"`
+	Edges  []GraphEdge `json:"edges"`
+}
+
 // Graph returns every node (compact fields, no spec) and relationship in model order.
 func (idx *Index) Graph() ([]GraphNode, []GraphEdge) {
+	v := idx.GraphView()
+	return v.Nodes, v.Edges
+}
+
+// GraphView is Graph plus the active method id and effective stage, read in one snapshot.
+func (idx *Index) GraphView() GraphView {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
 	nodes := make([]GraphNode, 0, len(idx.Order))
@@ -39,5 +53,5 @@ func (idx *Index) Graph() ([]GraphNode, []GraphEdge) {
 	for _, r := range idx.Relationships {
 		edges = append(edges, GraphEdge{ID: r.ID, From: r.From, To: r.To, Label: r.Label, Kind: r.Kind, HasContract: !r.Contract.IsEmpty()})
 	}
-	return nodes, edges
+	return GraphView{Method: idx.activeMethodLocked().ID, Stage: idx.effectiveStageLocked(), Nodes: nodes, Edges: edges}
 }

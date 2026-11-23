@@ -583,3 +583,96 @@ export function subscribeEvents(handlers: EventHandlers): () => void {
         source.close();
     };
 }
+
+// Workflow methods (ADR 0013). There is no SSE for config, so callers refetch after their own PUT.
+export type StageInfo = { id: string; name: string; preamble?: string };
+export type LintSeverity = "off" | "advisory" | "enforced";
+export type MethodRule = { id: string; severity: LintSeverity; params?: Record<string, unknown> };
+export type MethodDetail = {
+    id: string;
+    name: string;
+    description: string;
+    source: "builtin" | "user";
+    shadows_builtin?: boolean;
+    extends?: string;
+    guidance: string;
+    brief_preamble: string;
+    stages: StageInfo[];
+    initial_stage: string;
+    stage: { id: string; name: string } | null;
+    gates: Record<string, string[]>;
+    rules: MethodRule[];
+    include_drift: boolean;
+};
+export type MethodSummary = {
+    id: string;
+    name: string;
+    description?: string;
+    source: "builtin" | "user";
+    shadows_builtin?: boolean;
+    stages?: string[];
+    active: boolean;
+};
+// Server shape of PUT /method: ids only. stage is "" when the method has no stages.
+export type PutMethodResult = {
+    method: string;
+    stage: string;
+    previous_stage?: string;
+    stage_reset?: boolean;
+};
+export type StageState = {
+    method: { id: string; name: string };
+    stage: { id: string; name: string } | null;
+    stages: StageInfo[];
+};
+export type LintFinding = {
+    rule: string;
+    severity: "advisory" | "enforced";
+    node_id?: string;
+    relationship_id?: string;
+    message: string;
+};
+export type DriftReport = {
+    unowned_files?: string[];
+    unmatched_globs?: { node: string; field: string; glob: string }[];
+    overlaps?: { path: string; owners: string[] }[];
+};
+export type CheckModelResult = {
+    ok: boolean;
+    method: string;
+    stage?: string;
+    findings: LintFinding[];
+    counts: { advisory: number; enforced: number; total: number };
+    drift?: DriftReport;
+    drift_error?: string;
+};
+
+const jsonHeaders = { "Content-Type": "application/json" };
+
+export function getMethod(signal?: AbortSignal): Promise<MethodDetail> {
+    return send("/method", { signal });
+}
+
+export function getMethods(signal?: AbortSignal): Promise<{ methods: MethodSummary[] }> {
+    return send("/methods", { signal });
+}
+
+export function putMethod(id: string): Promise<PutMethodResult> {
+    return send("/method", { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ id }) });
+}
+
+export function getStage(signal?: AbortSignal): Promise<StageState> {
+    return send("/stage", { signal });
+}
+
+export function putStage(id: string): Promise<StageState> {
+    return send("/stage", { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ id }) });
+}
+
+export function getCheckModel(opts: { includeDrift?: boolean; all?: boolean } = {}, signal?: AbortSignal): Promise<CheckModelResult> {
+    const q = new URLSearchParams();
+    if (opts.includeDrift) q.set("include_drift", "1");
+    if (opts.all) q.set("all", "1");
+    const qs = q.toString();
+    return send(`/check-model${qs ? `?${qs}` : ""}`, { signal });
+}

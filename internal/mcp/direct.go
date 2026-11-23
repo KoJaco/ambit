@@ -100,7 +100,7 @@ type updateStatusOut struct {
 
 func (e *toolEnv) handleUpdateNodeStatus(_ context.Context, _ *sdkmcp.CallToolRequest, in updateStatusIn) (*sdkmcp.CallToolResult, updateStatusOut, error) {
 	st := core.Status(in.Status)
-	if err := e.idx.Update(core.NodeID(in.NodeID), core.UpdateInput{Status: &st}); err != nil {
+	if err := e.idx.UpdateStatusGated(core.NodeID(in.NodeID), st); err != nil {
 		return nil, updateStatusOut{}, err
 	}
 	return nil, updateStatusOut{NodeID: in.NodeID, Status: in.Status}, nil
@@ -117,6 +117,8 @@ type pendingProposal struct {
 }
 
 type getGraphOut struct {
+	Method        methodRef         `json:"method"`
+	Stage         *stageRef         `json:"stage"`
 	Nodes         []core.GraphNode  `json:"nodes"`
 	Relationships []core.GraphEdge  `json:"relationships"`
 	Pending       []pendingProposal `json:"pending_proposals"`
@@ -138,12 +140,19 @@ func pendingSummaries(idx *core.Index) ([]pendingProposal, error) {
 }
 
 func (e *toolEnv) handleGetGraph(_ context.Context, _ *sdkmcp.CallToolRequest, _ getGraphIn) (*sdkmcp.CallToolResult, getGraphOut, error) {
-	nodes, edges := e.idx.Graph()
+	view := e.idx.GraphView()
+	m, err := e.idx.MethodByID(view.Method)
+	if err != nil {
+		m = e.idx.ActiveMethod()
+	}
 	pending, err := pendingSummaries(e.idx)
 	if err != nil {
 		return nil, getGraphOut{}, err
 	}
-	return nil, getGraphOut{Nodes: nodes, Relationships: edges, Pending: pending}, nil
+	return nil, getGraphOut{
+		Method: methodRefOf(m), Stage: stageRefOf(m, view.Stage),
+		Nodes: view.Nodes, Relationships: view.Edges, Pending: pending,
+	}, nil
 }
 
 type listProposalsIn struct{}

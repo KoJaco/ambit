@@ -66,6 +66,7 @@ func (idx *Index) WatchNotices(ctx context.Context, onNotice func(WatchNotice)) 
 		return err
 	}
 	idx.watchExistingProposals(watcher)
+	idx.watchMethodsDir(watcher, idx.methodsDir())
 	go idx.watchLoop(ctx, watcher, onNotice)
 	return nil
 }
@@ -94,6 +95,7 @@ func (idx *Index) watchLoop(ctx context.Context, watcher *fsnotify.Watcher, onNo
 				return
 			}
 			idx.watchProposalDir(watcher, ev.Name)
+			idx.watchMethodsDir(watcher, ev.Name)
 			if ev.Op == fsnotify.Chmod || !idx.relevantWatch(ev.Name) {
 				continue
 			}
@@ -151,7 +153,7 @@ func (idx *Index) reloadWatched(paths map[string]struct{}) WatchNotice {
 			indexChanged = true
 			continue
 		}
-		if base == "local.json" || base == "config.json" {
+		if base == "local.json" || base == "config.json" || idx.isMethodsPath(path) {
 			continue
 		}
 		name := strings.TrimSuffix(base, filepath.Ext(base))
@@ -337,6 +339,9 @@ func (idx *Index) relevantWatch(path string) bool {
 	if (base == "index.json" || base == "local.json" || base == "config.json") && filepath.Clean(filepath.Dir(path)) == arch {
 		return true
 	}
+	if idx.isMethodsPath(path) {
+		return filepath.Clean(path) == idx.methodsDir() || strings.HasSuffix(base, ".json") || strings.HasSuffix(base, ".md")
+	}
 	nodes := filepath.Join(arch, "nodes")
 	if filepath.Clean(filepath.Dir(path)) == nodes && (strings.HasSuffix(base, ".json") || strings.HasSuffix(base, ".md")) {
 		return true
@@ -352,4 +357,23 @@ func isScratch(base string) bool {
 		return true
 	}
 	return false
+}
+
+func (idx *Index) methodsDir() string { return filepath.Join(idx.arch(), "methods") }
+
+// isMethodsPath reports whether path is .arch/methods or a file directly inside it.
+func (idx *Index) isMethodsPath(path string) bool {
+	path = filepath.Clean(path)
+	dir := idx.methodsDir()
+	return path == dir || filepath.Dir(path) == dir
+}
+
+// watchMethodsDir starts watching .arch/methods once it exists (it may be created later).
+func (idx *Index) watchMethodsDir(watcher *fsnotify.Watcher, path string) {
+	if filepath.Clean(path) != idx.methodsDir() {
+		return
+	}
+	if st, err := os.Stat(path); err == nil && st.IsDir() {
+		_ = watcher.Add(path)
+	}
 }

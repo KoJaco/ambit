@@ -18,7 +18,8 @@ different package, so never run `npx ambit`.
 ## In your app repo
 
     cd your-app
-    ambit init            # scaffolds .arch/ (does not install a git hook)
+    ambit init            # scaffolds .arch/ (does not install a git hook); asks for a workflow method on a terminal
+    ambit init --method design-first   # or pick one without the prompt
     ambit start           # serves UI + API on 127.0.0.1:8080
 
 Open http://127.0.0.1:8080. `ambit start` reads `.arch/` from the current directory and

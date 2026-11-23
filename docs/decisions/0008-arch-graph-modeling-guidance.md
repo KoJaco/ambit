@@ -41,6 +41,10 @@ and a Cursor rule for `.arch` edits. Did **not** add the full graph checklist to
   `internal/mcp/tool_descriptions.go` (keep in sync with `mcp-tools.md` authoring section).
 - Example graphs: `.arch` note nodes under `platform` / `agent-interface`.
 
+## Amendment
+
+Amended by [ADR-0013](0013-workflow-methods.md): the modeling guidance is now served as method-sourced text (MCP `instructions`, `get_started`), and a method can enforce parts of it through `check_model`.
+
 ## References
 
 - [arch-model-format.md](../contracts/arch-model-format.md) — Modeling guidance

@@ -54,6 +54,12 @@ func apiRoutes(idx *core.Index, h *hub) []route {
 		{"POST /proposals/{id}/accept", postAcceptAll(idx)},
 		{"POST /proposals/{id}/reject", postRejectAll(idx)},
 		{"DELETE /proposals/{id}", deleteProposal(idx)},
+		{"GET /method", getMethod(idx)},
+		{"GET /methods", getMethods(idx)},
+		{"PUT /method", putMethod(idx)},
+		{"GET /stage", getStage(idx)},
+		{"PUT /stage", putStage(idx)},
+		{"GET /check-model", getCheckModel(idx)},
 		{"GET /events", getEvents(h)},
 	}
 }

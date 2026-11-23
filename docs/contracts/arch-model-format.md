@@ -115,6 +115,9 @@ Reference graph in this repo: `.arch/nodes/canvas-data-flow.md`,
 │   └── ...
 ├── index.json               # canonical — version, hierarchy, relationships
 ├── config.json              # canonical — non-secret project config
+├── methods/                 # canonical, optional — user workflow methods (decision 0013)
+│   ├── <method-id>.json
+│   └── <method-id>.guidance.md   # optional text referenced as {"file": "..."}
 ├── local.json               # GITIGNORED — machine-local state
 ├── .cache/                  # GITIGNORED — derived, disposable
 │   └── layout/<node-id>.json
@@ -122,7 +125,7 @@ Reference graph in this repo: `.arch/nodes/canvas-data-flow.md`,
     └── <proposal-id>/
 ```
 
-Everything under `nodes/`, plus `index.json` and `config.json`, is committed. Everything
+Everything under `nodes/` and `methods/`, plus `index.json` and `config.json`, is committed. Everything
 else is not. See "Invariants" below — this is enforced, not merely documented.
 
 ### Node file — `nodes/<node-id>.json`
@@ -280,6 +283,30 @@ Recognised keys (all optional; unknown keys are preserved on write):
   constraints array on one compact line; other keys and their values are kept. Saved JSON
   is not HTML-escaped (`List<Order>` stays readable). A running `ambit mcp` reloads when
   `config.json` changes on disk, so rules edited through `ambit start` reach its briefs.
+
+- `method` — id of the active workflow method ([decision 0013](../decisions/0013-workflow-methods.md)).
+  Absent means `freeform`. A non-string value, or an id that names no built-in or
+  `.arch/methods/` method, is ignored with a warning and the project behaves as `freeform`.
+- `stage` — id of the current project stage. Only meaningful when the method declares stages;
+  an unknown stage uses the method's initial stage (warning), and a stage-less method ignores
+  it. Written only by human surfaces (UI, `ambit stage set`, `PUT /stage`), never by an agent
+  tool. Changing `method` or `stage` rewrites `config.json` through the same sorted,
+  unescaped, atomic writer as `constraints`; unknown keys are kept.
+
+### `methods/<id>.json`
+
+Optional, committed. A user method is a JSON file whose `id` equals its filename stem
+(`methods/team.json` has `"id": "team"`). Shape: `schema_version` (1), `id`, `name`,
+`description`, `guidance`, `brief_preamble`, `stages` (`[{id, name, preamble}]`),
+`initial_stage`, `gates.status` (stage id to refused statuses), `lint` (rule id to
+`off|advisory|enforced` or `{severity, params}`), `check.include_drift`, `extends`. Long text
+may be `{"file": "x.md"}`, a plain file name beside the method. `extends` names a built-in
+method; missing keys are inherited, and `lint` entries merge per rule. A user id equal to a
+built-in id shadows it, with a warning. Limits: `guidance` at most 6000 characters, each
+preamble at most 1500, at most 8 stages, slug ids. An invalid file is skipped with a warning
+and the project uses `freeform`; it is never a load error. Unknown lint rule ids load with a
+warning. A running `ambit mcp` or `ambit start` reloads when `config.json` or anything in
+`methods/` changes.
 
 `group_max` and `level_budget` are view defaults only (decision 0010). A missing key uses the default. A value that is
 not a positive integer falls back to the default and produces a warning, not a load error.

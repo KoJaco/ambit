@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"unicode/utf8"
 )
@@ -112,27 +111,10 @@ func (idx *Index) setConstraintsLocked(in []Constraint) error {
 			}
 		}
 	}
-	obj := cloneRaw(idx.configUnknown)
-	if obj == nil {
-		obj = map[string]jsonRaw{}
-	}
 	if len(out) == 0 {
-		delete(obj, "constraints")
-	} else {
-		raw, err := rawOf(out)
-		if err != nil {
-			return err
-		}
-		obj["constraints"] = raw
+		return idx.setConfigKeysLocked(map[string]any{"constraints": nil})
 	}
-	data, err := encodeObject(nil, nil, obj)
-	if err != nil {
-		return err
-	}
-	if err := writeAtomic(filepath.Join(idx.arch(), "config.json"), data); err != nil {
-		return err
-	}
-	return idx.reload()
+	return idx.setConfigKeysLocked(map[string]any{"constraints": out})
 }
 
 // ConstraintList returns a copy of the project constraints in file order.

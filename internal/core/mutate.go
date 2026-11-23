@@ -108,7 +108,10 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 func (idx *Index) Update(id NodeID, in UpdateInput) error {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.updateLocked(id, in)
+}
 
+func (idx *Index) updateLocked(id NodeID, in UpdateInput) error {
 	node, ok := idx.Nodes[id]
 	if !ok {
 		return fmt.Errorf("%w: %q", errNotFound, id)

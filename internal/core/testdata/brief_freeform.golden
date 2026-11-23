@@ -1,0 +1,32 @@
+You are working on the architecture node "Payments" (payments).
+
+You may modify only files matching these globs:
+  - src/payments/**
+
+Do not modify anything outside those globs. If the task appears to require more access, stop and report back rather than pushing through.
+
+These paths are off-limits (protected nodes):
+  - node "Billing" (billing): src/billing/**
+
+Sibling nodes (interfaces only — do not edit their implementation):
+  - "Billing" (billing, service)
+    Bill things
+
+Project rules (apply to everything you write):
+  - [must] no-orm: Use plain SQL.
+
+Build order:
+  You depend on:
+    - "Billing" (billing) (draft)
+  Not done yet: "Billing" (billing) (draft).
+  If your work needs one of these, stop and report back rather than guessing its interface.
+
+Call the check_scope tool with node_id "payments" periodically while you work, and again before you finish.
+
+If you propose changes to the architecture model: Prefer shallow models. Use a container node to group related nodes. Nest more than two levels only for genuinely separate subsystems.
+Model high-level first: start with the few top-level parts, then drill down only where asked. Treat container nodes as deployment zones (for example browser, edge, API, data) and keep nesting to about two levels. Before drilling down, ask the user how they want the top-level view organised. Do not add an edge that carries no information (every-pair wiring, or what the hierarchy already says). Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. Call list_icons to pick icon ids and get_graph to see what already exists.
+
+Specification for your node:
+Pay things
+
+When you are done, call check_drift to confirm the model and code agree, then call update_node_status for your node.

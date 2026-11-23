@@ -25,15 +25,18 @@ func Run(ctx context.Context, dir string) error {
 	}
 	watchCtx, cancelWatch := context.WithCancel(ctx)
 	defer cancelWatch()
-	go func() {
-		_ = idx.WatchNotices(watchCtx, func(n core.WatchNotice) {
-			if n.Err != nil {
-				fmt.Fprintf(os.Stderr, "ambit mcp: watch reload: %v\n", n.Err)
-			}
-		})
-	}()
+	if err := idx.WatchNotices(watchCtx, func(n core.WatchNotice) {
+		if n.Err != nil {
+			fmt.Fprintf(os.Stderr, "ambit mcp: watch reload: %v\n", n.Err)
+		}
+	}); err != nil {
+		fmt.Fprintf(os.Stderr, "ambit mcp: warning: file watcher not started (model changes made outside this session will not be seen until restart): %v\n", err)
+	}
 
-	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "ambit", Version: "v1"}, nil)
+	// Instructions are fixed for the life of the session (the SDK reads them at
+	// initialize), so a later method change is only visible through get_started.
+	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "ambit", Version: "v1"},
+		&sdkmcp.ServerOptions{Instructions: idx.ActiveMethod().Guidance})
 	env := &toolEnv{idx: idx, dir: dir}
 	registerTools(srv, env)
 	return srv.Run(ctx, &sdkmcp.StdioTransport{})
@@ -59,5 +62,7 @@ func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_drift", Description: "Report model/code drift using git-tracked files: files owned by no node, implementation or scope globs matching no files, and files owned by multiple non-nested nodes."}, env.handleCheckDrift)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_constraints", Description: setConstraintsDescription}, env.handleSetConstraints)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_build_order", Description: getBuildOrderDescription}, env.handleGetBuildOrder)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node_status", Description: "Set a node status directly on the canonical model."}, env.handleUpdateNodeStatus)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node_status", Description: "Set a node status directly on the canonical model. Refused with a stage-gate error when the active method forbids that status in the current stage (design-first: assigned, in_progress and done while the stage is design)."}, env.handleUpdateNodeStatus)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_started", Description: getStartedDescription}, env.handleGetStarted)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_model", Description: checkModelDescription}, env.handleCheckModel)
 }

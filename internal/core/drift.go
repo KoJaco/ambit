@@ -94,19 +94,9 @@ func driftLocked(idx *Index, files []string) (DriftReport, error) {
 		return report, err
 	}
 	for _, path := range files {
-		var owners []NodeID
-		for _, id := range idx.Order {
-			n := idx.Nodes[id]
-			if n == nil {
-				continue
-			}
-			ok, err := matchGlobs(n.Implementation, path)
-			if err != nil {
-				return report, fmt.Errorf("node %s: implementation: %w", id, err)
-			}
-			if ok {
-				owners = append(owners, id)
-			}
+		owners, err := ownersOfPath(idx, path)
+		if err != nil {
+			return report, err
 		}
 		switch {
 		case len(owners) == 0:
@@ -149,6 +139,25 @@ func driftLocked(idx *Index, files []string) (DriftReport, error) {
 	}
 	sort.Strings(report.Unowned)
 	return report, nil
+}
+
+// ownersOfPath lists the nodes whose implementation globs match path, in model order.
+func ownersOfPath(idx *Index, path string) ([]NodeID, error) {
+	var owners []NodeID
+	for _, id := range idx.Order {
+		n := idx.Nodes[id]
+		if n == nil {
+			continue
+		}
+		ok, err := matchGlobs(n.Implementation, path)
+		if err != nil {
+			return nil, fmt.Errorf("node %s: implementation: %w", id, err)
+		}
+		if ok {
+			owners = append(owners, id)
+		}
+	}
+	return owners, nil
 }
 
 func hasNonNestedPair(idx *Index, owners []NodeID) bool {

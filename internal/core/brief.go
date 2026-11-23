@@ -34,6 +34,7 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 		return "", fmt.Errorf("%w: %q", ErrNotFound, id)
 	}
 	var b strings.Builder
+	b.WriteString(idx.methodPreambleLocked())
 	fmt.Fprintf(&b, "You are working on the architecture node %q (%s).\n\n", n.Name, id)
 
 	allowed := EffectiveScope(n)

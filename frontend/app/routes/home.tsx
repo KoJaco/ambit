@@ -18,6 +18,7 @@ import { RightRailStack, type RightRailFront } from "../components/right-rail-st
 import { EdgeActions } from "../components/edge-actions";
 import type { ProposalDiff, Relationship } from "../api";
 import type { CanvasPreview } from "../ghost-preview";
+import { readGoToSelect } from "../method-ui";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
 import {
     floatingToggleMode,
@@ -136,6 +137,31 @@ export default function Home() {
         setSelectedEdge(null);
     }, [nodeId, relationshipId]);
 
+    // "Go to" from the Model check sheet: select the item on this level, focus its inspector and say so.
+    // Declared after the reset above so it wins when the level changes in the same navigation.
+    useEffect(() => {
+        const select = readGoToSelect(location.state);
+        if (!select) return;
+        if (select.kind === "node") {
+            setSelectedId(select.id);
+            setSelectedEdge(null);
+        } else {
+            setSelectedEdge(select.rel);
+            setSelectedId(null);
+        }
+        setFrontPanel("inspector");
+        setHistoryNote(`Showing ${select.name}`);
+        let tries = 0;
+        let raf = 0;
+        const focusInspector = () => {
+            const panel = document.querySelector<HTMLElement>('aside[aria-label="Inspector"]');
+            if (panel) panel.focus();
+            else if (tries++ < 30) raf = window.requestAnimationFrame(focusInspector);
+        };
+        raf = window.requestAnimationFrame(focusInspector);
+        return () => window.cancelAnimationFrame(raf);
+    }, [location.key]); // eslint-disable-line react-hooks/exhaustive-deps
+
     if (!desktopViewport) {
         return <ScreenSizeAlert />;
     }
@@ -214,6 +240,7 @@ export default function Home() {
                         onRedo={historyView.canRedo && !historyView.busy ? () => void stepHistory("redo") : undefined}
                         undoLabel={historyView.undoLabel}
                         redoLabel={historyView.redoLabel}
+                        externalVersion={refreshKey}
                         reviewCount={pendingReviewIds.length}
                         onOpenReview={() => {
                             showReview();

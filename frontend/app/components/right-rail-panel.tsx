@@ -25,7 +25,7 @@ export function RightRailPanel({
 }) {
     useEffect(() => registerRailPanel("panels"), []);
     return (
-        <aside aria-label={label} className={clsx(rightRailPanelClass, className)} onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
+        <aside aria-label={label} tabIndex={-1} className={clsx(rightRailPanelClass, className)} onPointerDown={onPointerDown} onKeyDown={onKeyDown}>
             {children}
         </aside>
     );

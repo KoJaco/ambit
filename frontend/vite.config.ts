@@ -17,6 +17,10 @@ export default defineConfig({
       "/proposals": "http://127.0.0.1:8080",
       "/constraints": "http://127.0.0.1:8080",
       "/build-order": "http://127.0.0.1:8080",
+      "/method": "http://127.0.0.1:8080",
+      "/methods": "http://127.0.0.1:8080",
+      "/stage": "http://127.0.0.1:8080",
+      "/check-model": "http://127.0.0.1:8080",
       "/events": {
         target: "http://127.0.0.1:8080",
         changeOrigin: true,
