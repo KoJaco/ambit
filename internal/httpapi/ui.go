@@ -11,7 +11,7 @@ import (
 // APIPrefixes lists the top-level path segments owned by the API. A request
 // under one of these that reaches the UI fallback is a JSON 404, never HTML.
 // Every registered route's first segment must appear here (see TestAPIPrefixesCoverRoutes).
-var APIPrefixes = []string{"levels", "nodes", "relationships", "assignment", "layout", "integrity", "icons", "proposals", "events", "constraints", "build-order"}
+var APIPrefixes = []string{"levels", "nodes", "relationships", "assignment", "layout", "integrity", "icons", "proposals", "events", "constraints", "build-order", "method", "methods", "stage", "check-model"}
 
 // Options configures optional server behavior.
 type Options struct {

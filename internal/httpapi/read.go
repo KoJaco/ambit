@@ -337,5 +337,28 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrInvalidPresentation):
 		code = http.StatusBadRequest
 	}
-	writeJSON(w, code, map[string]string{"error": err.Error()})
+	body := map[string]string{"error": err.Error()}
+	if c, status := methodErrorCode(err); c != "" {
+		body["code"], code = c, status
+	}
+	writeJSON(w, code, body)
+}
+
+// methodErrorCode maps the workflow-method sentinels to an additive error code and status.
+func methodErrorCode(err error) (string, int) {
+	switch {
+	case errors.Is(err, core.ErrStageGate):
+		return "stage_gate", http.StatusConflict
+	case errors.Is(err, core.ErrUnknownMethod):
+		return "unknown_method", http.StatusBadRequest
+	case errors.Is(err, core.ErrBadMethod):
+		return "bad_method", http.StatusConflict
+	case errors.Is(err, core.ErrUnknownStage):
+		return "unknown_stage", http.StatusBadRequest
+	case errors.Is(err, core.ErrStageUnsupported):
+		return "stage_unsupported", http.StatusConflict
+	case errors.Is(err, core.ErrBadLintRule):
+		return "bad_lint_rule", http.StatusBadRequest
+	}
+	return "", 0
 }

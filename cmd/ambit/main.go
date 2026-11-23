@@ -28,19 +28,13 @@ func main() {
 		}
 		fmt.Printf("ambit %s\n", version)
 	case "init":
-		if len(os.Args) > 3 {
-			usage(os.Stderr)
-			os.Exit(1)
-		}
-		dir := "."
-		if len(os.Args) == 3 {
-			dir = os.Args[2]
-		}
-		if err := core.Init(dir); err != nil {
-			fmt.Fprintf(os.Stderr, "ambit init: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("Run `ambit hook install` to install a pre-commit hook. ambit init does not install one.")
+		os.Exit(cmdInit(os.Args[2:], os.Stdin, isTerminal(os.Stdin), os.Stdout, os.Stderr))
+	case "method":
+		os.Exit(cmdMethod(".", os.Args[2:], os.Stdout, os.Stderr))
+	case "stage":
+		os.Exit(cmdStage(".", os.Args[2:], os.Stdout, os.Stderr))
+	case "check-model":
+		os.Exit(cmdCheckModel(".", os.Args[2:], os.Stdout, os.Stderr))
 	case "check":
 		if len(os.Args) != 2 {
 			usage(os.Stderr)
@@ -145,5 +139,5 @@ func parseStartArgs(args []string) (string, error) {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir]\n       ambit check\n       ambit drift [--strict]\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init. check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
+	fmt.Fprintf(w, "usage: ambit init [dir] [--method id]\n       ambit method list|show [id]|set <id>|export-skill [--target claude|cursor] [--out path]\n       ambit stage [show|set <id>]\n       ambit check-model [--strict] [--drift] [--all]\n       ambit check\n       ambit drift [--strict]\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init (prompts for a workflow method on a terminal). method and stage show or change the workflow method and project stage. check-model lints the model against the method (--strict exits 1 on enforced findings). check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
 }

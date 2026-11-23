@@ -182,6 +182,31 @@ the rule. There is no HTTP-specific validator.
   so clients refetch `GET /assignment`.
 - `DELETE /assignment` — calls `ClearAssignment`. Leaves every node file alone.
 
+### Method, stage and model lint
+
+Workflow methods (ADR 0013). Reads are always 200; the PUTs are human-surface writes and
+are not stage-gated. There is no auth beyond the loopback bind.
+
+- `GET /method` — the active method: `{id, name, description, source ("builtin"|"user"),
+  shadows_builtin?, extends?, guidance, brief_preamble, stages: [{id, name, preamble?}],
+  initial_stage, stage: {id, name} | null, gates: {<stage>: [status]}, rules: [{id,
+  severity: "off"|"advisory"|"enforced", params?}], include_drift}`. `rules` lists every
+  known lint rule with its effective severity (unlisted rules are `off`).
+- `GET /methods` — `{methods: [{id, name, description, source, shadows_builtin?, stages?:
+  [id], active}]}`: built-ins in fixed order, then user methods by id.
+- `PUT /method` — body `{id}`. Selects the method (policy only, no model data changes).
+  Returns `{method, stage, previous_stage?, stage_reset?}`; `stage_reset: true` when the
+  old stage was invalid in the new method and was reset to its initial stage (or cleared).
+  Unknown id is 400 `unknown_method`.
+- `GET /stage` — `{method: {id, name}, stage: {id, name} | null, stages: [{id, name,
+  preamble?}]}`. `stage` is null and `stages` empty for a stage-less method.
+- `PUT /stage` — body `{id}`. Returns the same shape as `GET /stage`. A stage-less method
+  is 409 `stage_unsupported`; an id not in the method is 400 `unknown_stage`.
+- `GET /check-model?include_drift=1&all=1` — `{ok, method, stage?, findings: [{rule,
+  severity, node_id?, relationship_id?, message}], counts: {advisory, enforced, total},
+  drift?, drift_error?}`. Both flags are optional (`1` or `true`); `include_drift` also
+  turns on when the method's `check.include_drift` is set. Never blocks anything.
+
 ### Layout
 
 - `GET /layout/{key}` — cached positions for one level, or `{"positions":[]}` when that
@@ -292,6 +317,11 @@ entry being edited out later.
 Conventional HTTP semantics: `404` for an unknown node or proposal, `400` for a malformed
 request, `409` for a validation conflict such as a hierarchy cycle or accepting a stale
 operation without confirmation, `500` for an unreadable or malformed model.
+
+Error bodies are `{"error": "<message>"}`. The workflow-method errors add a stable `code`
+(additive; other errors carry none): `stage_gate` (409), `unknown_method` (400),
+`bad_method` (409), `unknown_stage` (400), `stage_unsupported` (409), `bad_lint_rule`
+(400). Clients should branch on `code`, not on the message.
 
 Every error body carries a human-readable message naming the specific node, operation, or
 rule involved. These surface directly in the architect's UI, so "invalid request" is not an

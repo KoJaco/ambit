@@ -10,6 +10,9 @@ and runs it with your arguments. It never stays resident.
     npx @kojaco/ambit start
     npx @kojaco/ambit mcp
     npx @kojaco/ambit check
+    npx @kojaco/ambit method list
+    npx @kojaco/ambit stage
+    npx @kojaco/ambit check-model --strict
     npx @kojaco/ambit hook install
 
 Other runners work the same way: `pnpm dlx @kojaco/ambit <cmd>`,

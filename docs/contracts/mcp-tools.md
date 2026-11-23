@@ -15,7 +15,7 @@ Two distinct consumers use this surface for different things, and the split matt
 
 ## Scope
 
-**In scope:** all fifteen tools, their arguments, return shapes, staging behaviour, and the
+**In scope:** all seventeen tools, their arguments, return shapes, staging behaviour, and the
 framing requirements for `get_context`.
 
 **Out of scope:** the MCP protocol itself, the proposal file format (see
@@ -48,7 +48,7 @@ Code expect to launch a local MCP server: a direct command, not a running HTTP s
 The process is **independent of `ambit start`**. MCP works whether or not the UI server is
 running. See [ADR-0003](../adr/0003-runtime-and-distribution.md).
 
-All fifteen tools are thin wrappers over `ambit-core`, sharing the identical validation and
+All seventeen tools are thin wrappers over `ambit-core`, sharing the identical validation and
 write path as the HTTP API. There is never a second implementation of what a valid mutation
 is.
 
@@ -252,8 +252,27 @@ Reads the whole model compactly and directly (no staging): `nodes` (id, name, ty
 relationship_id, status, `depends_on` when set; no specs), `relationships` (id, from, to,
 label, kind, `has_contract` when the edge has one; no contract bodies) and
 `pending_proposals` (id, source, summary, operation count; a `set_constraints` proposal has an operation with an
-empty `node_id`). Call it before authoring so ids
+empty `node_id`). Also `method` (`{id, name}`) and `stage` (`{id, name}`, or `null` for a
+stage-less method). Call it before authoring so ids
 are reused and duplicates avoided.
+
+#### `get_started()`
+
+No arguments. Returns `{method: {id, name}, stage: {id, name} | null, guidance, stages:
+[{id, name}], next_steps: [string]}` for the active workflow method (ADR 0013). `guidance`
+is the method's text, the same string served as the MCP server `instructions`. `next_steps`
+are short method- and stage-aware pointers composed by the MCP layer. Read-only. The server
+`instructions` are fixed when the session starts (the SDK reads them at `initialize`), so
+after a method change `get_started` is the live source.
+
+#### `check_model(include_drift?, all_rules?)`
+
+Lints the model against the active method's rules (same implementation as `ambit
+check-model` and `GET /check-model`). Returns `{ok, method, stage?, findings[], counts:
+{advisory, enforced, total}, drift?, drift_error?}`. Each finding is `{rule, severity:
+"advisory"|"enforced", node_id?, relationship_id?, message}`. `ok` is false only when an
+enforced finding exists; it never blocks a mutation. `include_drift` defaults to the
+method's `check.include_drift`; `all_rules` runs every rule as advisory. Read-only.
 
 #### `list_proposals()`
 
@@ -284,6 +303,13 @@ stops reflecting reality until the architect returns. The risk staging guards ag
 agent restructuring the model; a single enumerated field that cannot restructure anything
 does not carry that risk, and it is trivially revertable.
 
+**Stage gate.** Before writing, it asks the core `StageGate`. When the active method refuses
+that status in the current stage, the call fails with a tool error carrying the gate
+message (core `ErrStageGate`). Under `design-first` in the `design` stage, `assigned`,
+`in_progress` and `done` are refused; `draft`, `specified` and `blocked` are allowed.
+`freeform` and `map-existing` never gate. The human UI and HTTP status control are not
+gated.
+
 ## Invariants (Must Always Hold)
 
 1. **No authoring tool modifies the canonical model.** All seven write only to
@@ -291,6 +317,11 @@ does not carry that risk, and it is trivially revertable.
 2. **Every staged tool's response states that the change is proposed, not applied.**
 3. **Only `update_node_status` writes canonically.** Any future tool that writes directly
    requires an ADR.
+3a. **Only `update_node_status` is gated, and the stage is human-only.** No MCP tool writes
+   the project stage or the active method (no tool takes a `stage` or `method` argument);
+   they change only through the UI, `ambit stage|method set` or `PUT /stage|/method`.
+   Authoring tools, `check_scope`, `get_context`, `check_model` and `get_started` are never
+   gated.
 4. **All tools go through `ambit-core`.** No MCP-specific validation or write path exists.
 5. **`get_context` names forbidden paths explicitly.** Omission is not prohibition.
 6. **`check_scope` and `ambit check` share one implementation.** They cannot disagree about
@@ -305,6 +336,8 @@ does not carry that risk, and it is trivially revertable.
 - **Unknown `node_id`** — error naming the ID, listing nothing. Do not fuzzy-match to a
   similar ID; a wrong node silently accepted is worse than a failed call.
 - **Invalid `status`** — error listing the six valid values.
+- **Status refused by the stage gate** — error naming the status, stage and method, and
+  saying a human must advance the stage.
 - **`delete_node` on a node with children** — rejected at proposal time with the child count
   and names, so the agent can reparent or delete them first.
 - **`create_node` or `update_node` producing a hierarchy cycle** — rejected at proposal time.
