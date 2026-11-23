@@ -82,6 +82,18 @@ export const ICON_GROUPS: { label: string; ids: string[] }[] = [
     { label: "Services", ids: ["key-round", "mail", "bell", "message-square", "credit-card", "search", "settings", "folder"] },
 ];
 
+// Human labels from GET /icons, keyed by icon id.
+export function iconLabelMap(icons: { id: string; label: string }[] | undefined): Record<string, string> {
+    const labels: Record<string, string> = {};
+    for (const icon of icons ?? []) if (icon.label.trim() !== "") labels[icon.id] = icon.label;
+    return labels;
+}
+
+// Label for the picker button: the registry label, or the id when the registry is unavailable.
+export function iconLabel(id: string, labels: Record<string, string>): string {
+    return labels[id] || id;
+}
+
 const ICON_COMPONENTS: Record<string, LucideIcon> = {
     box: Box,
     hexagon: Hexagon,

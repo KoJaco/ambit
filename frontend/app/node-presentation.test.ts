@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultColorForType, resolveNodeColor, statusLabel, statusTone } from "./node-presentation";
+import { defaultColorForType, iconLabel, iconLabelMap, resolveNodeColor, statusLabel, statusTone } from "./node-presentation";
 
 describe("node presentation resolve", () => {
     it("maps known types to palette tokens", () => {
@@ -33,5 +33,17 @@ describe("status helpers", () => {
         expect(statusTone("specified")).toBe("violet");
         expect(statusTone("draft")).toBe("neutral");
         expect(statusTone("weird")).toBe("neutral");
+    });
+});
+
+describe("icon labels", () => {
+    it("uses registry labels and falls back to ids", () => {
+        const labels = iconLabelMap([
+            { id: "box", label: "Generic component or unit" },
+            { id: "blank", label: " " },
+        ]);
+        expect(iconLabel("box", labels)).toBe("Generic component or unit");
+        expect(iconLabel("blank", labels)).toBe("blank");
+        expect(iconLabel("database", iconLabelMap(undefined))).toBe("database");
     });
 });

@@ -223,6 +223,12 @@ export function getNode(id: string, signal?: AbortSignal): Promise<NodeDetail> {
     return send<NodeDetail>(`/nodes/${encodeURIComponent(id)}`, { signal });
 }
 
+export type IconInfo = { id: string; label: string };
+
+export function getIcons(signal?: AbortSignal): Promise<{ icons: IconInfo[] }> {
+    return send<{ icons: IconInfo[] }>("/icons", { signal });
+}
+
 export function getIntegrity(): Promise<{ warnings: Warning[] }> {
     return send(`/integrity`);
 }
@@ -236,6 +242,10 @@ export function createNode(input: {
     type: string;
     parent_id?: string;
     relationship_id?: string;
+    status?: string;
+    implementation?: string[];
+    scope?: string[];
+    protected?: boolean;
     markdown?: string;
     icon?: string;
     color?: string;

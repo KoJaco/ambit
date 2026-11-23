@@ -146,6 +146,7 @@ export function ControlBar({
     onZoomIn,
     onUndo,
     onRedo,
+    onDelete,
     undoLabel,
     redoLabel,
 }: {
@@ -156,6 +157,8 @@ export function ControlBar({
     onZoomIn?: () => void;
     onUndo?: () => void;
     onRedo?: () => void;
+    // Delete/Backspace on the selected edge or node; undefined when nothing is selected.
+    onDelete?: () => void;
     // What the next undo/redo would change, for the tooltip.
     undoLabel?: string | null;
     redoLabel?: string | null;
@@ -222,6 +225,7 @@ export function ControlBar({
             "tool-grab": () => onSelectTool("grab"),
             undo: onUndo,
             redo: onRedo,
+            delete: onDelete,
             "zoom-in": onZoomIn,
             "zoom-out": onZoomOut,
             "fit-view": onRecenter,

@@ -3,14 +3,19 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Tooltip } from "./tooltip";
 import {
     clearAssignment,
+    createNode,
+    deleteNode,
     getAssignment,
+    getLevel,
     getNode,
+    getRelationshipLevel,
     setAssignment,
     updateNode,
     type Assignment,
     type NodeDetail,
 } from "../api";
 import { history } from "../history";
+import { checkNodeDelete, deleteNodeUndoable, nodeDeleteMessage } from "../delete-actions";
 import { assignmentLabel, assignmentState } from "../assignment";
 import {
     nodeDotClass,
@@ -33,9 +38,14 @@ export default function NodeInspector({
     onClose,
     onSaved,
     onFocus,
+    onDeleted,
+    deleteRequest = 0,
     refreshKey = 0,
 }: {
     refreshKey?: number;
+    onDeleted?: () => void;
+    // Bumped by the Delete key: opens the same confirmation as the button.
+    deleteRequest?: number;
     nodeId: string;
     onClose: () => void;
     onSaved: () => void;
@@ -50,6 +60,9 @@ export default function NodeInspector({
     const [appearanceOpen, setAppearanceOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [presentationTouched, setPresentationTouched] = useState(false);
+    const [deletePlan, setDeletePlan] = useState<{ count: number } | null>(null);
+    const [deleteBusy, setDeleteBusy] = useState(false);
+    const seenDeleteRequest = useRef(deleteRequest);
     // The node as last loaded or saved: what undo restores.
     const baseline = useRef<NodeDetail | null>(null);
 
@@ -115,6 +128,47 @@ export default function NodeInspector({
             setAssignBusy(false);
         }
     }
+
+    async function startDelete() {
+        if (!node || deleteBusy) return;
+        setDeleteBusy(true);
+        setError(null);
+        try {
+            const own = await getLevel(node.id);
+            const parentLevel = node.relationship_id
+                ? await getRelationshipLevel(node.relationship_id)
+                : await getLevel(node.parent_id || undefined);
+            const check = checkNodeDelete(node.id, own.children?.length ?? 0, parentLevel);
+            if (check.ok) setDeletePlan({ count: check.relationshipCount });
+            else setError(check.reason);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "delete check failed");
+        } finally {
+            setDeleteBusy(false);
+        }
+    }
+
+    async function confirmDelete() {
+        if (!node || !deletePlan) return;
+        setDeleteBusy(true);
+        setError(null);
+        try {
+            await deleteNodeUndoable(node, deletePlan.count, { history, deleteNode, createNode });
+            onClose();
+            onDeleted?.();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "delete failed");
+        } finally {
+            setDeleteBusy(false);
+        }
+    }
+
+    useEffect(() => {
+        if (deleteRequest === seenDeleteRequest.current) return;
+        seenDeleteRequest.current = deleteRequest;
+        if (node) void startDelete();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [deleteRequest]);
 
     async function save() {
         if (!node) return;
@@ -390,6 +444,40 @@ export default function NodeInspector({
                                             </div>
                                         </div>
                         </CollapsibleSection>
+                        <div className="flex flex-col gap-2">
+                            {deletePlan ? (
+                                <div role="alertdialog" aria-label="Confirm delete" className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                                    <p className="text-destructive">{nodeDeleteMessage(node.name, deletePlan.count)}</p>
+                                    <div className="mt-2 flex gap-2">
+                                        <button
+                                            type="button"
+                                            autoFocus
+                                            disabled={deleteBusy}
+                                            className="rounded-lg bg-destructive px-3 py-1.5 text-destructive-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50"
+                                            onClick={() => void confirmDelete()}
+                                        >
+                                            Confirm delete
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="rounded-lg border border-border px-3 py-1.5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
+                                            onClick={() => setDeletePlan(null)}
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <button
+                                    type="button"
+                                    disabled={deleteBusy}
+                                    className="self-start rounded-lg border border-destructive/40 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/5 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-50"
+                                    onClick={() => void startDelete()}
+                                >
+                                    Delete node…
+                                </button>
+                            )}
+                        </div>
                     </div>
                     <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border pt-3">
                         <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">

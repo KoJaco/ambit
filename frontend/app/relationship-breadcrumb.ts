@@ -2,13 +2,32 @@ import { getNode, type Relationship } from "./api";
 
 export type BreadcrumbCrumb = { id: string; name: string; href: string };
 
+/** Type given to containers created by grouping (core DefaultContainerType). */
+export const groupingContainerType = "container";
+
+/** A container that only groups its members on the canvas; it adds no level worth a crumb. */
+export function isGroupingContainer(node: { type: string }): boolean {
+    return node.type.trim().toLowerCase() === groupingContainerType;
+}
+
+/**
+ * Drops grouping-only containers from a root-to-leaf chain and keeps summary-node ancestors.
+ * The last entry (the node being viewed, or the drill source) is always kept. The crumb before
+ * the current one is then the level that actually contains it.
+ */
+export function visibleCrumbs(chain: { id: string; name: string; type: string }[]): BreadcrumbCrumb[] {
+    return chain
+        .filter((node, index) => index === chain.length - 1 || !isGroupingContainer(node))
+        .map((node) => ({ id: node.id, name: node.name, href: `/node/${node.id}` }));
+}
+
 /** Ancestors from root down to startId (inclusive when includeStart). */
 export async function nodeAncestorChain(
     startId: string,
     signal?: AbortSignal,
     includeStart = false,
 ): Promise<BreadcrumbCrumb[]> {
-    const chain: BreadcrumbCrumb[] = [];
+    const chain: { id: string; name: string; type: string }[] = [];
     const seen = new Set<string>();
     let current: string | undefined = startId;
     if (!includeStart) {
@@ -18,12 +37,12 @@ export async function nodeAncestorChain(
     while (current && !seen.has(current)) {
         seen.add(current);
         const node = await getNode(current, signal);
-        chain.push({ id: node.id, name: node.name, href: `/node/${node.id}` });
+        chain.push({ id: node.id, name: node.name, type: node.type });
         if (node.relationship_id && !node.parent_id) break;
         current = node.parent_id || undefined;
     }
     chain.reverse();
-    return chain;
+    return visibleCrumbs(chain);
 }
 
 /**

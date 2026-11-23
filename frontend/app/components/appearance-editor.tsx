@@ -1,10 +1,13 @@
 import clsx from "clsx";
 import { Check } from "lucide-react";
-import type { SchemaColumn } from "../api";
+import { useEffect, useState } from "react";
+import { getIcons, type SchemaColumn } from "../api";
 import { RENDERER_IDS } from "../canvas-presentation";
 import {
     COLOR_TOKENS,
     ICON_GROUPS,
+    iconLabel,
+    iconLabelMap,
     defaultColorForType,
     nodeDotClass,
     nodeGlyphClass,
@@ -22,6 +25,29 @@ export const RENDERER_LABELS: Record<(typeof RENDERER_IDS)[number], string> = {
     placeholder: "Placeholder",
     group: "Labeled group",
 };
+
+// Fetched once per page load; a failed fetch is retried next time and the picker shows ids meanwhile.
+let iconLabelsCache: Promise<Record<string, string>> | null = null;
+
+function useIconLabels(): Record<string, string> {
+    const [labels, setLabels] = useState<Record<string, string>>({});
+    useEffect(() => {
+        let live = true;
+        iconLabelsCache ??= getIcons()
+            .then((body) => iconLabelMap(body.icons))
+            .catch(() => {
+                iconLabelsCache = null;
+                return {};
+            });
+        void iconLabelsCache.then((value) => {
+            if (live) setLabels(value);
+        });
+        return () => {
+            live = false;
+        };
+    }, []);
+    return labels;
+}
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 const sectionLabel = "text-[11px] font-medium uppercase tracking-wide text-muted-foreground";
@@ -65,6 +91,7 @@ export function AppearanceFields({
     schema?: SchemaColumn[];
     onChangeSchema?: (rows: SchemaColumn[]) => void;
 }) {
+    const iconLabels = useIconLabels();
     const selectedRenderer = value.renderer || "card";
     const rows = schema ?? [];
     const set = (patch: Appearance) => onChange({ ...value, ...patch });
@@ -88,11 +115,12 @@ export function AppearanceFields({
                         <div className="grid grid-cols-6 gap-1">
                             {group.ids.map((id) => {
                                 const Icon = resolveIconComponent(id);
+                                const label = iconLabel(id, iconLabels);
                                 return (
-                                    <Tooltip key={id} label={id}>
+                                    <Tooltip key={id} label={label}>
                                         <button
                                             type="button"
-                                            aria-label={id}
+                                            aria-label={label}
                                             aria-pressed={value.icon === id}
                                             className={clsx(
                                                 "flex min-h-8 items-center justify-center rounded-[8px] border p-1.5",

@@ -53,6 +53,8 @@ export default function Home() {
         [],
     );
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    // Bumped by Delete/Backspace; the open inspector panel turns it into its confirmation.
+    const [deleteRequest, setDeleteRequest] = useState(0);
     const historyView = useHistory();
     const [historyEpoch, setHistoryEpoch] = useState(0);
     const [historyNote, setHistoryNote] = useState<string | null>(null);
@@ -151,6 +153,14 @@ export default function Home() {
                         onZoomIn={() => zoomRef.current?.zoomIn()}
                         onZoomOut={() => zoomRef.current?.zoomOut()}
                         onUndo={historyView.canUndo && !historyView.busy ? () => void stepHistory("undo") : undefined}
+                        onDelete={
+                            selectedEdge || selectedId
+                                ? () => {
+                                      setFrontPanel("inspector");
+                                      setDeleteRequest((value) => value + 1);
+                                  }
+                                : undefined
+                        }
                         onRedo={historyView.canRedo && !historyView.busy ? () => void stepHistory("redo") : undefined}
                         undoLabel={historyView.undoLabel}
                         redoLabel={historyView.redoLabel}
@@ -189,6 +199,7 @@ export default function Home() {
                                     }
                                 }}
                                 onFocus={() => setFrontPanel("inspector")}
+                                deleteRequest={deleteRequest}
                             />
                         ) : selectedId ? (
                             <NodeInspector
@@ -197,6 +208,11 @@ export default function Home() {
                                 refreshKey={refreshKey}
                                 onClose={() => setSelectedId(null)}
                                 onSaved={() => setRefreshKey((value) => value + 1)}
+                                onDeleted={() => {
+                                    setSelectedId(null);
+                                    setRefreshKey((value) => value + 1);
+                                }}
+                                deleteRequest={deleteRequest}
                                 onFocus={() => setFrontPanel("inspector")}
                             />
                         ) : null
