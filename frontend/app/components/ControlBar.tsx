@@ -8,6 +8,8 @@ import {
     HandGrabIcon,
     KeyboardIcon,
     ListChecksIcon,
+    ShieldCheckIcon,
+    WorkflowIcon,
     MinusIcon,
     MousePointer2Icon,
     PlusIcon,
@@ -19,6 +21,9 @@ import { StructurePanel } from "./structure-panel";
 import { ShortcutsDialog } from "./shortcuts-dialog";
 import { DocsSheet } from "./docs-sheet";
 import { ProjectRulesSheet } from "./project-rules";
+import { MethodSheet } from "./method-sheet";
+import { ModelCheckSheet } from "./model-check-sheet";
+import { StageControl } from "./stage-control";
 import { groupButtonLabel } from "../canvas-structure";
 import { barStore, escapeAction, focusAfterTransition, resolveBarMode } from "../bottom-bar";
 import { useShortcuts } from "../hooks/use-shortcuts";
@@ -29,6 +34,8 @@ import {
     type ShortcutId,
 } from "../shortcuts";
 import styles from "./overlay.module.css";
+
+type Panel = "shortcuts" | "docs" | "rules" | "method" | "check";
 
 type ControlButtonConfig = {
     tool: ControlBarTool;
@@ -173,11 +180,15 @@ export function ControlBar({
 }) {
     const session = useSyncExternalStore(barStore.subscribe, barStore.get, barStore.getServerSnapshot);
     const mode = resolveBarMode(session);
-    const [panel, setPanel] = useState<null | "shortcuts" | "docs" | "rules">(null);
+    const [panel, setPanel] = useState<null | Panel>(null);
+    // Bumped when the method or stage changes so the stage chip refetches (no SSE for config).
+    const [configVersion, setConfigVersion] = useState(0);
     const [platform, setPlatform] = useState<Platform>("other");
     const shortcutsButtonRef = useRef<HTMLButtonElement>(null);
     const docsButtonRef = useRef<HTMLButtonElement>(null);
     const rulesButtonRef = useRef<HTMLButtonElement>(null);
+    const methodButtonRef = useRef<HTMLButtonElement>(null);
+    const checkButtonRef = useRef<HTMLButtonElement>(null);
     const groupButtonRef = useRef<HTMLButtonElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const prevMode = useRef(mode);
@@ -223,7 +234,7 @@ export function ControlBar({
         }
     }
 
-    function openPanel(next: "shortcuts" | "docs" | "rules", opener: HTMLButtonElement | null) {
+    function openPanel(next: Panel, opener: HTMLButtonElement | null) {
         lastPanelOpener.current = opener;
         setPanel(next);
     }
@@ -331,6 +342,29 @@ export function ControlBar({
                             </span>
                         </span>
                     ) : null}
+                    <StageControl
+                        version={configVersion}
+                        onChanged={() => setConfigVersion((n) => n + 1)}
+                        onOpenCheck={() => openPanel("check", checkButtonRef.current)}
+                    />
+                    <BarButton
+                        label="Method"
+                        tooltip="Method"
+                        buttonRef={methodButtonRef}
+                        haspopup="dialog"
+                        onClick={() => openPanel("method", methodButtonRef.current)}
+                    >
+                        <WorkflowIcon className="h-4 w-4" />
+                    </BarButton>
+                    <BarButton
+                        label="Model check"
+                        tooltip="Model check"
+                        buttonRef={checkButtonRef}
+                        haspopup="dialog"
+                        onClick={() => openPanel("check", checkButtonRef.current)}
+                    >
+                        <ShieldCheckIcon className="h-4 w-4" />
+                    </BarButton>
                     <BarButton
                         label="Project rules"
                         tooltip="Project rules"
@@ -381,6 +415,15 @@ export function ControlBar({
             {panel === "rules" ? (
                 <ProjectRulesSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} />
             ) : null}
+            {panel === "method" ? (
+                <MethodSheet
+                    onClose={() => setPanel(null)}
+                    onChanged={() => setConfigVersion((n) => n + 1)}
+                    onOpenCheck={() => openPanel("check", methodButtonRef.current)}
+                    returnFocusRef={lastPanelOpener}
+                />
+            ) : null}
+            {panel === "check" ? <ModelCheckSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} /> : null}
             {panel === "docs" ? (
                 <DocsSheet
                     onClose={() => setPanel(null)}
