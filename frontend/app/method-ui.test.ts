@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { LintFinding } from "./api";
 import {
     checkStatus,
+    checkStatusLine,
+    formatRuleParams,
+    containingLevelHref,
+    goToLabel,
+    locateRelationships,
+    readGoToSelect,
+    relationshipDisplay,
     decideStageChange,
     findingTarget,
     gatesSummary,
@@ -40,9 +47,49 @@ describe("groupFindings", () => {
 
 describe("findingTarget", () => {
     it("prefers node, then relationship, else null", () => {
-        expect(findingTarget({ rule: "r", severity: "advisory", node_id: "api", message: "" })?.href).toBe("/node/api");
-        expect(findingTarget({ rule: "r", severity: "advisory", relationship_id: "a-b", message: "" })?.href).toBe("/relationship/a-b");
+        expect(findingTarget({ rule: "r", severity: "advisory", node_id: "api", message: "" })).toEqual({ kind: "node", id: "api" });
+        expect(findingTarget({ rule: "r", severity: "advisory", relationship_id: "a-b", message: "" })).toEqual({ kind: "relationship", id: "a-b" });
         expect(findingTarget({ rule: "r", severity: "advisory", message: "" })).toBeNull();
+    });
+    it("routes to the containing level", () => {
+        expect(containingLevelHref("platform")).toBe("/node/platform");
+        expect(containingLevelHref(undefined)).toBe("/");
+        expect(containingLevelHref("")).toBe("/");
+    });
+    it("reads go-to state defensively", () => {
+        expect(readGoToSelect(null)).toBeNull();
+        expect(readGoToSelect({ select: { kind: "node", id: "a", name: "A" } })).toEqual({ kind: "node", id: "a", name: "A" });
+        expect(readGoToSelect({ select: { kind: "edge", name: "x" } })).toBeNull();
+    });
+    it("builds unique display-name labels", () => {
+        const nameOf = (id: string) => ({ a: "API", b: "DB" })[id] ?? id;
+        expect(relationshipDisplay({ label: "reads", from: "a", to: "b" }, "r1", nameOf)).toBe("reads");
+        expect(relationshipDisplay({ label: " ", from: "a", to: "b" }, "r1", nameOf)).toBe("API \u2192 DB");
+        expect(relationshipDisplay(undefined, "r1", nameOf)).toBe("r1");
+        expect(goToLabel("node", "API", "max_depth")).toBe("Go to node API, max_depth");
+    });
+});
+
+describe("locateRelationships", () => {
+    const rel = (id: string, aggregated = false) => ({ id, from: "a", to: "b", label: "", kind: "uses", aggregated });
+    const levels: Record<string, { children: { id: string; child_count?: number }[]; relationships: ReturnType<typeof rel>[] }> = {
+        "": { children: [{ id: "p", child_count: 2 }], relationships: [rel("top")] },
+        p: { children: [{ id: "x", child_count: 0 }, { id: "q", child_count: 1 }], relationships: [rel("agg", true), rel("mid")] },
+        q: { children: [], relationships: [rel("deep"), rel("agg")] },
+    };
+    const fetchLevel = async (id?: string) => levels[id ?? ""] as never;
+    it("finds the containing level of each wanted edge, skipping aggregated ones", async () => {
+        const out = await locateRelationships(["top", "mid", "deep", "agg", "missing"], fetchLevel);
+        expect(out.get("top")?.levelId).toBeNull();
+        expect(out.get("mid")?.levelId).toBe("p");
+        expect(out.get("deep")?.levelId).toBe("q");
+        expect(out.get("agg")?.levelId).toBe("q");
+        expect(out.has("missing")).toBe(false);
+    });
+    it("stops once everything is found", async () => {
+        const seen: string[] = [];
+        await locateRelationships(["top"], async (id) => (seen.push(id ?? "root"), levels[id ?? ""] as never));
+        expect(seen).toEqual(["root"]);
     });
 });
 
@@ -51,6 +98,20 @@ describe("checkStatus", () => {
         expect(checkStatus({ ok: true, counts: { advisory: 0, enforced: 0, total: 0 } })).toBe("OK: no issues found.");
         expect(checkStatus({ ok: true, counts: { advisory: 2, enforced: 0, total: 2 } })).toBe("OK, with advisory issues: 0 enforced issues, 2 advisory issues.");
         expect(checkStatus({ ok: false, counts: { advisory: 0, enforced: 1, total: 1 } })).toBe("Issues found: 1 enforced issue, 0 advisory issues.");
+    });
+});
+
+describe("checkStatusLine / formatRuleParams", () => {
+    const result = { ok: false, counts: { advisory: 0, enforced: 1, total: 1 } } as never;
+    it("lets an error replace the result status", () => {
+        expect(checkStatusLine({ loading: false, error: "boom", result })).toBe("Model check failed: boom");
+        expect(checkStatusLine({ loading: true, error: null, result })).toBe("Checking the model.");
+        expect(checkStatusLine({ loading: false, error: null, result })).toContain("Issues found");
+        expect(checkStatusLine({ loading: false, error: null, result: null })).toBe("");
+    });
+    it("formats rule params", () => {
+        expect(formatRuleParams(undefined)).toBe("");
+        expect(formatRuleParams({ max_depth: 4, name: "x" })).toBe("max_depth 4, name x");
     });
 });
 
@@ -81,14 +142,25 @@ describe("stage moves", () => {
 });
 
 describe("switchNotice", () => {
-    it("says the model is unchanged", () => {
-        expect(switchNotice("Freeform", { stage: null })).toBe("Switched to Freeform. Your model was not changed.");
+    const name = (id: string) => ({ design: "Design", build: "Build" })[id] ?? id;
+    it("says nothing about the stage when there is none before or after", () => {
+        expect(switchNotice("Freeform", { method: "freeform", stage: "" } as never)).toBe("Switched to Freeform. Your model was not changed.");
     });
-    it("explains a reset and a clear", () => {
-        expect(switchNotice("Design first", { stage: { id: "design", name: "Design" }, stage_reset: true, previous_stage: "x" })).toBe(
-            'Switched to Design first. Your model was not changed. The previous stage "x" does not exist in this method. The stage was reset to Design.',
+    it("mentions a stage set when moving to a staged method", () => {
+        expect(switchNotice("Design first", { method: "design-first", stage: "design" } as never, name)).toBe(
+            "Switched to Design first. Stage set to Design. Your model was not changed.",
         );
-        expect(switchNotice("Freeform", { stage: null, stage_reset: true })).toContain("stage was cleared");
+    });
+    it("mentions a reset to the initial stage", () => {
+        expect(switchNotice("Design first", { method: "design-first", stage: "design", previous_stage: "gone", stage_reset: true } as never, name)).toContain("Stage set to Design.");
+    });
+    it("mentions a kept stage", () => {
+        expect(switchNotice("Other", { method: "o", stage: "build", previous_stage: "build" } as never, name)).toContain("Stage stays Build.");
+    });
+    it("mentions a cleared stage", () => {
+        expect(switchNotice("Freeform", { method: "freeform", stage: "", previous_stage: "build", stage_reset: true } as never, name)).toBe(
+            "Switched to Freeform. Stage cleared, this method has no stages. Your model was not changed.",
+        );
     });
 });
 

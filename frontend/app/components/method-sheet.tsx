@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { getMethod, getMethods, putMethod, type MethodDetail, type MethodSummary } from "../api";
-import { gatesSummary, orderRules, severityLabel, switchNotice } from "../method-ui";
+import { formatRuleParams, gatesSummary, orderRules, severityLabel, switchNotice } from "../method-ui";
 import { Overlay } from "./overlay";
 import { CloseButton } from "./shortcuts-dialog";
 
@@ -14,16 +14,20 @@ export function MethodSheet({
     onChanged,
     onOpenCheck,
     returnFocusRef,
+    version = 0,
 }: {
     onClose: () => void;
     // Called after a successful switch so the stage chip can refetch.
     onChanged: () => void;
     onOpenCheck: () => void;
     returnFocusRef?: RefObject<HTMLElement | null>;
+    // Changes when the model or config changed elsewhere; the sheet refetches.
+    version?: number;
 }) {
     const titleId = useId();
     const selectId = useId();
     const closeRef = useRef<HTMLButtonElement>(null);
+    const selectRef = useRef<HTMLSelectElement>(null);
     const [method, setMethod] = useState<MethodDetail | null>(null);
     const [methods, setMethods] = useState<MethodSummary[]>([]);
     const [choice, setChoice] = useState("");
@@ -36,7 +40,8 @@ export function MethodSheet({
         const [m, list] = await Promise.all([getMethod(signal), getMethods(signal)]);
         setMethod(m);
         setMethods(list.methods);
-        setChoice(m.id);
+        setChoice((prev) => (prev === "" ? m.id : prev));
+        return m;
     }
 
     useEffect(() => {
@@ -46,7 +51,7 @@ export function MethodSheet({
             setLoadError(err instanceof Error ? err.message : "could not load the method");
         });
         return () => ac.abort();
-    }, []);
+    }, [version]);
 
     async function apply() {
         if (!method || choice === method.id) return;
@@ -54,14 +59,17 @@ export function MethodSheet({
         setError(null);
         try {
             const res = await putMethod(choice);
-            await load();
-            const name = methods.find((m) => m.id === choice)?.name ?? res.method.name;
-            setNotice(switchNotice(name, res));
+            const fresh = await load();
+            setChoice(fresh.id);
+            const name = methods.find((m) => m.id === res.method)?.name ?? fresh.name;
+            setNotice(switchNotice(name, res, (id) => fresh.stages.find((s) => s.id === id)?.name ?? id));
             onChanged();
         } catch (err) {
             setError(err instanceof Error ? err.message : "could not switch method");
         } finally {
             setBusy(false);
+            // The Switch button is disabled now; keep focus in the sheet.
+            window.requestAnimationFrame(() => selectRef.current?.focus());
         }
     }
 
@@ -94,6 +102,7 @@ export function MethodSheet({
                                 </label>
                                 <select
                                     id={selectId}
+                                    ref={selectRef}
                                     aria-describedby={`${selectId}-note`}
                                     value={choice}
                                     disabled={busy}
@@ -145,7 +154,7 @@ export function MethodSheet({
                         </details>
 
                         <section aria-labelledby={`${selectId}-rules`} className="mt-5">
-                            <h3 id={`${selectId}-rules`} className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <h3 id={`${selectId}-rules`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Lint rules
                             </h3>
                             <table className="w-full text-sm">
@@ -166,7 +175,9 @@ export function MethodSheet({
                                             <th scope="row" className="py-1.5 pr-3 text-left font-mono text-xs font-normal">
                                                 {rule.id}
                                             </th>
-                                            <td className="py-1.5 text-xs">{severityLabel[rule.severity]}</td>
+                                            <td className="py-1.5 text-xs">{severityLabel[rule.severity]}
+                                                {formatRuleParams(rule.params) ? <span className="text-muted-foreground"> ({formatRuleParams(rule.params)})</span> : null}
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
@@ -177,7 +188,7 @@ export function MethodSheet({
                         </section>
 
                         <section aria-labelledby={`${selectId}-gates`} className="mt-5">
-                            <h3 id={`${selectId}-gates`} className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                            <h3 id={`${selectId}-gates`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Stage gates
                             </h3>
                             {gates.length === 0 ? (

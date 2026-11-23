@@ -67,12 +67,22 @@ function StageDialog({
     const titleId = useId();
     const selectId = useId();
     const closeRef = useRef<HTMLButtonElement>(null);
+    const selectRef = useRef<HTMLSelectElement>(null);
+    const advanceRef = useRef<HTMLButtonElement>(null);
+    const setRef = useRef<HTMLButtonElement>(null);
+    const cancelRef = useRef<HTMLButtonElement>(null);
     const current = state.stage?.id ?? null;
     const [choice, setChoice] = useState(current ?? state.stages[0].id);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState("");
-    const [confirm, setConfirm] = useState<{ target: string; message: string } | null>(null);
+    const [confirm, setConfirm] = useState<{ target: string; message: string; retry?: boolean } | null>(null);
+
+    // Focus the least destructive action when the confirmation opens.
+    useEffect(() => {
+        if (confirm) cancelRef.current?.focus();
+    }, [confirm]);
+    const focusSoon = (ref: { current: HTMLElement | null }) => window.requestAnimationFrame(() => ref.current?.focus());
 
     async function apply(target: string) {
         setBusy(true);
@@ -88,6 +98,7 @@ function StageDialog({
             setError(err instanceof Error ? err.message : "could not change stage");
         } finally {
             setBusy(false);
+            focusSoon(selectRef);
         }
     }
 
@@ -109,8 +120,11 @@ function StageDialog({
         } catch (err) {
             // The check is advisory; if it fails, say so and let the architect proceed deliberately.
             setBusy(false);
-            setError(`Could not check the model first: ${err instanceof Error ? err.message : "request failed"}. Choose Set stage again to continue.`);
-            setConfirm({ target, message: "The model check could not run. Advance anyway?" });
+            setConfirm({
+                target,
+                retry: true,
+                message: `Could not check the model first: ${err instanceof Error ? err.message : "request failed"}.`,
+            });
             return;
         }
         void apply(target);
@@ -134,30 +148,47 @@ function StageDialog({
                 <p className="mt-1 text-xs text-muted-foreground">Only you change the stage. Agents cannot.</p>
 
                 {confirm ? (
-                    <div role="alertdialog" aria-label="Confirm stage change" className="mt-4 rounded-[14px] border border-border p-3">
-                        <p className="text-sm font-medium">{confirm.message}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">Enforced issues never block a stage change.</p>
+                    <div role="group" aria-labelledby={`${selectId}-confirm`} className="mt-4 rounded-[14px] border border-border p-3">
+                        <p id={`${selectId}-confirm`} className="text-sm font-medium">
+                            {confirm.message}
+                        </p>
+                        {confirm.retry ? null : <p className="mt-1 text-xs text-muted-foreground">Enforced issues never block a stage change.</p>}
                         <div className="mt-3 flex flex-wrap gap-2">
+                            {confirm.retry ? (
+                                <button type="button" className={sheetButtonClass} onClick={() => void request(confirm.target)}>
+                                    Retry
+                                </button>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        disabled={busy}
+                                        className="inline-flex min-h-7 items-center rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                        onClick={() => void apply(confirm.target)}
+                                    >
+                                        Advance anyway
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className={sheetButtonClass}
+                                        onClick={() => {
+                                            onClose();
+                                            onOpenCheck();
+                                        }}
+                                    >
+                                        View issues
+                                    </button>
+                                </>
+                            )}
                             <button
                                 type="button"
-                                autoFocus
-                                disabled={busy}
-                                className="inline-flex min-h-7 items-center rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-                                onClick={() => void apply(confirm.target)}
-                            >
-                                Advance anyway
-                            </button>
-                            <button
-                                type="button"
+                                ref={cancelRef}
                                 className={sheetButtonClass}
                                 onClick={() => {
-                                    onClose();
-                                    onOpenCheck();
+                                    setConfirm(null);
+                                    focusSoon(next ? advanceRef : setRef);
                                 }}
                             >
-                                View issues
-                            </button>
-                            <button type="button" className={sheetButtonClass} onClick={() => setConfirm(null)}>
                                 Cancel
                             </button>
                         </div>
@@ -171,6 +202,7 @@ function StageDialog({
                                 </label>
                                 <select
                                     id={selectId}
+                                    ref={selectRef}
                                     value={choice}
                                     disabled={busy}
                                     onChange={(e) => {
@@ -188,6 +220,7 @@ function StageDialog({
                             </div>
                             <button
                                 type="button"
+                                ref={setRef}
                                 disabled={busy || choice === current}
                                 className={sheetButtonClass}
                                 onClick={() => void request(choice)}
@@ -197,6 +230,7 @@ function StageDialog({
                             {next ? (
                                 <button
                                     type="button"
+                                    ref={advanceRef}
                                     disabled={busy}
                                     className="inline-flex min-h-7 items-center rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                                     onClick={() => void request(next.id)}

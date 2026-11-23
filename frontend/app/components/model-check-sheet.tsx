@@ -1,7 +1,19 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useNavigate } from "react-router";
-import { getCheckModel, type CheckModelResult } from "../api";
-import { checkStatus, driftCount, findingTarget, groupFindings } from "../method-ui";
+import { getCheckModel, getLevel, getNode, type CheckModelResult, type LintFinding } from "../api";
+import {
+    checkStatusLine,
+    containingLevelHref,
+    driftCount,
+    findingTarget,
+    goToLabel,
+    groupFindings,
+    locateRelationships,
+    relationshipDisplay,
+    type GoToSelect,
+    type LocatedRelationship,
+} from "../method-ui";
+import { useNodeSnapshots } from "../use-node-snapshots";
 import { Overlay } from "./overlay";
 import { CloseButton } from "./shortcuts-dialog";
 import { sheetButtonClass } from "./method-sheet";
@@ -35,11 +47,62 @@ export function ModelCheckSheet({
             })
             .catch((err) => {
                 if (ac.signal.aborted) return;
+                // Old findings no longer describe the model; drop them so they cannot sit beside the error.
+                setResult(null);
                 setError(err instanceof Error ? err.message : "could not run the model check");
                 setLoading(false);
             });
         return () => ac.abort();
     }, [includeDrift, all, reload]);
+
+    // Edges are located once per result so labels can show names and Go to can find their level.
+    const [edges, setEdges] = useState<ReadonlyMap<string, LocatedRelationship>>(new Map());
+    const [goError, setGoError] = useState("");
+    const relIds = result ? [...new Set(result.findings.map((f) => f.relationship_id).filter((id): id is string => !!id))] : [];
+    const relKey = relIds.join("\n");
+    useEffect(() => {
+        if (!relKey) return void setEdges(new Map());
+        let alive = true;
+        void locateRelationships(relKey.split("\n"), (id) => getLevel(id)).then((m) => alive && setEdges(m));
+        return () => {
+            alive = false;
+        };
+    }, [relKey]);
+    const snapshots = useNodeSnapshots((known) => {
+        const ids = new Set<string>();
+        for (const f of result?.findings ?? []) if (f.node_id) ids.add(f.node_id);
+        for (const e of edges.values()) {
+            ids.add(e.rel.from);
+            ids.add(e.rel.to);
+        }
+        void known;
+        return [...ids];
+    });
+    const nameOf = (id: string) => snapshots.get(id)?.name ?? id;
+
+    async function goTo(f: LintFinding) {
+        const target = findingTarget(f);
+        if (!target) return;
+        setGoError("");
+        try {
+            let href: string;
+            let select: GoToSelect;
+            if (target.kind === "node") {
+                const node = await getNode(target.id);
+                href = containingLevelHref(node.parent_id);
+                select = { kind: "node", id: node.id, name: node.name };
+            } else {
+                const hit = edges.get(target.id);
+                if (!hit) throw new Error("could not find that relationship in the model");
+                href = containingLevelHref(hit.levelId);
+                select = { kind: "edge", rel: hit.rel, name: `relationship ${relationshipDisplay(hit.rel, target.id, nameOf)}` };
+            }
+            onClose();
+            navigate(href, { state: { select } });
+        } catch (err) {
+            setGoError(err instanceof Error ? err.message : "could not open that item");
+        }
+    }
 
     const groups = result ? groupFindings(result.findings) : [];
     const drift = result?.drift;
@@ -74,12 +137,12 @@ export function ModelCheckSheet({
                     Drift compares tracked files with node globs. All rules runs every rule as advisory, even ones the method turns off.
                 </p>
 
-                <div role="status" aria-live="polite" className="mt-4 text-sm font-medium">
-                    {loading ? "Checking the model." : result ? checkStatus(result) : ""}
+                <div role={error ? "alert" : "status"} aria-live={error ? "assertive" : "polite"} className={`mt-4 text-sm font-medium ${error ? "text-destructive" : ""}`}>
+                    {checkStatusLine({ loading, error, result })}
                 </div>
-                {error ? (
+                {goError ? (
                     <p role="alert" className="mt-2 text-sm text-destructive">
-                        {error}
+                        {goError}
                     </p>
                 ) : null}
 
@@ -91,12 +154,17 @@ export function ModelCheckSheet({
                         </p>
                         {groups.map((group) => (
                             <section key={group.severity} aria-label={`${group.label} findings`} className="mt-5">
-                                <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                     {group.label} ({group.findings.length})
                                 </h3>
                                 <ul className="flex flex-col gap-2">
                                     {group.findings.map((f, i) => {
                                         const target = findingTarget(f);
+                                        const display = !target
+                                            ? ""
+                                            : target.kind === "node"
+                                              ? nameOf(target.id)
+                                              : relationshipDisplay(edges.get(target.id)?.rel, target.id, nameOf);
                                         return (
                                             <li key={`${f.rule}-${f.node_id ?? f.relationship_id ?? ""}-${i}`} className="flex items-start justify-between gap-3 rounded-[14px] border border-border p-2.5">
                                                 <div className="min-w-0">
@@ -107,11 +175,8 @@ export function ModelCheckSheet({
                                                     <button
                                                         type="button"
                                                         className={`${sheetButtonClass} shrink-0`}
-                                                        aria-label={`Go to ${target.label}`}
-                                                        onClick={() => {
-                                                            onClose();
-                                                            navigate(target.href);
-                                                        }}
+                                                        aria-label={goToLabel(target.kind, display, f.rule)}
+                                                        onClick={() => void goTo(f)}
                                                     >
                                                         Go to
                                                     </button>
@@ -130,7 +195,7 @@ export function ModelCheckSheet({
                         ) : null}
                         {drift ? (
                             <section aria-label="Drift" className="mt-5">
-                                <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Drift ({driftCount(drift)})</h3>
+                                <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Drift ({driftCount(drift)})</h3>
                                 {driftCount(drift) === 0 ? <p className="text-sm text-muted-foreground">No drift found.</p> : null}
                                 {drift.unowned_files?.length ? (
                                     <div className="mb-3">

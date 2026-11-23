@@ -161,6 +161,7 @@ export function ControlBar({
     redoLabel,
     reviewCount = 0,
     onOpenReview,
+    externalVersion = 0,
 }: {
     selectedTool: ControlBarTool;
     onSelectTool: (tool: ControlBarTool) => void;
@@ -177,6 +178,8 @@ export function ControlBar({
     // Proposals waiting for review; the Review entry shows only when there are some.
     reviewCount?: number;
     onOpenReview?: () => void;
+    // Bumped by the app on model-changed events, so the stage chip and Method sheet refetch after outside changes.
+    externalVersion?: number;
 }) {
     const session = useSyncExternalStore(barStore.subscribe, barStore.get, barStore.getServerSnapshot);
     const mode = resolveBarMode(session);
@@ -343,7 +346,7 @@ export function ControlBar({
                         </span>
                     ) : null}
                     <StageControl
-                        version={configVersion}
+                        version={configVersion + externalVersion}
                         onChanged={() => setConfigVersion((n) => n + 1)}
                         onOpenCheck={() => openPanel("check", checkButtonRef.current)}
                     />
@@ -417,6 +420,7 @@ export function ControlBar({
             ) : null}
             {panel === "method" ? (
                 <MethodSheet
+                    version={configVersion + externalVersion}
                     onClose={() => setPanel(null)}
                     onChanged={() => setConfigVersion((n) => n + 1)}
                     onOpenCheck={() => openPanel("check", methodButtonRef.current)}

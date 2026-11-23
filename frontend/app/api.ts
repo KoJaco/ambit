@@ -613,10 +613,11 @@ export type MethodSummary = {
     stages?: string[];
     active: boolean;
 };
+// Server shape of PUT /method: ids only. stage is "" when the method has no stages.
 export type PutMethodResult = {
-    method: { id: string; name: string } & Partial<MethodDetail>;
-    stage: { id: string; name: string } | null;
-    previous_stage?: string | { id: string; name?: string } | null;
+    method: string;
+    stage: string;
+    previous_stage?: string;
     stage_reset?: boolean;
 };
 export type StageState = {
