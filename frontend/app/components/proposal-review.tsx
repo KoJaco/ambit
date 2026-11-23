@@ -183,12 +183,13 @@ export function ProposalReview({
         );
     }
 
-    if (summaries.length === 0 && !error) return null;
-
+    // Hooks must run on every render, so this sits above the early return.
     const detailOp = detail ? findOp(diffs, detail) : null;
     const fetchedNodes = useNodeSnapshots((known) =>
         detail && detailOp && diffs[detail.proposalId] ? unresolvedNodeIds(diffs[detail.proposalId], detailOp, known) : [],
     );
+
+    if (summaries.length === 0 && !error) return null;
 
     return (
         <RightRailPanel
