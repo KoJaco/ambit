@@ -34,15 +34,22 @@ export type GhostEdge = {
     target: string;
     label: string;
     kind: string;
+    // True when the proposed connection carries a contract.
+    hasContract?: boolean;
     key: GhostKey;
     proposalId: string;
     index: number;
 };
 
+function contractFlag(rel: { contract?: { format?: string; ref?: string; text?: string } } | null | undefined): { hasContract?: true } {
+    const c = rel?.contract;
+    return c && (c.format || c.ref?.trim() || c.text?.trim()) ? { hasContract: true } : {};
+}
+
 export type MarkKind = "removed" | "changed";
 
 export type NodeMark = { nodeId: string; kind: MarkKind; key: GhostKey };
-export type EdgeMark = { edgeId: string; kind: MarkKind; label: string; key: GhostKey; proposalId: string; index: number };
+export type EdgeMark = { edgeId: string; kind: MarkKind; label: string; hasContract?: boolean; key: GhostKey; proposalId: string; index: number };
 
 export type GhostPreview = {
     ghostNodes: GhostNode[];
@@ -145,7 +152,7 @@ export function buildGhostPreview({ diffs, parentId, nodeIds, edgeIds }: GhostIn
                 const existing = op.current_relationship?.id;
                 if (op.current_relationship) {
                     if (existing && realEdges.has(existing)) {
-                        edgeMarks[existing] = { edgeId: existing, kind: "changed", label: rel.label, key, proposalId: diff.proposal_id, index: op.index };
+                        edgeMarks[existing] = { edgeId: existing, kind: "changed", label: rel.label, ...contractFlag(rel), key, proposalId: diff.proposal_id, index: op.index };
                     }
                     break;
                 }
@@ -158,6 +165,7 @@ export function buildGhostPreview({ diffs, parentId, nodeIds, edgeIds }: GhostIn
                     target,
                     label: rel.label,
                     kind: rel.kind,
+                    ...contractFlag(rel),
                     key,
                     proposalId: diff.proposal_id,
                     index: op.index,
@@ -168,7 +176,7 @@ export function buildGhostPreview({ diffs, parentId, nodeIds, edgeIds }: GhostIn
                 const id = (op.current_relationship ?? op.relationship)?.id;
                 if (id && realEdges.has(id)) {
                     const label = (op.current_relationship ?? op.relationship)?.label ?? "";
-                    edgeMarks[id] = { edgeId: id, kind: "removed", label, key, proposalId: diff.proposal_id, index: op.index };
+                    edgeMarks[id] = { edgeId: id, kind: "removed", label, ...contractFlag(op.current_relationship ?? op.relationship), key, proposalId: diff.proposal_id, index: op.index };
                 }
                 for (const removed of op.removes_nodes ?? []) markNode(removed.id, "removed", key);
                 break;
@@ -190,6 +198,11 @@ export type GhostLayout = {
     positions: Record<string, Point>;
     sizes: Record<string, NodeSize>;
 };
+
+// A cached layout can only be reused while it covers every ghost on screen.
+export function layoutCovers(layout: GhostLayout | null | undefined, ghosts: { id: string }[]): layout is GhostLayout {
+    return !!layout && ghosts.every((g) => layout.sizes[g.id] !== undefined);
+}
 
 // Deterministic placement that never moves a real node. Each top-level ghost starts beside the
 // real node it connects to (else to the right of everything) and slides down, then right, until

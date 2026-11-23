@@ -585,10 +585,27 @@ function DetailBlockView({
     headingRef?: Ref<HTMLHeadingElement>;
 }) {
     if (block.kind === "heading") {
+        const Heading = block.level === 4 ? "h4" : "h3";
         return (
-            <h3 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-sm font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
+            <Heading ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="text-sm font-semibold outline-none focus-visible:outline-2 focus-visible:outline-ring">
                 {block.text}
-            </h3>
+            </Heading>
+        );
+    }
+    if (block.kind === "list") {
+        const items = (list: string[]) => (
+            <ul className="list-disc pl-4">
+                {list.map((item, i) => (
+                    <li key={i}>{item}</li>
+                ))}
+            </ul>
+        );
+        return (
+            <div className="text-xs">
+                <p className="font-medium text-foreground/70">{block.label}</p>
+                {block.before.length > 0 ? <div className="text-foreground/60 line-through">{items(block.before)}</div> : null}
+                {block.after.length > 0 ? <div className="text-foreground">{items(block.after)}</div> : <p className="text-foreground">→ (none)</p>}
+            </div>
         );
     }
     if (block.kind === "line") {

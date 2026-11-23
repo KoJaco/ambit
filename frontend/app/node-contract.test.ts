@@ -7,11 +7,14 @@ import {
     constraintsDiff,
     contractChangeSummary,
     contractSummary,
+    contractFieldProblems,
     counterState,
+    collectNodes,
     dependsOptions,
     edgeContractDirty,
     edgeContractLine,
     moveConstraint,
+    moveFocusControl,
     normalizeContract,
     normalizeEdgeContract,
     removeConstraint,
@@ -144,8 +147,23 @@ describe("build order", () => {
 
 describe("dependency picker", () => {
     it("excludes self, keeps unknown current ids, sorts by name", () => {
-        expect(dependsOptions(order, "api", ["ghost"]).map((o) => o.id)).toEqual(["db", "ghost"]);
+        const nodes = [
+            { id: "api", name: "API" },
+            { id: "db", name: "DB" },
+            { id: "group", name: "Backend" },
+        ];
+        expect(dependsOptions(nodes, "api", ["ghost"]).map((o) => o.id)).toEqual(["group", "db", "ghost"]);
         expect(dependsOptions(null, "api", undefined)).toEqual([]);
+    });
+
+    it("collects containers and their descendants from the level tree", async () => {
+        const tree: Record<string, { id: string; name: string; child_count?: number }[]> = {
+            "": [{ id: "g", name: "G", child_count: 2 }, { id: "x", name: "X" }],
+            g: [{ id: "a", name: "A" }, { id: "h", name: "H", child_count: 1 }],
+            h: [{ id: "b", name: "B" }],
+        };
+        const all = await collectNodes(async (p) => tree[p ?? ""] ?? []);
+        expect(all.map((n) => n.id).sort()).toEqual(["a", "b", "g", "h", "x"]);
     });
 
     it("toggles and never adds self", () => {
@@ -160,5 +178,25 @@ describe("save error placement", () => {
         expect(saveErrorTarget("dependency cycle: a -> b -> a")).toBe("depends");
         expect(saveErrorTarget("invalid contract: payloads too long")).toBe("contract");
         expect(saveErrorTarget("request failed (500)")).toBe("general");
+    });
+});
+
+describe("move focus", () => {
+    it("falls back to the opposite arrow at either end", () => {
+        expect(moveFocusControl(0, 3, "up")).toBe("down");
+        expect(moveFocusControl(2, 3, "down")).toBe("up");
+        expect(moveFocusControl(1, 3, "up")).toBe("up");
+        expect(moveFocusControl(1, 3, "down")).toBe("down");
+    });
+});
+
+describe("contract field problems", () => {
+    it("places messages on the field that is over its limit", () => {
+        const none = contractFieldProblems({ payloads: "ok", invariants: ["fine"] });
+        expect(none.payloads).toBeUndefined();
+        expect(none.lists.invariants.items).toEqual({});
+        const over = contractFieldProblems({ payloads: "x".repeat(8001), errors: ["ok", "y".repeat(301)] });
+        expect(over.payloads).toBe("At most 8000 characters.");
+        expect(over.lists.errors.items).toEqual({ 1: "At most 300 characters." });
     });
 });

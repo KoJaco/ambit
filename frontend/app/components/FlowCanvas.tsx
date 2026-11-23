@@ -74,7 +74,7 @@ import { ContainerNode, GroupFrame } from "./flow/group-node";
 import { ExternalStub } from "./flow/external-node";
 import { GhostEdge, type GhostEdgeData } from "./flow/ghost-edge";
 import { GhostNode, ghostNodeClass } from "./flow/ghost-node";
-import { buildGhostPreview, emptyGhostPreview, ghostLeafSize, placeGhosts, type CanvasPreview, type GhostLayout, type Rect as GhostRect } from "../ghost-preview";
+import { buildGhostPreview, emptyGhostPreview, ghostLeafSize, layoutCovers, placeGhosts, type CanvasPreview, type GhostLayout, type Rect as GhostRect } from "../ghost-preview";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
@@ -750,7 +750,7 @@ export default function FlowCanvas({
     const ghostLayoutRef = useRef<GhostLayout | null>(null);
     const ghostLayout = useMemo(() => {
         if (ghost.ghostNodes.length === 0) return null;
-        if (nodes.some((item) => item.dragging) && ghostLayoutRef.current) return ghostLayoutRef.current;
+        if (nodes.some((item) => item.dragging) && layoutCovers(ghostLayoutRef.current, ghost.ghostNodes)) return ghostLayoutRef.current;
         const obstacles: Record<string, GhostRect> = {};
         for (const item of nodes) {
             if (item.parentId) continue;
@@ -793,10 +793,10 @@ export default function FlowCanvas({
                   ariaLabel: `Proposed new node ${item.name}. Open in Review`,
                   ...(item.parentGhostId ? { parentId: item.parentGhostId, extent: "parent" as const } : {}),
                   position: placed.positions[item.id] ?? { x: 0, y: 0 },
-                  width: placed.sizes[item.id].width,
-                  height: placed.sizes[item.id].height,
+                  width: (placed.sizes[item.id] ?? ghostLeafSize).width,
+                  height: (placed.sizes[item.id] ?? ghostLeafSize).height,
                   // Ghosts are not in `nodes`, so React Flow's measurements are never fed back to them.
-                  measured: placed.sizes[item.id],
+                  measured: placed.sizes[item.id] ?? ghostLeafSize,
                   data: {
                       name: item.name,
                       type: item.type,
@@ -812,9 +812,10 @@ export default function FlowCanvas({
     }, [nodes, ghost, ghostLayout, highlightKey, preview]);
     const displayEdges = useMemo<Edge[]>(() => {
         if (!preview || (ghost.ghostEdges.length === 0 && Object.keys(ghost.edgeMarks).length === 0)) return edges;
-        const variantProps = (variant: "new" | "changed" | "removed", label: string, key: string, proposalId: string, index: number): GhostEdgeData["ghost"] => ({
+        const variantProps = (variant: "new" | "changed" | "removed", label: string, key: string, proposalId: string, index: number, hasContract?: boolean): GhostEdgeData["ghost"] => ({
             variant,
             label,
+            hasContract,
             highlighted: highlightKey === key,
             onActivate: () => preview.onActivate(proposalId, index),
             onHover: (on) => preview.onHover(on ? key : null),
@@ -822,7 +823,7 @@ export default function FlowCanvas({
         const real = edges.map((edge) => {
             const mark = ghost.edgeMarks[edge.id];
             if (!mark) return edge;
-            return { ...edge, type: "ghost", data: { ...edge.data, ghost: variantProps(mark.kind, mark.label, mark.key, mark.proposalId, mark.index) } };
+            return { ...edge, type: "ghost", data: { ...edge.data, ghost: variantProps(mark.kind, mark.label, mark.key, mark.proposalId, mark.index, mark.hasContract) } };
         });
         const fresh: Edge[] = ghost.ghostEdges.map((edge) => ({
             id: edge.id,
@@ -832,7 +833,7 @@ export default function FlowCanvas({
             selectable: false,
             focusable: false,
             markerEnd: { type: MarkerType.ArrowClosed },
-            data: { ghost: variantProps("new", edge.label, edge.key, edge.proposalId, edge.index) },
+            data: { ghost: variantProps("new", edge.label, edge.key, edge.proposalId, edge.index, edge.hasContract) },
         }));
         return [...real, ...fresh];
     }, [edges, ghost, highlightKey, preview]);

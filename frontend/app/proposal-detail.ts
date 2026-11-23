@@ -1,5 +1,6 @@
-import type { NodeSnapshot, OpDiff, ProposalDiff, RelSnapshot } from "./api";
+import type { NodeContract, NodeSnapshot, OpDiff, ProposalDiff, RelSnapshot } from "./api";
 import {
+    CONTRACT_LISTS,
     constraintsChangeText,
     constraintsDiff,
     contractChangeSummary,
@@ -14,10 +15,12 @@ import {
 import { resolveNodeColor, statusLabel, type ColorToken } from "./node-presentation";
 
 export type DetailBlock =
-    | { kind: "heading"; text: string }
+    | { kind: "heading"; text: string; level?: 3 | 4 }
     | { kind: "line"; text: string }
     | { kind: "pair"; label: string; before: string; after: string }
-    | { kind: "prose"; label: string; before: string; after: string };
+    | { kind: "prose"; label: string; before: string; after: string }
+    // Contract lists (invariants, errors, owned data): the items themselves, not only counts.
+    | { kind: "list"; label: string; before: string[]; after: string[] };
 
 const missingNode = "node is missing";
 
@@ -79,6 +82,7 @@ export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, str
                     const before = normalizeContract(op.current?.contract).payloads ?? "";
                     const after = normalizeContract(op.proposed?.contract).payloads ?? "";
                     if (before !== after) blocks.push({ kind: "prose", label: "Contract payloads", before, after: after || "(empty)" });
+                    blocks.push(...contractListBlocks(op.current?.contract, op.proposed?.contract));
                 } else {
                     blocks.push({
                         kind: "pair",
@@ -171,6 +175,19 @@ function constraintLineText(line: ConstraintLine): string {
     return line.was ? `${verb}: ${line.text} (was ${line.was})` : `${verb}: ${line.text}`;
 }
 
+// One list block per contract list that differs, so the actual items are reviewable.
+function contractListBlocks(before: NodeContract | undefined, after: NodeContract | undefined): DetailBlock[] {
+    const b = normalizeContract(before);
+    const a = normalizeContract(after);
+    const blocks: DetailBlock[] = [];
+    for (const { key, label } of CONTRACT_LISTS) {
+        const x = b[key] ?? [];
+        const y = a[key] ?? [];
+        if (JSON.stringify(x) !== JSON.stringify(y)) blocks.push({ kind: "list", label, before: x, after: y });
+    }
+    return blocks;
+}
+
 function nodeSnapshotBlocks(title: string, node: NodeSnapshot, nm: (id: string) => string = (id) => id): DetailBlock[] {
     const extras: DetailBlock[] = [];
     if (normalizeDependsOn(node.depends_on).length) {
@@ -180,6 +197,7 @@ function nodeSnapshotBlocks(title: string, node: NodeSnapshot, nm: (id: string) 
         extras.push({ kind: "pair", label: "Contract", before: "—", after: contractSummary(node.contract) });
         const payloads = normalizeContract(node.contract).payloads;
         if (payloads) extras.push({ kind: "prose", label: "Contract payloads", before: "", after: payloads });
+        extras.push(...contractListBlocks(undefined, node.contract));
     }
     return [
         { kind: "heading", text: title },
@@ -223,7 +241,7 @@ function nodeSnapshotBlocks(title: string, node: NodeSnapshot, nm: (id: string) 
 
 function relationshipBlocks(proposed: RelSnapshot, current: RelSnapshot | null, nm: (id: string) => string = (id) => id): DetailBlock[] {
     const blocks: DetailBlock[] = [
-        { kind: "heading", text: "Relationship" },
+        { kind: "heading", text: "Relationship", level: 4 },
         { kind: "line", text: `${nm(proposed.from)} → ${nm(proposed.to)}` },
     ];
     if (proposed.id) {

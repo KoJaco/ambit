@@ -460,6 +460,18 @@ body {
     color: var(--ghost-changed-fg);
     border: 1px solid var(--ghost-changed);
 }
+/* React Flow removes the outline on :focus; restore a visible keyboard ring. Ghost marks stay
+   dashed (only the colour and weight change), so focus and proposal state both remain readable. */
+.react-flow .react-flow__node.react-flow__node:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
+    border-radius: 16px;
+}
+.react-flow .react-flow__node.ghost-removed:focus-visible,
+.react-flow .react-flow__node.ghost-changed:focus-visible {
+    outline: 3px dashed var(--ring);
+    outline-offset: 3px;
+}
 .react-flow__node.ghost-highlight {
     outline: 3px solid var(--ring);
     outline-offset: 4px;

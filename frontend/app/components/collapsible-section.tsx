@@ -25,7 +25,7 @@ export function CollapsibleSection({
     children: ReactNode;
 }) {
     return (
-        <div className="overflow-hidden rounded-[14px] border border-border">
+        <div className="shrink-0 overflow-hidden rounded-[14px] border border-border">
             <button
                 type="button"
                 aria-expanded={open}

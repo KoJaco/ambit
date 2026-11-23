@@ -57,6 +57,29 @@ export function validateContract(contract: NodeContract | undefined): string[] {
     return problems;
 }
 
+export type ContractFieldProblems = {
+    payloads?: string;
+    // Per list: a list-level message and per-row messages (indexes into the draft as typed).
+    lists: Record<ContractListKey, { list?: string; items: Record<number, string> }>;
+};
+
+// Per-field messages for the draft as typed (rows are not trimmed away), so each can sit next to
+// its field. Same limits as validateContract.
+export function contractFieldProblems(contract: NodeContract | undefined): ContractFieldProblems {
+    const out: ContractFieldProblems = {
+        lists: { invariants: { items: {} }, errors: { items: {} }, owns_data: { items: {} } },
+    };
+    if ((contract?.payloads ?? "").trim().length > PAYLOADS_MAX) out.payloads = `At most ${PAYLOADS_MAX} characters.`;
+    for (const { key } of CONTRACT_LISTS) {
+        const items = contract?.[key] ?? [];
+        if (items.filter((i) => i.trim() !== "").length > LIST_MAX_ITEMS) out.lists[key].list = `At most ${LIST_MAX_ITEMS} items.`;
+        items.forEach((item, i) => {
+            if (item.trim().length > LIST_ITEM_MAX) out.lists[key].items[i] = `At most ${LIST_ITEM_MAX} characters.`;
+        });
+    }
+    return out;
+}
+
 export type CounterState = { text: string; near: boolean; over: boolean };
 
 // "7,950 / 8,000"; `near` from 90 percent so the warning does not rely on colour alone.
@@ -180,6 +203,14 @@ export function moveConstraint(list: Constraint[], index: number, delta: number)
     return next;
 }
 
+// The arrow to focus after a move: the same direction, unless the row is now at that end and the
+// button is disabled, in which case the opposite arrow.
+export function moveFocusControl(index: number, length: number, control: "up" | "down"): "up" | "down" {
+    if (control === "up" && index === 0 && length > 1) return "down";
+    if (control === "down" && index === length - 1 && length > 1) return "up";
+    return control;
+}
+
 export function setConstraintText(list: Constraint[], index: number, text: string): Constraint[] {
     return list.map((c, i) => (i === index ? { ...c, text } : c));
 }
@@ -268,7 +299,12 @@ export type BuildBadge = {
 };
 
 // Null when the node is not part of the order (for example a container) and not in a cycle.
-export function buildBadge(order: BuildOrder | null | undefined, id: string): BuildBadge | null {
+export function buildBadge(
+    order: BuildOrder | null | undefined,
+    id: string,
+    // Optional name source covering nodes the order omits (containers).
+    nameOf?: (id: string) => string | undefined,
+): BuildBadge | null {
     if (!order) return null;
     const item = order.order.find((o) => o.id === id);
     const inCycle = order.cycles.some((c) => c.includes(id)) || order.unordered.includes(id);
@@ -278,7 +314,7 @@ export function buildBadge(order: BuildOrder | null | undefined, id: string): Bu
             : null;
     }
     const names = new Map(order.order.map((o) => [o.id, o.name]));
-    const blockedBy = item.blocked_by.map((b) => ({ id: b, name: names.get(b) ?? b }));
+    const blockedBy = item.blocked_by.map((b) => ({ id: b, name: nameOf?.(b) ?? names.get(b) ?? b }));
     const parts = [`wave ${item.wave}`];
     if (item.done) parts.push("done");
     if (blockedBy.length) parts.push(`blocked by ${blockedBy.map((b) => b.name).join(", ")}`);
@@ -288,14 +324,38 @@ export function buildBadge(order: BuildOrder | null | undefined, id: string): Bu
 
 export type DependsOption = { id: string; name: string };
 
-// Picker options: every other node the build order knows, plus current dependencies it does not
-// (so an existing dependency is never silently hidden). Sorted by name.
-export function dependsOptions(order: BuildOrder | null | undefined, selfId: string, current: string[] | undefined): DependsOption[] {
+// Picker options: every other node in `nodes` (the full node list, containers included), plus
+// current dependencies it does not know (so an existing dependency is never silently hidden).
+// Sorted by name.
+export function dependsOptions(nodes: DependsOption[] | null | undefined, selfId: string, current: string[] | undefined): DependsOption[] {
     const byId = new Map<string, string>();
-    for (const item of order?.order ?? []) byId.set(item.id, item.name);
+    for (const n of nodes ?? []) byId.set(n.id, n.name);
     for (const id of current ?? []) if (!byId.has(id)) byId.set(id, id);
     byId.delete(selfId);
     return [...byId].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+}
+
+// Walks the level tree (there is no flat node list endpoint) and returns every node, containers
+// included. `children(id)` returns a node's direct children; undefined means the root level.
+export async function collectNodes(
+    children: (parent: string | undefined) => Promise<{ id: string; name: string; child_count?: number }[]>,
+    limit = 500,
+): Promise<DependsOption[]> {
+    const out = new Map<string, string>();
+    let queue: (string | undefined)[] = [undefined];
+    while (queue.length > 0 && out.size < limit) {
+        const level = await Promise.all(queue.map((parent) => children(parent).catch(() => [])));
+        const next: string[] = [];
+        for (const list of level) {
+            for (const c of list) {
+                if (out.has(c.id)) continue;
+                out.set(c.id, c.name);
+                if ((c.child_count ?? 0) > 0) next.push(c.id);
+            }
+        }
+        queue = next;
+    }
+    return [...out].map(([id, name]) => ({ id, name }));
 }
 
 export function toggleDependency(current: string[] | undefined, id: string, selfId: string): string[] {

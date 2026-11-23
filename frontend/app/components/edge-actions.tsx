@@ -283,7 +283,7 @@ function EdgeContractSection({ edge, onSaved }: { edge: Relationship; onSaved: (
                 <input
                     id={`${uid}-ref`}
                     className={fieldClass}
-                    aria-describedby={`${uid}-ref-hint ${uid}-ref-count`}
+                    aria-describedby={`${uid}-ref-hint ${uid}-ref-count${problems.ref ? ` ${uid}-ref-error` : ""}`}
                     aria-invalid={problems.ref ? true : undefined}
                     placeholder="docs/api/orders.yaml"
                     value={draft.ref ?? ""}
@@ -293,7 +293,11 @@ function EdgeContractSection({ edge, onSaved }: { edge: Relationship; onSaved: (
                     A repo-relative path, without '..'.
                 </p>
                 <Counter id={`${uid}-ref-count`} length={(draft.ref ?? "").trim().length} max={EDGE_REF_MAX} />
-                {problems.ref ? <p className="text-xs text-destructive">{problems.ref}</p> : null}
+                {problems.ref ? (
+                    <p id={`${uid}-ref-error`} role="alert" className="text-xs text-destructive">
+                        {problems.ref}
+                    </p>
+                ) : null}
             </div>
             <div className="flex flex-col gap-1.5">
                 <label htmlFor={`${uid}-text`} className={labelClass}>
@@ -303,13 +307,17 @@ function EdgeContractSection({ edge, onSaved }: { edge: Relationship; onSaved: (
                     id={`${uid}-text`}
                     rows={4}
                     className={`${fieldClass} min-h-20 resize-y text-sm`}
-                    aria-describedby={`${uid}-text-count`}
+                    aria-describedby={`${uid}-text-count${problems.text ? ` ${uid}-text-error` : ""}`}
                     aria-invalid={problems.text ? true : undefined}
                     value={draft.text ?? ""}
                     onChange={(event) => setDraft({ ...draft, text: event.target.value })}
                 />
                 <Counter id={`${uid}-text-count`} length={(draft.text ?? "").trim().length} max={EDGE_TEXT_MAX} />
-                {problems.text ? <p className="text-xs text-destructive">{problems.text}</p> : null}
+                {problems.text ? (
+                    <p id={`${uid}-text-error`} role="alert" className="text-xs text-destructive">
+                        {problems.text}
+                    </p>
+                ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
                 <button

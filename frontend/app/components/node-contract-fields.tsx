@@ -2,16 +2,17 @@ import clsx from "clsx";
 import { PlusIcon, XIcon } from "lucide-react";
 import { useId, useState } from "react";
 import type { BuildOrder, NodeContract } from "../api";
+import type { DependsOption } from "../node-contract";
 import {
     CONTRACT_LISTS,
     LIST_ITEM_MAX,
     LIST_MAX_ITEMS,
     PAYLOADS_MAX,
     buildBadge,
+    contractFieldProblems,
     counterState,
     dependsOptions,
     toggleDependency,
-    validateContract,
 } from "../node-contract";
 
 export const fieldClass =
@@ -20,15 +21,26 @@ export const labelClass = "text-xs font-medium uppercase tracking-wide text-mute
 const iconButtonClass =
     "inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring disabled:opacity-40";
 
-// Shown only near or over the limit, and in words, so it is never colour-only.
+// Shown only near or over the limit, and in words, so it is never colour-only. The visible count
+// is not live (it would announce on every keystroke); a separate hidden polite region changes
+// only when the state crosses into "near" or "over".
 export function Counter({ id, length, max }: { id: string; length: number; max: number }) {
     const state = counterState(length, max);
-    if (!state.near) return <span id={id} className="sr-only" />;
+    const announcement = state.over ? "Over the limit" : state.near ? "Near the limit" : "";
     return (
-        <span id={id} className={clsx("text-xs", state.over ? "font-medium text-destructive" : "text-muted-foreground")}>
-            {state.over ? "Too long: " : ""}
-            {state.text} characters
-        </span>
+        <>
+            <span aria-live="polite" className="sr-only">
+                {announcement}
+            </span>
+            {state.near ? (
+                <span id={id} className={clsx("text-xs", state.over ? "font-medium text-destructive" : "text-muted-foreground")}>
+                    {state.over ? "Too long: " : ""}
+                    {state.text} characters
+                </span>
+            ) : (
+                <span id={id} className="sr-only" />
+            )}
+        </>
     );
 }
 
@@ -43,7 +55,7 @@ export function ContractFields({
 }) {
     const uid = useId();
     const contract = value ?? {};
-    const problems = validateContract(contract);
+    const fieldProblems = contractFieldProblems(contract);
     const payloads = contract.payloads ?? "";
     return (
         <div className="flex flex-col gap-4">
@@ -53,28 +65,41 @@ export function ContractFields({
                 </label>
                 <textarea
                     id={`${uid}-payloads`}
-                    aria-describedby={`${uid}-payloads-count`}
+                    aria-describedby={`${uid}-payloads-count${fieldProblems.payloads ? ` ${uid}-payloads-error` : ""}`}
+                    aria-invalid={fieldProblems.payloads ? true : undefined}
                     rows={4}
                     className={clsx(fieldClass, "min-h-20 resize-y font-mono text-xs")}
                     placeholder="Request and response shapes this node exposes or consumes."
                     value={payloads}
                     onChange={(event) => onChange({ ...contract, payloads: event.target.value })}
                 />
-                <Counter id={`${uid}-payloads-count`} length={payloads.length} max={PAYLOADS_MAX} />
+                {fieldProblems.payloads ? (
+                    <p id={`${uid}-payloads-error`} role="alert" className="text-xs text-destructive">
+                        {fieldProblems.payloads}
+                    </p>
+                ) : null}
+                <Counter id={`${uid}-payloads-count`} length={payloads.trim().length} max={PAYLOADS_MAX} />
             </div>
             {CONTRACT_LISTS.map(({ key, label, addLabel, itemLabel }) => {
                 const items = contract[key] ?? [];
+                const listProblems = fieldProblems.lists[key];
                 return (
                     <fieldset key={key} className="flex min-w-0 flex-col gap-1.5">
                         <legend className={clsx(labelClass, "mb-1.5")}>{label}</legend>
                         {items.length === 0 ? <p className="text-xs text-muted-foreground">None yet.</p> : null}
+                        {listProblems.list ? (
+                            <p role="alert" className="text-xs text-destructive">
+                                {listProblems.list}
+                            </p>
+                        ) : null}
                         <ul className="flex flex-col gap-1.5">
                             {items.map((item, index) => (
                                 <li key={index} className="flex flex-col gap-0.5">
                                     <div className="flex items-center gap-1.5">
                                         <input
                                             aria-label={`${itemLabel} ${index + 1}`}
-                                            aria-describedby={`${uid}-${key}-${index}-count`}
+                                            aria-describedby={`${uid}-${key}-${index}-count${listProblems.items[index] ? ` ${uid}-${key}-${index}-error` : ""}`}
+                                            aria-invalid={listProblems.items[index] ? true : undefined}
                                             className={clsx(fieldClass, "min-w-0 flex-1 text-sm")}
                                             value={item}
                                             onChange={(event) =>
@@ -90,6 +115,11 @@ export function ContractFields({
                                             <XIcon className="size-4" aria-hidden />
                                         </button>
                                     </div>
+                                    {listProblems.items[index] ? (
+                                        <p id={`${uid}-${key}-${index}-error`} role="alert" className="text-xs text-destructive">
+                                            {listProblems.items[index]}
+                                        </p>
+                                    ) : null}
                                     <Counter id={`${uid}-${key}-${index}-count`} length={item.trim().length} max={LIST_ITEM_MAX} />
                                 </li>
                             ))}
@@ -109,13 +139,6 @@ export function ContractFields({
                     </fieldset>
                 );
             })}
-            {problems.length > 0 ? (
-                <ul className="text-xs text-destructive" role="alert">
-                    {problems.map((p) => (
-                        <li key={p}>{p}</li>
-                    ))}
-                </ul>
-            ) : null}
             {serverError ? (
                 <p role="alert" className="text-xs text-destructive">
                     {serverError}
@@ -128,20 +151,20 @@ export function ContractFields({
 export function DependsPicker({
     selfId,
     value,
-    order,
+    nodes,
     onChange,
     serverError,
 }: {
     selfId: string;
     value: string[] | undefined;
-    order: BuildOrder | null;
+    nodes: DependsOption[] | null;
     onChange: (next: string[]) => void;
     serverError?: string | null;
 }) {
     const uid = useId();
     const [filter, setFilter] = useState("");
     const selected = value ?? [];
-    const options = dependsOptions(order, selfId, selected);
+    const options = dependsOptions(nodes, selfId, selected);
     const needle = filter.trim().toLowerCase();
     // Selected rows stay visible while filtering so a dependency is never hidden.
     const shown = needle
@@ -165,7 +188,7 @@ export function DependsPicker({
                 />
             ) : null}
             {options.length === 0 ? (
-                <p className="text-xs text-muted-foreground">{order ? "No other nodes." : "Loading nodes."}</p>
+                <p className="text-xs text-muted-foreground">{nodes ? "No other nodes." : "Loading nodes."}</p>
             ) : (
                 <ul className="flex max-h-48 flex-col overflow-y-auto rounded-[10px] border border-border" aria-label="Nodes">
                     {shown.map((option) => {
@@ -203,8 +226,16 @@ export function DependsPicker({
 }
 
 // Advisory only: wave and unfinished dependencies from GET /build-order.
-export function BuildBadges({ order, id }: { order: BuildOrder | null; id: string }) {
-    const badge = buildBadge(order, id);
+export function BuildBadges({
+    order,
+    id,
+    nameOf,
+}: {
+    order: BuildOrder | null;
+    id: string;
+    nameOf?: (id: string) => string | undefined;
+}) {
+    const badge = buildBadge(order, id, nameOf);
     if (!badge) return null;
     const pill = "rounded-full px-2 py-0.5 text-[11px]";
     return (

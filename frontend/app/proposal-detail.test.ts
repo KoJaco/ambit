@@ -259,6 +259,7 @@ describe("node model fields", () => {
             after: "payloads, 1 invariant (changed: payloads, invariants 0 → 1)",
         });
         expect(blocks).toContainEqual({ kind: "prose", label: "Contract payloads", before: "", after: "POST /x" });
+        expect(blocks).toContainEqual({ kind: "list", label: "Invariants", before: [], after: ["i"] });
         const diff: ProposalDiff = { proposal_id: "p", created_at: "", source: "mcp", operations: [o] };
         const view = proposalDetailView(diff, o);
         expect(view.kind).toBe("update");

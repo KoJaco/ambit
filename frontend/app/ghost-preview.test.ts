@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { buildGhostPreview, ghostKey, placeGhosts, type Rect } from "./ghost-preview";
+import { buildGhostPreview, ghostKey, layoutCovers, placeGhosts, type Rect } from "./ghost-preview";
 
 function op(partial: Partial<OpDiff> & { op: string; index: number }): OpDiff {
     return {
@@ -91,6 +91,15 @@ describe("buildGhostPreview", () => {
         ]);
     });
 
+    it("flags connections that carry a contract", () => {
+        const d = diff("p", [
+            op({ op: "set_relationship", index: 0, relationship: rel("a", "b", { contract: { format: "text", text: "x" } }) }),
+            op({ op: "set_relationship", index: 1, relationship: rel("b", "a", { contract: {} }) }),
+        ]);
+        const { ghostEdges } = buildGhostPreview({ ...base, diffs: [d] });
+        expect(ghostEdges.map((e) => e.hasContract)).toEqual([true, undefined]);
+    });
+
     it("marks an updated connection as changed and a deleted one as removed", () => {
         const d = diff("p", [
             op({ op: "set_relationship", index: 0, relationship: rel("a", "b", { label: "new label" }), current_relationship: rel("a", "b", { id: "r1" }) }),
@@ -179,5 +188,14 @@ describe("set_constraints operations", () => {
             edgeIds: [],
         });
         expect(preview).toEqual({ ghostNodes: [], ghostEdges: [], nodeMarks: {}, edgeMarks: {} });
+    });
+});
+
+describe("layoutCovers", () => {
+    it("rejects a cached layout that lacks a ghost", () => {
+        const layout = { positions: { a: { x: 0, y: 0 } }, sizes: { a: { width: 1, height: 1 } } };
+        expect(layoutCovers(layout, [{ id: "a" }])).toBe(true);
+        expect(layoutCovers(layout, [{ id: "a" }, { id: "b" }])).toBe(false);
+        expect(layoutCovers(null, [{ id: "a" }])).toBe(false);
     });
 });

@@ -33,7 +33,16 @@ import { CollapsibleSection } from "./collapsible-section";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { nodeSettingsSummary } from "../node-settings";
 import { setInspectorDirty } from "../right-rail-state";
-import { contractSummary, dependsText, normalizeContract, normalizeDependsOn, saveErrorTarget } from "../node-contract";
+import {
+    collectNodes,
+    contractSummary,
+    dependsText,
+    normalizeContract,
+    normalizeDependsOn,
+    saveErrorTarget,
+    validateContract,
+    type DependsOption,
+} from "../node-contract";
 import { BuildBadges, ContractFields, DependsPicker } from "./node-contract-fields";
 
 const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
@@ -69,6 +78,7 @@ export default function NodeInspector({
     const [contractOpen, setContractOpen] = useState(false);
     const [dependsOpen, setDependsOpen] = useState(false);
     const [buildOrder, setBuildOrder] = useState<BuildOrder | null>(null);
+    const [allNodes, setAllNodes] = useState<DependsOption[] | null>(null);
     const [presentationTouched, setPresentationTouched] = useState(false);
     const [deletePlan, setDeletePlan] = useState<{ count: number } | null>(null);
     const [deleteBusy, setDeleteBusy] = useState(false);
@@ -104,15 +114,21 @@ export default function NodeInspector({
     }, [node, presentationTouched]);
     useEffect(() => () => setInspectorDirty(false), []);
 
-    // Advisory build order: also the node list for the dependency picker. Refetched on every
+    // Advisory build order, and the full node list (containers too) for the dependency picker. Refetched on every
     // model-changed event (refreshKey); the previous order stays until the new one arrives.
     useEffect(() => {
         const ac = new AbortController();
         getBuildOrder(undefined, ac.signal)
             .then(setBuildOrder)
             .catch(() => undefined);
+        collectNodes((parent) => getLevel(parent, ac.signal).then((l) => l.children))
+            .then((list) => {
+                if (!ac.signal.aborted) setAllNodes(list);
+            })
+            .catch(() => undefined);
         return () => ac.abort();
     }, [refreshKey]);
+    const nameOf = (id: string) => allNodes?.find((n) => n.id === id)?.name;
 
     const [assignment, setAssignmentState] = useState<Assignment | null>(null);
     const [otherName, setOtherName] = useState<string | null>(null);
@@ -223,6 +239,8 @@ export default function NodeInspector({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [node]);
 
+    const contractInvalid = !!node && validateContract(node.contract).length > 0;
+
     async function save() {
         if (!node) return;
         setSaving(true);
@@ -309,7 +327,7 @@ export default function NodeInspector({
                                 value={node.type}
                                 onChange={(event) => setNode({ ...node, type: event.target.value })}
                             />
-                            <BuildBadges order={buildOrder} id={node.id} />
+                            <BuildBadges order={buildOrder} id={node.id} nameOf={nameOf} />
                         </div>
                         <div className="flex flex-col gap-2">
                             <label htmlFor={`${uid}-spec`} className={sectionLabelClass}>
@@ -365,17 +383,14 @@ export default function NodeInspector({
                             onToggle={() => setDependsOpen((open) => !open)}
                             summary={
                                 <span className="text-xs text-muted-foreground">
-                                    {dependsText(
-                                        node.depends_on,
-                                        (id) => buildOrder?.order.find((o) => o.id === id)?.name ?? id,
-                                    )}
+                                    {dependsText(node.depends_on, (id) => nameOf(id) ?? buildOrder?.order.find((o) => o.id === id)?.name ?? id)}
                                 </span>
                             }
                         >
                             <DependsPicker
                                 selfId={node.id}
                                 value={node.depends_on}
-                                order={buildOrder}
+                                nodes={allNodes}
                                 onChange={(next) => setNode({ ...node, depends_on: next })}
                                 serverError={errorTarget === "depends" ? error : null}
                             />
@@ -585,7 +600,7 @@ export default function NodeInspector({
                         <button
                             type="button"
                             className="shrink-0 rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
-                            disabled={saving}
+                            disabled={saving || contractInvalid}
                             onClick={() => {
                                 void save();
                             }}

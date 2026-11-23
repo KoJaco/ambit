@@ -8,6 +8,7 @@ import {
     addConstraint,
     constraintsDirty,
     moveConstraint,
+    moveFocusControl,
     normalizeConstraints,
     removeConstraint,
     setConstraintText,
@@ -39,6 +40,9 @@ export function ProjectRulesSheet({
     const [busy, setBusy] = useState(false);
     const [status, setStatus] = useState("");
     const [confirmDiscard, setConfirmDiscard] = useState(false);
+    // Rule ids whose field has been left, and whether Save was tried: an empty row is only flagged then.
+    const [touched, setTouched] = useState<Set<string>>(new Set());
+    const [attempted, setAttempted] = useState(false);
     // Row to focus after a move or add, so keyboard users keep their place.
     const focusTarget = useRef<{ index: number; control: "text" | "up" | "down" | "add" } | null>(null);
     const rowRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -75,6 +79,14 @@ export function ProjectRulesSheet({
         setConfirmDiscard(false);
     }
 
+    function move(index: number, delta: -1 | 1) {
+        const to = index + delta;
+        const control = moveFocusControl(to, draft.length, delta < 0 ? "up" : "down");
+        focusTarget.current = { index: to, control };
+        edit(moveConstraint(draft, index, delta));
+        setStatus(`Rule moved to position ${to + 1} of ${draft.length}`);
+    }
+
     function requestClose() {
         if (dirty && !confirmDiscard) {
             setConfirmDiscard(true);
@@ -84,7 +96,12 @@ export function ProjectRulesSheet({
     }
 
     async function save() {
-        if (!check.ok) return;
+        if (!check.ok) {
+            setAttempted(true);
+            const first = check.rows.findIndex((m) => m !== "");
+            if (first >= 0) rowRefs.current[`text-${first}`]?.focus();
+            return;
+        }
         setBusy(true);
         setSaveError(null);
         try {
@@ -124,7 +141,9 @@ export function ProjectRulesSheet({
                         {draft.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">No rules yet.</p> : null}
                         <ol className="mt-3 flex flex-col gap-3" aria-label="Rules">
                             {draft.map((rule, index) => {
-                                const message = check.rows[index];
+                                const raw = check.rows[index];
+                                // A freshly added empty row is not an error until it is left or Save is tried.
+                                const message = raw && rule.text.trim() === "" && !attempted && !touched.has(rule.id) ? "" : raw;
                                 const textId = `${titleId}-text-${rule.id}`;
                                 return (
                                     <li key={rule.id} className="flex flex-col gap-1 rounded-[14px] border border-border p-2.5">
@@ -143,6 +162,7 @@ export function ProjectRulesSheet({
                                                 className={clsx(fieldClass, "min-w-0 flex-1 resize-y text-sm")}
                                                 value={rule.text}
                                                 onChange={(event) => edit(setConstraintText(draft, index, event.target.value))}
+                                                onBlur={() => setTouched((prev) => (prev.has(rule.id) ? prev : new Set(prev).add(rule.id)))}
                                             />
                                         </div>
                                         <div className="flex flex-wrap items-center gap-1.5 pl-6">
@@ -162,10 +182,7 @@ export function ProjectRulesSheet({
                                                 aria-label={`Move rule ${index + 1} up`}
                                                 disabled={index === 0}
                                                 className={iconButtonClass}
-                                                onClick={() => {
-                                                    focusTarget.current = { index: index - 1, control: "up" };
-                                                    edit(moveConstraint(draft, index, -1));
-                                                }}
+                                                onClick={() => move(index, -1)}
                                             >
                                                 <ArrowUpIcon className="size-4" aria-hidden />
                                             </button>
@@ -177,10 +194,7 @@ export function ProjectRulesSheet({
                                                 aria-label={`Move rule ${index + 1} down`}
                                                 disabled={index === draft.length - 1}
                                                 className={iconButtonClass}
-                                                onClick={() => {
-                                                    focusTarget.current = { index: index + 1, control: "down" };
-                                                    edit(moveConstraint(draft, index, 1));
-                                                }}
+                                                onClick={() => move(index, 1)}
                                             >
                                                 <ArrowDownIcon className="size-4" aria-hidden />
                                             </button>
@@ -243,7 +257,7 @@ export function ProjectRulesSheet({
                         <div className="mt-4 flex items-center gap-3 border-t border-border pt-3">
                             <button
                                 type="button"
-                                disabled={busy || !dirty || !check.ok}
+                                disabled={busy || !dirty}
                                 className="inline-flex min-h-7 items-center rounded-full bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                                 onClick={() => void save()}
                             >
