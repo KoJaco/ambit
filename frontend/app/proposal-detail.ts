@@ -23,6 +23,9 @@ export type DetailBlock =
     | { kind: "list"; label: string; before: string[]; after: string[] };
 
 const missingNode = "node is missing";
+const noDependents = "node now has dependents";
+// Reasons the server refuses even with confirm_stale.
+const unconfirmable = (reason?: string) => reason === missingNode || reason === noDependents;
 
 // Heading, status and any error or stale notice: always shown above the visual.
 // `names` (id -> name) replaces raw ids once resolved.
@@ -129,18 +132,21 @@ export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, str
 }
 
 export function detailCanAccept(op: OpDiff): boolean {
-    const missing = op.stale_reason === missingNode;
+    const missing = unconfirmable(op.stale_reason);
     return op.status === "pending" && !op.error && !missing;
 }
 
 export function detailNeedsConfirm(op: OpDiff): boolean {
-    const missing = op.stale_reason === missingNode;
+    const missing = unconfirmable(op.stale_reason);
     return op.stale && !missing && op.status === "pending" && !op.error;
 }
 
 function staleMessage(op: OpDiff): string {
     if (op.stale_reason === missingNode) {
         return "Stale: the node is missing on disk. Reject this operation; it cannot be applied.";
+    }
+    if (op.stale_reason === noDependents) {
+        return "Stale: the node now has dependents. Reject this operation; it cannot be applied.";
     }
     if (op.stale_reason === "base_hash mismatch") {
         return "Stale: the node changed after this was staged. Accept applies the proposed version over your newer edit.";
@@ -266,8 +272,10 @@ function relationshipBlocks(proposed: RelSnapshot, current: RelSnapshot | null, 
     }
     const was = edgeContractLine(current?.contract);
     const now = edgeContractLine(proposed.contract);
-    if (was || now) {
-        blocks.push({ kind: "pair", label: "contract", before: was || (current ? "(none)" : "—"), after: now || "(unchanged)" });
+    const cleared = proposed.contract_cleared && !now;
+    if (was || now || cleared) {
+        const after = now || (cleared ? (was ? `Contract cleared (was: ${was})` : "Contract cleared") : "(unchanged)");
+        blocks.push({ kind: "pair", label: "contract", before: was || (current ? "(none)" : "—"), after });
         if (proposed.contract?.text) blocks.push({ kind: "prose", label: "Contract text", before: current?.contract?.text ?? "", after: proposed.contract.text });
     }
     return blocks;

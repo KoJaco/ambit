@@ -110,6 +110,16 @@ describe("node model history", () => {
         expect(plan?.undo).toEqual([{ kind: "set-rel", rel: { ...before, contract: {} } }]);
     });
 
+    it("re-clears an edge contract on redo and restores it on undo", () => {
+        const before = { id: "r1", from: "a", to: "b", label: "l", kind: "sync", contract: { format: "openapi" as const, ref: "x.yaml" } };
+        const { contract: _c, ...bare } = before;
+        const plan = planAccepted([
+            op({ op: "set_relationship", node_id: "a", relationship: { ...bare, contract_cleared: true }, current_relationship: before }),
+        ]);
+        expect(plan?.redo).toEqual([{ kind: "set-rel", rel: { ...bare, contract: {} } }]);
+        expect(plan?.undo).toEqual([{ kind: "set-rel", rel: before }]);
+    });
+
     it("does not try to undo a set_constraints operation", () => {
         expect(
             planAccepted([

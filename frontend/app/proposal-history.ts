@@ -84,11 +84,14 @@ function opSteps(op: OpDiff): { forward: Step[]; backward: Step[] } | null {
         case "set_relationship": {
             if (!op.relationship) return null;
             const before = op.current_relationship;
+            const { contract_cleared: cleared, ...proposed } = op.relationship;
+            // An edge contract left out of a set keeps the old one, so a clear is sent as {} on redo too.
+            const forwardRel: RelSnapshot = cleared && !proposed.contract ? { ...proposed, contract: {} } : proposed;
             return {
-                forward: [{ kind: "set-rel", rel: op.relationship }],
-                // An edge contract left out of a set keeps the old one, so undo clears it explicitly.
+                forward: [{ kind: "set-rel", rel: forwardRel }],
+                // Undo clears an added contract explicitly and restores a cleared one.
                 backward: before
-                    ? [{ kind: "set-rel", rel: op.relationship.contract && !before.contract ? { ...before, contract: {} } : before }]
+                    ? [{ kind: "set-rel", rel: forwardRel.contract && !before.contract ? { ...before, contract: {} } : before }]
                     : op.relationship.id
                       ? [{ kind: "delete-rel", id: op.relationship.id }]
                       : [],

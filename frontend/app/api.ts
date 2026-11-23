@@ -439,6 +439,8 @@ export type RelSnapshot = {
     label: string;
     kind: string;
     contract?: EdgeContract;
+    // Set when the staged edge contract is explicitly empty (a clear); contract is then absent.
+    contract_cleared?: boolean;
 };
 
 export type OpDiff = {

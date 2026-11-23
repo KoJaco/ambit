@@ -31,6 +31,9 @@ export type ReviewRow = {
 export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Remove connection" | "Rules" | "Other";
 
 const missingNode = "node is missing";
+const noDependents = "node now has dependents";
+// Reasons the server refuses even with confirm_stale.
+const unconfirmable = (reason?: string) => reason === missingNode || reason === noDependents;
 
 // proposalRows shapes a server diff into one compact row per operation.
 // Stale is copied from the payload. This function does not compare hashes.
@@ -38,7 +41,7 @@ const missingNode = "node is missing";
 export function proposalRows(diff: ProposalDiff, existingNames?: ReadonlyMap<string, string>): ReviewRow[] {
     const names = nameLookup(diff, existingNames);
     return diff.operations.map((op) => {
-        const missing = op.stale_reason === missingNode;
+        const missing = unconfirmable(op.stale_reason);
         const pending = op.status === "pending" && !op.error;
         return {
             key: `${op.index}:${op.op}:${op.node_id}`,
@@ -134,7 +137,11 @@ function fieldText(node: NodeSnapshot | null, field: string): string {
 function edgeSummary(op: OpDiff): string {
     const rel = op.relationship;
     if (!rel) return "";
+    const was = edgeContractLine(op.current_relationship?.contract);
     const contract = edgeContractLine(rel.contract);
+    if (rel.contract_cleared && !contract) {
+        return [rel.label, rel.kind, was ? `contract cleared (was: ${was})` : "contract cleared"].filter(Boolean).join(" · ");
+    }
     return [rel.label, rel.kind, contract ? `contract: ${contract}` : ""].filter(Boolean).join(" · ");
 }
 

@@ -356,6 +356,24 @@ describe("node model fields", () => {
         expect(rows[0].change).toBe("Depends on: (none) → Database; Contract changed: payloads, invariants 0 → 1");
     });
 
+    it("summarises a cleared edge contract and blocks accept for dependents", () => {
+        const rows = proposalRows({
+            proposal_id: "p", created_at: "", source: "mcp",
+            operations: [
+                {
+                    index: 0, op: "set_relationship", node_id: "a", status: "pending", stale: false, current: null, proposed: null,
+                    relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract_cleared: true },
+                    current_relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract: { format: "openapi", ref: "api.yaml" } },
+                },
+                { index: 1, op: "delete_node", node_id: "c", status: "pending", stale: true, stale_reason: "node now has dependents", current: null, proposed: null, relationship: null, current_relationship: null },
+            ],
+        });
+        expect(rows[0].change).toBe("calls · sync · contract cleared (was: OpenAPI · api.yaml)");
+        expect(rows[1].canAccept).toBe(false);
+        expect(rows[1].needsConfirm).toBe(false);
+        expect(rows[1].staleReason).toBe("node now has dependents");
+    });
+
     it("mentions contract and dependencies on create, and an edge contract on connect", () => {
         const create = proposalRows(
             diff([

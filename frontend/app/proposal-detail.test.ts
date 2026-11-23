@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { detailNames, detailNeedsConfirm, proposalDetailHead, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
+import { detailCanAccept, detailNames, detailNeedsConfirm, proposalDetailHead, proposalDetailBlocks, proposalDetailView, specDiffSummary, unresolvedNodeIds } from "./proposal-detail";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -290,6 +290,23 @@ describe("node model fields", () => {
         const view = proposalDetailView(diff, o);
         expect(view.kind === "connect" && view.edge.contract).toBe("JSON Schema · s.json");
         expect(proposalDetailBlocks(o)).toContainEqual({ kind: "pair", label: "contract", before: "—", after: "JSON Schema · s.json" });
+    });
+
+    it("shows a cleared edge contract instead of unchanged", () => {
+        const o = op({
+            op: "set_relationship",
+            node_id: "a",
+            relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract_cleared: true },
+            current_relationship: { from: "a", to: "b", label: "calls", kind: "sync", contract: { format: "openapi", ref: "api.yaml" } },
+        });
+        expect(proposalDetailBlocks(o)).toContainEqual({ kind: "pair", label: "contract", before: "OpenAPI · api.yaml", after: "Contract cleared (was: OpenAPI · api.yaml)" });
+    });
+
+    it("treats node-now-has-dependents as stale and not confirmable", () => {
+        const o = op({ op: "delete_node", node_id: "a", stale: true, stale_reason: "node now has dependents" });
+        expect(proposalDetailHead(o).map((b) => (b.kind === "line" ? b.text : ""))).toContain("Stale: the node now has dependents. Reject this operation; it cannot be applied.");
+        expect(detailCanAccept(o)).toBe(false);
+        expect(detailNeedsConfirm(o)).toBe(false);
     });
 
     it("renders set_constraints as Project rules lines", () => {
