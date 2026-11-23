@@ -1,0 +1,1 @@
+This project uses the freeform method: ambit keeps the architecture model and does not impose a workflow. Read the model with get_graph, get_context and get_node, change it through the authoring tools, and use check_scope and check_drift to keep code and model in agreement.

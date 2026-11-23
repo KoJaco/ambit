@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "id": "freeform",
+  "name": "Freeform",
+  "description": "No workflow imposed. The default for every project: nothing is staged, gated or linted.",
+  "guidance": {"file": "freeform.guidance.md"},
+  "brief_preamble": "",
+  "lint": {},
+  "check": {"include_drift": false}
+}

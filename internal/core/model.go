@@ -50,6 +50,12 @@ var (
 	ErrEmptyRelationship    = errors.New("relationship has no interior")
 	ErrContainerConflict    = errors.New("parent_id and relationship_id are mutually exclusive")
 	ErrInvalidPresentation  = errors.New("invalid presentation field")
+	ErrStageGate            = errors.New("stage gate")
+	ErrUnknownMethod        = errors.New("unknown method")
+	ErrBadMethod            = errors.New("invalid method")
+	ErrUnknownStage         = errors.New("unknown stage")
+	ErrStageUnsupported     = errors.New("method has no stages")
+	ErrBadLintRule          = errors.New("invalid lint rule")
 
 	errCycle           = ErrCycle
 	errNotFound        = ErrNotFound

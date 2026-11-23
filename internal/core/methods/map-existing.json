@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "id": "map-existing",
+  "name": "Map existing code",
+  "description": "Model a repository that already exists. The model follows the code and application code is never changed.",
+  "guidance": {"file": "map-existing.guidance.md"},
+  "brief_preamble": "",
+  "lint": {
+    "leaf-implementation": "enforced",
+    "glob-overlap": "enforced",
+    "dependency-cycle": "enforced",
+    "max-depth": "advisory",
+    "orphan-node": "advisory",
+    "edge-label": "advisory",
+    "spec-present": "advisory"
+  },
+  "check": {"include_drift": true}
+}

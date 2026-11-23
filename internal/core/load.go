@@ -34,6 +34,13 @@ type Index struct {
 	LevelBudget int
 	// Constraints are the valid project rules from config.json, in file order.
 	Constraints []Constraint
+	// MethodID is the config.json "method" id and StageID the "stage" id, as written (empty
+	// when absent). Use ActiveMethod and EffectiveStage for the resolved values.
+	MethodID string
+	StageID  string
+
+	userMethods  map[string]*Method
+	activeMethod *Method
 
 	indexUnknown      map[string]jsonRaw
 	configUnknown     map[string]jsonRaw
@@ -176,6 +183,9 @@ func (idx *Index) readConfig() error {
 	idx.GroupMax = idx.configPositiveInt(obj, "group_max", DefaultGroupMax)
 	idx.LevelBudget = idx.configPositiveInt(obj, "level_budget", DefaultLevelBudget)
 	idx.Constraints = idx.parseConstraints(obj)
+	idx.MethodID = strings.TrimSpace(idx.configString(obj, "method"))
+	idx.StageID = strings.TrimSpace(idx.configString(obj, "stage"))
+	idx.loadMethods()
 	return nil
 }
 
@@ -474,6 +484,10 @@ func (idx *Index) reload() error {
 	idx.GroupMax = next.GroupMax
 	idx.LevelBudget = next.LevelBudget
 	idx.Constraints = next.Constraints
+	idx.MethodID = next.MethodID
+	idx.StageID = next.StageID
+	idx.userMethods = next.userMethods
+	idx.activeMethod = next.activeMethod
 	idx.localUnknown = next.localUnknown
 	idx.assignmentUnknown = next.assignmentUnknown
 	return nil

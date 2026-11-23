@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "id": "design-first",
+  "name": "Design first",
+  "description": "Model the system before building it. While the stage is design, agents cannot start or finish build work.",
+  "guidance": {"file": "design-first.guidance.md"},
+  "brief_preamble": "",
+  "stages": [
+    {"id": "design", "name": "Design", "preamble": "Project stage: design. The model is still being shaped, so do not start build work on any node. Spend effort on structure, specs, implementation globs and contracts."},
+    {"id": "build", "name": "Build", "preamble": "Project stage: build. The design is agreed. Implement your node against its spec and contract, and propose model changes rather than editing around them."}
+  ],
+  "initial_stage": "design",
+  "gates": {"status": {"design": ["assigned", "in_progress", "done"]}},
+  "lint": {
+    "leaf-implementation": "enforced",
+    "spec-present": "enforced",
+    "glob-overlap": "enforced",
+    "dependency-cycle": "enforced",
+    "leaf-contract": "advisory",
+    "icon-set": "advisory",
+    "edge-label": "advisory",
+    "edge-kind": "advisory",
+    "max-depth": "advisory",
+    "orphan-node": "advisory"
+  },
+  "check": {"include_drift": false}
+}
