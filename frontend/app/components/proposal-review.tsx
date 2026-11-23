@@ -14,7 +14,8 @@ import {
     type ProposalDiff,
     type ProposalSummary,
 } from "../api";
-import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks } from "../proposal-detail";
+import { detailCanAccept, detailNeedsConfirm, proposalDetailBlocks, proposalDetailHead, proposalDetailView } from "../proposal-detail";
+import { ProposalVisual } from "./proposal-visuals";
 import { history } from "../history";
 import { acceptedEntry } from "../proposal-history";
 import {
@@ -141,14 +142,11 @@ export function ProposalReview({
         return (
             <li
                 key={row.key}
-                className={clsx(
-                    "group relative rounded-xl border bg-card transition-colors hover:bg-accent/50 focus-within:bg-accent/50",
-                    row.stale ? "border-amber-600/60 bg-amber-500/10" : "border-border",
-                )}
+                className="group relative border-b border-border/60 transition-colors last:border-b-0 hover:bg-accent/50 focus-within:bg-accent/50"
             >
                 <button
                     type="button"
-                    className={clsx("flex w-full cursor-pointer items-start gap-2.5 rounded-xl px-2.5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", showActions && row.status === "pending" && "pr-[4.5rem]")}
+                    className={clsx("flex w-full cursor-pointer items-start gap-2.5 py-2 text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", showActions && row.status === "pending" && "pr-[4.5rem]")}
                     onClick={() => {
                         onFocus?.();
                         setDetail({ proposalId, index: row.index });
@@ -172,7 +170,7 @@ export function ProposalReview({
                 </button>
                 {showActions && row.status === "pending" ? (
                     <ReviewOpActions
-                        className="absolute top-1.5 right-1.5"
+                        className="absolute top-1.5 right-0"
                         canAccept={row.canAccept}
                         needsConfirm={row.needsConfirm}
                         busy={busy}
@@ -210,9 +208,29 @@ export function ProposalReview({
                         </span>
                     </div>
                     <div className="flex min-h-0 flex-col gap-2 overflow-y-auto">
-                        {proposalDetailBlocks(detailOp).map((block, blockIndex) => (
-                            <DetailBlockView key={blockIndex} block={block} />
-                        ))}
+                        {(() => {
+                            const head = proposalDetailHead(detailOp);
+                            const rest = proposalDetailBlocks(detailOp).slice(head.length);
+                            const view = proposalDetailView(diffs[detail.proposalId], detailOp);
+                            return (
+                                <>
+                                    {head.map((block, i) => (
+                                        <DetailBlockView key={i} block={block} />
+                                    ))}
+                                    <ProposalVisual view={view} />
+                                    <details className="text-xs">
+                                        <summary className="cursor-pointer rounded text-foreground/80 focus-visible:outline-2 focus-visible:outline-ring">
+                                            Full details
+                                        </summary>
+                                        <div className="mt-2 flex flex-col gap-2">
+                                            {rest.map((block, i) => (
+                                                <DetailBlockView key={i} block={block} />
+                                            ))}
+                                        </div>
+                                    </details>
+                                </>
+                            );
+                        })()}
                     </div>
                     {detailOp.status === "pending" && individual[detail.proposalId] ? (
                         <ReviewOpActions
@@ -379,8 +397,8 @@ export function ProposalReview({
                                             <div className="flex flex-col gap-3">
                                                 {sections.map((section) => (
                                                     <section key={section.key} aria-label={section.title} className="flex flex-col gap-1.5">
-                                                        <h3 className="px-1 text-xs font-semibold text-muted-foreground">{section.title}</h3>
-                                                        <ul className="flex flex-col gap-1.5">
+                                                        <h3 className="text-xs font-semibold text-muted-foreground">{section.title}</h3>
+                                                        <ul className="flex flex-col">
                                                             {section.items.map((item) =>
                                                                 renderRow(proposal.proposal_id, diff, item, showIndividual),
                                                             )}

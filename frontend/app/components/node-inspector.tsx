@@ -243,8 +243,20 @@ export default function NodeInspector({
     // The header holds the actions outside the scrolling body, so the body's scrollbar never runs
     // behind the theme toggle or the close button.
     const header = (
-        <div className="-mb-2 flex shrink-0 items-center justify-between gap-3">
-            {!node || !preview ? <h2 className="font-semibold">Inspector</h2> : <span />}
+        <div className="-mb-4 flex shrink-0 items-center justify-between gap-3">
+            {!node || !preview ? (
+                <h2 className="font-semibold">Inspector</h2>
+            ) : (
+                <span
+                    className={nodeGlyphClass(resolveNodeColor(node.type, node.color), "lg")}
+                    aria-hidden
+                >
+                    {(() => {
+                        const Icon = resolveIconComponent(node.icon);
+                        return <Icon className="size-5" strokeWidth={2} />;
+                    })()}
+                </span>
+            )}
             <PanelHeaderActions onClose={onClose} closeLabel="Close inspector" />
         </div>
     );
@@ -257,15 +269,6 @@ export default function NodeInspector({
                 <>
                     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-1 [scrollbar-gutter:stable]">
                         <div className="flex flex-col gap-2">
-                            <span
-                                className={nodeGlyphClass(resolveNodeColor(node.type, node.color), "lg")}
-                                aria-hidden
-                            >
-                                {(() => {
-                                    const Icon = resolveIconComponent(node.icon);
-                                    return <Icon className="size-5" strokeWidth={2} />;
-                                })()}
-                            </span>
                             <input
                                 aria-label="Name"
                                 className={clsx(inputClass, "text-lg font-semibold")}

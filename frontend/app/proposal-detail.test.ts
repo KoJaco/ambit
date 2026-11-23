@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { OpDiff } from "./api";
-import { detailNeedsConfirm, proposalDetailBlocks } from "./proposal-detail";
+import type { OpDiff, ProposalDiff } from "./api";
+import { detailNeedsConfirm, proposalDetailBlocks, proposalDetailView, specDiffSummary } from "./proposal-detail";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -13,6 +13,8 @@ function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNulla
         scope: partial.scope ?? [],
         protected: partial.protected ?? false,
         markdown: partial.markdown ?? "",
+        icon: partial.icon,
+        color: partial.color,
     };
 }
 
@@ -90,5 +92,82 @@ describe("proposal detail blocks", () => {
             }),
         );
         expect(blocks.some((block) => block.kind === "line" && block.text.includes("billing → scratch"))).toBe(true);
+    });
+});
+
+function diffOf(...operations: OpDiff[]): ProposalDiff {
+    return { proposal_id: "p", created_at: "", source: "agent", operations: operations.map((o, index) => ({ ...o, index })) };
+}
+
+describe("proposal detail view", () => {
+    const zone = op({ op: "create_node", node_id: "zone", proposed: node({ id: "zone", name: "Demo Notifications", type: "module" }) });
+    const queue = op({
+        op: "create_node",
+        node_id: "q",
+        proposed: node({ id: "q", name: "Queue", type: "queue", parent_id: "zone", icon: "bell" }),
+    });
+
+    it("resolves create parent from sibling snapshots", () => {
+        const view = proposalDetailView(diffOf(zone, queue), queue);
+        if (view.kind !== "create") throw new Error("kind");
+        expect(view.node.parentName).toBe("Demo Notifications");
+        expect(view.node.color).toBe("green");
+        expect(view.node.icon).toBe("bell");
+        expect(view.description).toContain("inside Demo Notifications");
+    });
+
+    it("resolves connection endpoints, falling back to ids", () => {
+        const rel = op({
+            op: "set_relationship",
+            node_id: "q",
+            relationship: { from: "q", to: "api", label: "enqueue", kind: "async" },
+        });
+        const view = proposalDetailView(diffOf(zone, queue, rel), rel);
+        if (view.kind !== "connect") throw new Error("kind");
+        expect(view.from.name).toBe("Queue");
+        expect(view.to).toMatchObject({ name: "api", known: false });
+        expect(view.previous).toBeNull();
+        expect(view.description).toBe("New connection from Queue to api labelled enqueue, async.");
+    });
+
+    it("marks changed fields on an update and summarises spec", () => {
+        const upd = op({
+            op: "update_node",
+            node_id: "a",
+            fields: ["name", "parent_id", "spec"],
+            current: node({ id: "a", name: "Old", markdown: "x\ny" }),
+            proposed: node({ id: "a", name: "New", parent_id: "zone", markdown: "x\nz\nw" }),
+        });
+        const view = proposalDetailView(diffOf(zone, upd), upd);
+        if (view.kind !== "update") throw new Error("kind");
+        expect(view.after.changed).toEqual(["name", "parent"]);
+        expect(view.changes.find((c) => c.field === "parent_id")).toMatchObject({ before: "(root)", after: "Demo Notifications" });
+        expect(view.specSummary).toBe("Spec: 2 lines added, 1 removed");
+    });
+
+    it("shows removed connection with interior nodes", () => {
+        const del = op({
+            op: "delete_relationship",
+            node_id: "a",
+            relationship: { from: "a", to: "b", label: "calls", kind: "sync" },
+            removes_nodes: [{ id: "mid", name: "Mid" }],
+        });
+        const view = proposalDetailView(diffOf(del), del);
+        if (view.kind !== "remove-connection") throw new Error("kind");
+        expect(view.interior.map((n) => n.name)).toEqual(["Mid"]);
+        expect(view.description).toContain("Removed connection");
+        expect(view.description).toContain("Also removes Mid");
+    });
+
+    it("shows a removed node", () => {
+        const del = op({ op: "delete_node", node_id: "a", current: node({ id: "a", name: "Gone" }) });
+        const view = proposalDetailView(diffOf(del), del);
+        expect(view).toMatchObject({ kind: "remove-node", description: "Removed node Gone, at the top level." });
+    });
+
+    it("summarises spec diffs", () => {
+        expect(specDiffSummary("a", "a")).toBe("Spec unchanged");
+        expect(specDiffSummary("", "a")).toBe("Spec: 1 line added");
+        expect(specDiffSummary("a\nb", "a")).toBe("Spec: 1 line removed");
     });
 });
