@@ -253,3 +253,26 @@ func TestLevelExpandParam(t *testing.T) {
 		t.Fatalf("inner %#v", inner)
 	}
 }
+
+func TestGetIconsReturnsRegistry(t *testing.T) {
+	idx, _ := newModel(t)
+	rec := httptest.NewRecorder()
+	Handler(idx).ServeHTTP(rec, httptest.NewRequest("GET", "/icons", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status %d", rec.Code)
+	}
+	var body struct {
+		Icons []struct{ ID, Label string } `json:"icons"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Icons) != 40 || body.Icons[0].ID != "box" || body.Icons[0].Label == "" {
+		t.Fatalf("icons %+v", body.Icons)
+	}
+	for _, i := range body.Icons {
+		if !core.ValidIcon(i.ID) || i.Label == "" {
+			t.Fatalf("bad icon %+v", i)
+		}
+	}
+}

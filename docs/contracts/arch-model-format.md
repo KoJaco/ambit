@@ -166,10 +166,13 @@ Relationship `kind` selects the edge drawing on the canvas (not stored as a sepa
 `sync` is a button label, `async` is an animated path, `data` shows the label and endpoint
 names. Any other kind uses the default labeled edge. Edges stay node-to-node.
 
-**Icon ids (normative):** `box`, `hexagon`, `layers`, `component`, `package`, `server`, `cpu`,
+**Icon ids (normative, 40):** `box`, `hexagon`, `layers`, `component`, `package`, `server`, `cpu`,
 `cloud`, `globe`, `workflow`, `database`, `hard-drive`, `archive`, `table`, `file-text`,
 `scroll-text`, `book-open`, `sticky-note`, `users`, `shield`, `lock`, `git-branch`, `share-2`,
-`network`.
+`network`, `smartphone`, `monitor`, `key-round`, `mail`, `bell`, `message-square`,
+`credit-card`, `folder`, `code`, `terminal`, `zap`, `clock`, `settings`, `bot`, `search`,
+`cable`. Each has a one-line label served by `GET /icons` and the `list_icons` MCP tool; every
+id must exist in lucide-react and in the frontend icon map.
 
 **Colour tokens (normative):** `neutral`, `slate`, `blue`, `teal`, `green`, `amber`, `violet`,
 `rose`.

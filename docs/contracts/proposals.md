@@ -73,7 +73,7 @@ proposal's age is obvious at a glance.
 - `proposal_id` — matching the directory name.
 - `created_at` — ISO 8601 timestamp.
 - `source` — which MCP tool produced this (`seed_model`, `create_node`, `update_node`,
-  `delete_node`, `set_relationship`, `group_nodes`, `ungroup_node`, `reparent_node`; the last
+  `delete_node`, `set_relationship`, `delete_relationship`, `group_nodes`, `ungroup_node`, `reparent_node`; the last
   three come from the canvas via `POST /proposals/group|ungroup|reparent`).
 - `operations` — ordered list of operations.
 
@@ -87,9 +87,11 @@ proposal's age is obvious at a glance.
 
 Every operation carries:
 
-- `op` — one of `create_node`, `update_node`, `delete_node`, `set_relationship`.
-- `node_id` — the node this operation concerns. For `create_node`, the ID `ambit-core`
-  derived from the proposed name. For `set_relationship`, the `from` node — relationships
+- `op` — one of `create_node`, `update_node`, `delete_node`, `set_relationship`,
+  `delete_relationship`.
+- `node_id` — the node this operation concerns. For `create_node`, the caller-supplied `id`
+  when one was given (a free slug), otherwise the ID `ambit-core` derived from the proposed
+  name. For `set_relationship` and `delete_relationship`, the `from` node — relationships
   are reviewed as part of their source node, so the architect sees an edge in the context of
   the thing that owns it rather than as a free-floating item.
 - `base_hash` — the content hash of the node as it stood when this operation was computed.
@@ -103,7 +105,31 @@ can summarise an operation without diffing to find out what moved.
 `set_relationship` additionally carries the relationship itself: `from`, `to`, `label`,
 `kind`.
 
+`delete_relationship` carries `relationship_id`, plus `from`, `to`, `label`, `kind` of the
+edge as it stood when staged. Its `base_hash` is the `from` node's hash, so it goes stale
+exactly like `set_relationship`. Applying it runs `DeleteRelationship`, which also removes
+any nodes inside the edge (relationship interior). A proposal can only delete an edge that
+exists in the canonical model at staging time.
+
 `delete_node` carries nothing further.
+
+#### Caller-supplied node ids
+
+A `create_node` operation may carry an explicit id. It must match the slug pattern
+(`^[a-z0-9]+(-[a-z0-9]+)*$`) and is rejected (`ErrExists`) when a node already has it, when
+an earlier operation in the same proposal creates it, or when a pending `create_node` in any
+other staged proposal reserves it. Within a proposal, later operations may name a staged node
+in `parent_id` or as a relationship endpoint. Referencing a node staged in a *different*
+proposal is not supported: such a parent or endpoint must exist in the canonical model at
+staging time.
+
+#### Staged-create dependencies
+
+An operation that depends on a `create_node` in the same proposal (a create or update whose
+`parent_id` names it, or a `set_relationship` with it as an endpoint) cannot be accepted
+until that create is accepted. A single-operation accept returns a stale error; accept-all
+skips it and reports `container create_node was not accepted` or `edge endpoint create_node
+was not accepted` (for example when the create was rejected).
 
 ### Accept and reject semantics
 
@@ -112,6 +138,14 @@ with accept-all and reject-all shortcuts. Per-node rather than atomic because `s
 against a real transcript produces the whole initial model at once, and an all-or-nothing
 gate on thirty nodes trains the user to click accept without reading — which is worse than
 no gate, because it looks like review.
+
+**Accept-all is all-or-nothing for failures.** If any operation fails validation while
+accept-all applies a proposal, every operation that call already applied is rolled back
+(node files, `index.json`, and the manifest are restored), the response reports no applied
+operations and the failing one under `failed`, and the remaining operations are not
+attempted. Stale operations are different: they are still skipped and reported under
+`skipped` while the rest apply, as described under Staleness. Cached layouts invalidated by
+rolled-back operations are not restored.
 
 **Accepting an operation is atomic.** The node's `.json` and `.md` move from the proposal
 into `.arch/nodes/`, and `index.json` is updated, as one unit. A node never lands with its
@@ -148,6 +182,8 @@ must not let an accept-all shortcut sweep a stale operation through silently.
    together or not at all.
 4. **A stale operation cannot be applied without explicit confirmation**, including via
    accept-all.
+   Accept-all never leaves the model half-applied after a validation failure (see
+   Accept and reject semantics).
 5. **Operation `status` is persisted in the manifest**, so partial review survives a
    restart.
 6. **Applying an accepted operation goes through `ambit-core`'s normal validation**, the

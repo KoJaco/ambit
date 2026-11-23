@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -24,6 +25,9 @@ const (
 	OpDeleteNode = "delete_node"
 	// OpSetRelationship upserts one directed edge. node_id is the from node.
 	OpSetRelationship = "set_relationship"
+	// OpDeleteRelationship removes one edge by id (and, like DeleteRelationship, any
+	// interior nodes the edge owns). node_id is the edge's from node.
+	OpDeleteRelationship = "delete_relationship"
 
 	// SourceSeedModel is the proposal source used when many operations arrive together.
 	SourceSeedModel = "seed_model"
@@ -46,8 +50,9 @@ var applyHook func(step string) error
 
 var proposalIDPattern = regexp.MustCompile(`^p-[0-9]{8}-[0-9]{4}-[0-9a-f]{4}$`)
 
-// StageOp is one mutation inside a proposal. Create carries Create and no id.
-// Update and delete carry NodeID. A relationship carries From, To, Label, and Kind.
+// StageOp is one mutation inside a proposal. Create carries Create; its ID is optional
+// and derived from the name when empty. Update and delete carry NodeID. A
+// delete_relationship carries RelID only. A relationship carries From, To, Label, and Kind.
 type StageOp struct {
 	Op     string
 	Create CreateInput
@@ -290,6 +295,8 @@ func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[Node
 		return idx.stageDelete(in, nodes, material)
 	case OpSetRelationship:
 		return idx.stageRelationship(in, nodes, material, stagedRels)
+	case OpDeleteRelationship:
+		return idx.stageDeleteRelationship(in, material)
 	default:
 		return operation{}, nil, fmt.Errorf("%w: unknown operation %q", ErrBadOperation, in.Op)
 	}
@@ -309,11 +316,19 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 	if !validStatus(status) {
 		return operation{}, nil, fmt.Errorf("%w: %q (valid: %s)", ErrBadStatus, status, statusList())
 	}
-	base, err := slugify(in.Create.Name)
-	if err != nil {
-		return operation{}, nil, err
+	var id NodeID
+	if in.Create.ID != "" {
+		if err := idx.checkExplicitID(in.Create.ID, nodes); err != nil {
+			return operation{}, nil, err
+		}
+		id = in.Create.ID
+	} else {
+		base, err := slugify(in.Create.Name)
+		if err != nil {
+			return operation{}, nil, err
+		}
+		id = idx.allocateDuring(base, nodes)
 	}
-	id := idx.allocateDuring(base, nodes)
 	if in.Create.ParentID != "" && in.Create.RelationshipID != "" {
 		return operation{}, nil, ErrContainerConflict
 	}
@@ -478,6 +493,33 @@ func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material
 	return op, nil, nil
 }
 
+func (idx *Index) stageDeleteRelationship(in StageOp, material map[NodeID]materialBody) (operation, *materialBody, error) {
+	if in.RelID == "" {
+		return operation{}, nil, fmt.Errorf("%w: delete_relationship needs relationship_id", ErrBadOperation)
+	}
+	rel, _ := idx.relByID(in.RelID)
+	if rel == nil {
+		return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelID)
+	}
+	hash, err := idx.hashFor(rel.From, material)
+	if err != nil {
+		return operation{}, nil, err
+	}
+	label, kind := rel.Label, rel.Kind
+	op := operation{
+		Op:       OpDeleteRelationship,
+		NodeID:   string(rel.From),
+		BaseHash: &hash,
+		From:     string(rel.From),
+		To:       string(rel.To),
+		RelID:    string(rel.ID),
+		Label:    &label,
+		Kind:     &kind,
+		Status:   opStatusPending,
+	}
+	return op, nil, nil
+}
+
 func (idx *Index) hashFor(id NodeID, material map[NodeID]materialBody) (string, error) {
 	if body, ok := material[id]; ok {
 		return contentHash(body.json, body.md), nil
@@ -572,8 +614,8 @@ func (idx *Index) AcceptOperation(id string, index int, confirmStale bool) error
 	if err := idx.rejectIfStale(m.Operations, op, confirmStale); err != nil {
 		return err
 	}
-	if idx.createDependencyUnmet(id, m.Operations, op) {
-		return fmt.Errorf("%w: %s %s moves under a container whose create_node in this proposal is not accepted", ErrStale, op.Op, op.NodeID)
+	if reason := idx.createDependencyUnmet(id, m.Operations, op); reason != "" {
+		return fmt.Errorf("%w: %s %s: %s", ErrStale, op.Op, op.NodeID, reason)
 	}
 	if err := idx.applyOp(id, op); err != nil {
 		return err
@@ -601,7 +643,13 @@ func (idx *Index) RejectOperation(id string, index int) error {
 }
 
 // AcceptAll applies pending operations that are not stale, in order, and reports
-// the ones it skipped. A validation failure leaves that operation pending.
+// the ones it skipped. Stale operations (and operations that depend on a create that
+// was not accepted) are skipped and the rest still apply. Application is
+// all-or-nothing for failures: if any operation fails validation, every operation
+// this call already applied is rolled back (node files, index.json and the manifest
+// are restored), nothing is reported as applied, and the failing operation is
+// reported in Failed. Operations after the failing one are not attempted. The cached
+// layout files are restored too, so user-arranged positions survive a rollback.
 func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -610,6 +658,11 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 	if err != nil {
 		return result, err
 	}
+	snap, err := idx.snapshotModel()
+	if err != nil {
+		return result, err
+	}
+	original := append([]operation(nil), m.Operations...)
 	for i := range m.Operations {
 		op := m.Operations[i]
 		if op.Status != opStatusPending {
@@ -622,20 +675,26 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 			})
 			continue
 		}
-		if idx.createDependencyUnmet(id, m.Operations, op) {
+		if reason := idx.createDependencyUnmet(id, m.Operations, op); reason != "" {
 			result.Skipped = append(result.Skipped, SkippedOp{
-				Index: i, Op: op.Op, NodeID: op.NodeID, Reason: staleCreateNotAccepted,
+				Index: i, Op: op.Op, NodeID: op.NodeID, Reason: reason,
 			})
 			continue
 		}
-		if err := idx.applyOp(id, op); err != nil {
+		opErr := idx.applyOp(id, op)
+		if opErr == nil {
+			opErr = idx.finishOp(&m, i, opStatusAccepted)
+		}
+		if opErr != nil {
+			// A failed op may have written partway, so always restore the snapshot.
+			if rerr := idx.rollbackAccept(snap, &m, original); rerr != nil {
+				return result, fmt.Errorf("rollback after failed %s %s: %w", op.Op, op.NodeID, rerr)
+			}
+			result.Applied = []int{}
 			result.Failed = append(result.Failed, FailedOp{
-				Index: i, Op: op.Op, NodeID: op.NodeID, Error: err.Error(),
+				Index: i, Op: op.Op, NodeID: op.NodeID, Error: opErr.Error(),
 			})
-			continue
-		}
-		if err := idx.finishOp(&m, i, opStatusAccepted); err != nil {
-			return result, err
+			return result, nil
 		}
 		result.Applied = append(result.Applied, i)
 		if _, err := os.Stat(filepath.Join(idx.mustProposalPath(id), "manifest.json")); err != nil {
@@ -643,6 +702,99 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 		}
 	}
 	return result, nil
+}
+
+// modelSnapshot is the model on disk: index.json, every node file and the cached layouts.
+type modelSnapshot struct {
+	index   []byte
+	nodes   map[string][]byte
+	layouts map[string][]byte
+}
+
+func readDirFiles(dir string) (map[string][]byte, error) {
+	out := map[string][]byte{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return out, nil
+		}
+		return nil, err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		out[e.Name()] = data
+	}
+	return out, nil
+}
+
+// restoreDirFiles makes the files directly in dir equal want.
+func restoreDirFiles(dir string, want map[string][]byte) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for _, e := range entries {
+		if _, ok := want[e.Name()]; !ok && !e.IsDir() {
+			if err := os.Remove(filepath.Join(dir, e.Name())); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+		}
+	}
+	for name, data := range want {
+		path := filepath.Join(dir, name)
+		if cur, err := os.ReadFile(path); err == nil && bytes.Equal(cur, data) {
+			continue
+		}
+		if err := writeAtomic(path, data); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (idx *Index) layoutDir() string {
+	return filepath.Join(idx.arch(), ".cache", "layout")
+}
+
+func (idx *Index) snapshotModel() (modelSnapshot, error) {
+	index, err := os.ReadFile(filepath.Join(idx.arch(), "index.json"))
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	nodes, err := readDirFiles(filepath.Join(idx.arch(), "nodes"))
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	layouts, err := readDirFiles(idx.layoutDir())
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	return modelSnapshot{index: index, nodes: nodes, layouts: layouts}, nil
+}
+
+// rollbackAccept restores the model and the proposal manifest to their state before
+// an AcceptAll call started.
+func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []operation) error {
+	if err := restoreDirFiles(filepath.Join(idx.arch(), "nodes"), snap.nodes); err != nil {
+		return err
+	}
+	if err := restoreDirFiles(idx.layoutDir(), snap.layouts); err != nil {
+		return err
+	}
+	if err := writeAtomic(filepath.Join(idx.arch(), "index.json"), snap.index); err != nil {
+		return err
+	}
+	m.Operations = original
+	if err := writeManifest(idx.mustProposalPath(m.ProposalID), *m); err != nil {
+		return err
+	}
+	return idx.reload()
 }
 
 // RejectAll marks every still-pending operation rejected, including stale ones.
@@ -702,30 +854,42 @@ const (
 	staleMissing  = "node is missing"
 	staleMismatch = "base_hash mismatch"
 
-	staleCreateNotAccepted = "container create_node was not accepted"
+	staleCreateNotAccepted   = "container create_node was not accepted"
+	staleEndpointNotAccepted = "edge endpoint create_node was not accepted"
 )
 
-// createDependencyUnmet reports whether an update op proposes a parent that is the node id of
-// a create op in the same proposal which has not been accepted. Applying it would reparent the
-// node under a same-id container from elsewhere (or one that never got created).
-func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op operation) bool {
-	if op.Op != OpUpdateNode {
+// createDependencyUnmet returns a reason when op refers to a node that a create op in the
+// same proposal proposes and that create has not been accepted: a create or update whose
+// parent_id names it, or an edge with it as an endpoint. Applying such an op early would
+// fail (or reparent under a same-id node from elsewhere). Empty means no unmet dependency.
+func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op operation) string {
+	notAccepted := func(id string) bool {
+		for _, other := range ops {
+			if other.Op == OpCreateNode && other.NodeID == id && other.Status != opStatusAccepted {
+				return true
+			}
+		}
 		return false
 	}
-	jsonBytes, _, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", op.NodeID))
-	if err != nil {
-		return false
-	}
-	node, err := decodeNode(jsonBytes)
-	if err != nil || node.ParentID == "" {
-		return false
-	}
-	for _, other := range ops {
-		if other.Op == OpCreateNode && other.NodeID == string(node.ParentID) && other.Status != opStatusAccepted {
-			return true
+	switch op.Op {
+	case OpSetRelationship:
+		if notAccepted(op.From) || notAccepted(op.To) {
+			return staleEndpointNotAccepted
+		}
+	case OpCreateNode, OpUpdateNode:
+		jsonBytes, _, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", op.NodeID))
+		if err != nil {
+			return ""
+		}
+		node, err := decodeNode(jsonBytes)
+		if err != nil || node.ParentID == "" {
+			return ""
+		}
+		if notAccepted(string(node.ParentID)) {
+			return staleCreateNotAccepted
 		}
 	}
-	return false
+	return ""
 }
 
 // pendingCreateIDs lists node ids reserved by pending create ops in staged proposals.
@@ -753,12 +917,21 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 	if op.Op == OpCreateNode || op.Status != opStatusPending {
 		return false, ""
 	}
+	if op.Op == OpDeleteRelationship {
+		rel, _ := idx.relByID(RelID(op.RelID))
+		if rel == nil {
+			return true, staleMissing
+		}
+		if rel.Label != deref(op.Label) || rel.Kind != deref(op.Kind) {
+			return true, staleMismatch
+		}
+	}
 	hash, ok, err := idx.hashOnDisk(NodeID(op.NodeID))
 	if err != nil || !ok {
 		if op.Op == OpSetRelationship && pendingCreate(ops, op.NodeID) {
 			return false, ""
 		}
-		if op.Op == OpUpdateNode || op.Op == OpDeleteNode || op.Op == OpSetRelationship {
+		if op.Op == OpUpdateNode || op.Op == OpDeleteNode || op.Op == OpSetRelationship || op.Op == OpDeleteRelationship {
 			return true, staleMissing
 		}
 		return false, ""
@@ -787,6 +960,8 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 			return err
 		}
 		return idx.reload()
+	case OpDeleteRelationship:
+		return idx.deleteRelationshipLocked(RelID(op.RelID))
 	default:
 		return fmt.Errorf("%w: unknown operation %q", ErrBadOperation, op.Op)
 	}
@@ -1128,6 +1303,12 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		} else {
 			row.Proposed = proposed
 		}
+	case OpDeleteRelationship:
+		label, kind := deref(op.Label), deref(op.Kind)
+		row.Relationship = &RelSnapshot{ID: op.RelID, From: op.From, To: op.To, Label: label, Kind: kind}
+		if rel, _ := idx.relByID(RelID(op.RelID)); rel != nil {
+			row.CurrentRelationship = &RelSnapshot{ID: string(rel.ID), From: string(rel.From), To: string(rel.To), Label: rel.Label, Kind: rel.Kind}
+		}
 	case OpSetRelationship:
 		label, kind := deref(op.Label), deref(op.Kind)
 		row.Relationship = &RelSnapshot{ID: op.RelID, From: op.From, To: op.To, Label: label, Kind: kind}
@@ -1230,6 +1411,24 @@ func (idx *Index) allocateDuring(base string, extra map[NodeID]*Node) NodeID {
 	}
 }
 
+const maxExplicitIDLen = 64
+
+// checkExplicitID validates a caller-supplied node id: it must be a slug and must not
+// collide with an existing node, a node earlier in the same proposal (extra), or an id
+// reserved by a pending create in any staged proposal.
+func (idx *Index) checkExplicitID(id NodeID, extra map[NodeID]*Node) error {
+	if len(id) > maxExplicitIDLen {
+		return fmt.Errorf("%w: id must be at most %d characters", ErrBadOperation, maxExplicitIDLen)
+	}
+	if !slugPattern.MatchString(string(id)) {
+		return fmt.Errorf("%w: id %q must be lowercase letters and digits separated by single hyphens", ErrBadOperation, id)
+	}
+	if idx.idTaken(string(id), extra) || idx.pendingCreateIDs()[string(id)] {
+		return fmt.Errorf("%w: %q", ErrExists, id)
+	}
+	return nil
+}
+
 func (idx *Index) idTaken(id string, extra map[NodeID]*Node) bool {
 	if _, ok := extra[NodeID(id)]; ok {
 		return true
@@ -1254,7 +1453,7 @@ func newProposalID(now time.Time) (string, error) {
 
 func validProposalSource(source string) bool {
 	switch source {
-	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship:
+	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship:
 		return true
 	default:
 		return false

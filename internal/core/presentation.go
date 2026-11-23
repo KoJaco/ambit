@@ -5,13 +5,67 @@ import (
 	"strings"
 )
 
-var allowedIcons = map[string]bool{
-	"box": true, "hexagon": true, "layers": true, "component": true, "package": true,
-	"server": true, "cpu": true, "cloud": true, "globe": true, "workflow": true,
-	"database": true, "hard-drive": true, "archive": true, "table": true,
-	"file-text": true, "scroll-text": true, "book-open": true, "sticky-note": true,
-	"users": true, "shield": true, "lock": true,
-	"git-branch": true, "share-2": true, "network": true,
+// IconInfo is one entry of the closed icon registry. Every ID must exist in lucide-react
+// and in frontend/app/node-presentation.ts ICON_COMPONENTS.
+type IconInfo struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+var iconRegistry = []IconInfo{
+	{"box", "Generic component or unit"},
+	{"hexagon", "Core module or domain"},
+	{"layers", "Layered stack or tier"},
+	{"component", "UI or reusable component"},
+	{"package", "Library, package or bundle"},
+	{"server", "Server or backend service"},
+	{"cpu", "Compute, worker or processor"},
+	{"cloud", "Cloud platform or hosted zone"},
+	{"globe", "Public web, internet or CDN"},
+	{"workflow", "Pipeline or workflow"},
+	{"database", "Database"},
+	{"hard-drive", "Storage volume or disk"},
+	{"archive", "Archive, backup or cold storage"},
+	{"table", "Table or tabular data"},
+	{"file-text", "Document or file"},
+	{"scroll-text", "Log, ledger or spec"},
+	{"book-open", "Docs or reference"},
+	{"sticky-note", "Note or annotation"},
+	{"users", "Users, team or actors"},
+	{"shield", "Security or protection"},
+	{"lock", "Secrets, access control or encryption"},
+	{"git-branch", "Branching or version control"},
+	{"share-2", "Fan-out, sharing or pub/sub"},
+	{"network", "Network or topology"},
+	{"smartphone", "Mobile app or device"},
+	{"monitor", "Web app, browser or desktop client"},
+	{"key-round", "Auth, keys or identity"},
+	{"mail", "Email or messaging"},
+	{"bell", "Notifications or alerts"},
+	{"message-square", "Chat or message channel"},
+	{"credit-card", "Payments or billing"},
+	{"folder", "Folder or grouping"},
+	{"code", "Source code or SDK"},
+	{"terminal", "CLI or shell"},
+	{"zap", "Serverless function or event trigger"},
+	{"clock", "Scheduler, cron or timer"},
+	{"settings", "Configuration or admin"},
+	{"bot", "Agent, bot or AI model"},
+	{"search", "Search or indexing"},
+	{"cable", "Integration, connector or adapter"},
+}
+
+var allowedIcons = func() map[string]bool {
+	m := make(map[string]bool, len(iconRegistry))
+	for _, i := range iconRegistry {
+		m[i.ID] = true
+	}
+	return m
+}()
+
+// Icons returns the icon registry in display order.
+func Icons() []IconInfo {
+	return append([]IconInfo(nil), iconRegistry...)
 }
 
 var allowedColors = map[string]bool{

@@ -10,6 +10,7 @@ export default defineConfig({
       "/levels": "http://127.0.0.1:8080",
       "/nodes": "http://127.0.0.1:8080",
       "/integrity": "http://127.0.0.1:8080",
+      "/icons": "http://127.0.0.1:8080",
       "/relationships": "http://127.0.0.1:8080",
       "/assignment": "http://127.0.0.1:8080",
       "/layout": "http://127.0.0.1:8080",

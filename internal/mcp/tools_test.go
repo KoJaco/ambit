@@ -2,7 +2,9 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,14 +62,88 @@ func TestCreateNodeStagesProposal(t *testing.T) {
 	}
 }
 
-func TestCreateNodeRejectsID(t *testing.T) {
+func TestCreateNodeAcceptsIDAndRejectsCollisions(t *testing.T) {
 	idx, dir := openFixture(t)
 	env := &toolEnv{idx: idx, dir: dir}
-	_, _, err := env.handleCreateNode(context.Background(), nil, createNodeIn{
-		ID: "fixed", Name: "X", Type: "service",
+	ctx := context.Background()
+	if _, _, err := env.handleCreateNode(ctx, nil, createNodeIn{ID: "fixed", Name: "X", Type: "service"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := env.handleCreateNode(ctx, nil, createNodeIn{ID: "fixed", Name: "Y", Type: "service"}); !errors.Is(err, core.ErrExists) {
+		t.Fatalf("collision with pending create: %v", err)
+	}
+	if _, _, err := env.handleCreateNode(ctx, nil, createNodeIn{ID: "Bad_ID", Name: "Z", Type: "service"}); !errors.Is(err, core.ErrBadOperation) {
+		t.Fatalf("bad slug: %v", err)
+	}
+	list, _ := idx.ListProposals()
+	res, err := idx.AcceptAll(list[0].ID)
+	if err != nil || len(res.Applied) != 1 || !idx.HasNode("fixed") {
+		t.Fatalf("accept %+v %v", res, err)
+	}
+	if _, _, err := env.handleCreateNode(ctx, nil, createNodeIn{ID: "fixed", Name: "Y", Type: "service"}); !errors.Is(err, core.ErrExists) {
+		t.Fatalf("collision with node: %v", err)
+	}
+}
+
+func TestSeedModelUsesSettableIDsAndRestructures(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+	a, _ := idx.Create(core.CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(core.CreateInput{Name: "B", Type: "service"})
+	rel, err := idx.SetRelationship(core.SetRelationshipInput{From: a, To: b, Label: "calls"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rename := "A2"
+	_, out, err := env.handleSeedModel(ctx, nil, seedModelIn{
+		Transcript: "restructure",
+		Nodes: []seedNodeIn{
+			{ID: "zone", Name: "Zone", Type: "boundary"},
+			{ID: "worker", Name: "Worker", Type: "service", ParentID: "zone"},
+		},
+		Relationships:       []seedRelIn{{From: "worker", To: string(a), Label: "uses"}},
+		Updates:             []updateNodeIn{{NodeID: string(a), Name: &rename}},
+		DeleteRelationships: []string{string(rel.ID)},
+		DeleteNodes:         []string{string(b)},
 	})
-	if err == nil {
-		t.Fatal("expected error")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := idx.AcceptAll(out.ProposalID)
+	if err != nil || len(res.Failed) != 0 || len(res.Applied) != 6 {
+		t.Fatalf("accept %+v %v", res, err)
+	}
+	if n, err := idx.Node("worker"); err != nil || n.ParentID != "zone" {
+		t.Fatalf("worker %+v %v", n, err)
+	}
+	if n, _ := idx.Node(a); n.Name != "A2" || idx.HasNode(b) {
+		t.Fatalf("restructure not applied")
+	}
+}
+
+func TestDeleteRelationshipStagesProposal(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	a, _ := idx.Create(core.CreateInput{Name: "A", Type: "service"})
+	b, _ := idx.Create(core.CreateInput{Name: "B", Type: "service"})
+	rel, err := idx.SetRelationship(core.SetRelationshipInput{From: a, To: b, Label: "calls"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, out, err := env.handleDeleteRelationship(context.Background(), nil, deleteRelationshipIn{RelationshipID: string(rel.ID)})
+	if err != nil || out.Applied {
+		t.Fatalf("out %+v err %v", out, err)
+	}
+	if len(idx.Relationships) != 1 {
+		t.Fatal("staging changed the model")
+	}
+	list, _ := idx.ListProposals()
+	if len(list) != 1 || list[0].Source != core.OpDeleteRelationship {
+		t.Fatalf("list %+v", list)
+	}
+	if _, _, err := env.handleDeleteRelationship(context.Background(), nil, deleteRelationshipIn{RelationshipID: "nope"}); !errors.Is(err, core.ErrRelationshipNotFound) {
+		t.Fatalf("err %v", err)
 	}
 }
 
@@ -181,7 +257,7 @@ func TestCheckScopeMatchesCore(t *testing.T) {
 	}
 }
 
-func TestMCPServerListsEightTools(t *testing.T) {
+func TestMCPServerListsTools(t *testing.T) {
 	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "ambit", Version: "v1"}, nil)
 	idx, dir := openFixture(t)
 	registerTools(srv, &toolEnv{idx: idx, dir: dir})
@@ -202,13 +278,17 @@ func TestMCPServerListsEightTools(t *testing.T) {
 	}
 	want := map[string]bool{
 		"seed_model": true, "create_node": true, "update_node": true, "delete_node": true,
-		"set_relationship": true, "get_context": true, "check_scope": true, "update_node_status": true,
+		"set_relationship": true, "delete_relationship": true, "get_context": true, "check_scope": true, "update_node_status": true,
+		"get_graph": true, "list_proposals": true, "list_icons": true, "check_drift": true,
 	}
 	for _, tool := range res.Tools {
 		delete(want, tool.Name)
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing tools %v (got %d)", want, len(res.Tools))
+	}
+	if len(res.Tools) != 13 {
+		t.Fatalf("got %d tools, want 13", len(res.Tools))
 	}
 }
 
@@ -281,5 +361,68 @@ func TestAuthoringDescriptionsCarryShallowGuidance(t *testing.T) {
 		if !strings.Contains(d, core.ShallowModelGuidance) {
 			t.Errorf("%s description lacks guidance", name)
 		}
+	}
+}
+
+func TestReadToolsGraphProposalsIcons(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+	if _, err := idx.Create(core.CreateInput{Name: "API", Type: "service"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Create(core.CreateInput{Name: "Web", Type: "service"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.SetRelationship(core.SetRelationshipInput{From: "web", To: "api", Label: "calls", Kind: core.KindSync}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := env.handleCreateNode(ctx, nil, createNodeIn{Name: "Queue", Type: "queue"}); err != nil {
+		t.Fatal(err)
+	}
+	_, g, err := env.handleGetGraph(ctx, nil, getGraphIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g.Nodes) != 2 || len(g.Relationships) != 1 || len(g.Pending) != 1 || g.Pending[0].Operations != 1 {
+		t.Fatalf("graph %+v", g)
+	}
+	_, p, err := env.handleListProposals(ctx, nil, listProposalsIn{})
+	if err != nil || len(p.Proposals) != 1 {
+		t.Fatalf("proposals %+v err %v", p, err)
+	}
+	_, ic, err := env.handleListIcons(ctx, nil, listIconsIn{})
+	if err != nil || len(ic.Icons) != 40 || ic.Icons[0].Label == "" {
+		t.Fatalf("icons %d err %v", len(ic.Icons), err)
+	}
+}
+
+func TestCheckDriftTool(t *testing.T) {
+	idx, dir := openFixture(t)
+	for _, args := range [][]string{{"init"}, {"config", "user.name", "t"}, {"config", "user.email", "t@e.x"}} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Create(core.CreateInput{Name: "API", Type: "service", Implementation: []string{"nope/**"}}); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command("git", "add", "-A")
+	c.Dir = dir
+	if out, err := c.CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	env := &toolEnv{idx: idx, dir: dir}
+	_, r, err := env.handleCheckDrift(context.Background(), nil, checkDriftIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(r.Unowned, ",") != ".gitignore,main.go" || len(r.Unmatched) != 1 {
+		t.Fatalf("report %+v", r)
 	}
 }
