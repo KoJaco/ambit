@@ -64,9 +64,16 @@ export function Breadcrumbs({
             {crumbs.map((crumb) => (
                 <span key={crumb.id} className="flex items-center gap-1">
                     <span className="text-foreground/40">/</span>
-                    <Link to={crumb.href} className="rounded px-1 hover:bg-foreground/10">
-                        {crumb.name}
-                    </Link>
+                    {crumb.link ? (
+                        <Link to={crumb.href} className="rounded px-1 hover:bg-foreground/10">
+                            {crumb.name}
+                        </Link>
+                    ) : (
+                        <span className="px-1 text-foreground/70" title={`${crumb.name} (group)`}>
+                            {crumb.name}
+                            <span className="sr-only"> (group)</span>
+                        </span>
+                    )}
                 </span>
             ))}
             {relationshipId && relLabel ? (

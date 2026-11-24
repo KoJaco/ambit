@@ -12,6 +12,7 @@ export function GroupFrame({ data, selected }: NodeProps<ArchNode>) {
             className={clsx(
                 "relative h-[140px] w-[280px] rounded-xl border bg-foreground/[0.03] select-none",
                 selected ? "border-foreground border-2" : "border-foreground/30",
+                data.inspected && "inspected-ring",
             )}
         >
             <Handle type="target" position={Position.Left} />
@@ -34,6 +35,7 @@ export function ContainerNode({ id, data, selected }: NodeProps<ArchNode>) {
                 "relative h-full w-full select-none rounded-[20px]",
                 (data.depth ?? 1) >= 2 ? "bg-[var(--group-2)] ring-1 ring-inset ring-foreground/[0.06]" : "bg-[var(--group)]",
                 selected && "shadow-[0_0_0_4px_var(--selection-ring)]",
+                data.inspected && "inspected-ring",
             )}
         >
             {/* Right and bottom edges only: the top-left corner stays put, so members keep their

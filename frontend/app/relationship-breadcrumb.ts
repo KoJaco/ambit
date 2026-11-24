@@ -1,6 +1,7 @@
 import { getNode, type Relationship } from "./api";
 
-export type BreadcrumbCrumb = { id: string; name: string; href: string };
+/** `link` is false for grouping containers: shown for context but not navigable. */
+export type BreadcrumbCrumb = { id: string; name: string; href: string; link: boolean };
 
 /** Type given to containers created by grouping (core DefaultContainerType). */
 export const groupingContainerType = "container";
@@ -11,14 +12,16 @@ export function isGroupingContainer(node: { type: string }): boolean {
 }
 
 /**
- * Drops grouping-only containers from a root-to-leaf chain and keeps summary-node ancestors.
- * The last entry (the node being viewed, or the drill source) is always kept. The crumb before
- * the current one is then the level that actually contains it.
+ * Maps a root-to-leaf chain to crumbs. Grouping-only containers stay in the chain for context
+ * but are not links; the last entry (viewed node or drill source) is always a link.
  */
 export function visibleCrumbs(chain: { id: string; name: string; type: string }[]): BreadcrumbCrumb[] {
-    return chain
-        .filter((node, index) => index === chain.length - 1 || !isGroupingContainer(node))
-        .map((node) => ({ id: node.id, name: node.name, href: `/node/${node.id}` }));
+    return chain.map((node, index) => ({
+        id: node.id,
+        name: node.name,
+        href: `/node/${node.id}`,
+        link: index === chain.length - 1 || !isGroupingContainer(node),
+    }));
 }
 
 /** Ancestors from root down to startId (inclusive when includeStart). */

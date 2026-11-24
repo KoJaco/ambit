@@ -9,6 +9,7 @@ export function SchemaNode({ data, selected }: NodeProps<ArchNode>) {
             className={clsx(
                 "min-w-56 overflow-hidden rounded-lg border bg-card shadow-sm select-none",
                 selected ? "border-foreground border-2" : "border-foreground/25",
+                data.inspected && "inspected-ring",
             )}
         >
             <Handle type="target" position={Position.Left} />

@@ -14,12 +14,12 @@ const BriefClosing = "When you are done, call check_drift to confirm the model a
 
 // ShallowModelGuidance is the one-line modeling rule shared by the brief and the MCP
 // authoring tool descriptions (decision 0010).
-const ShallowModelGuidance = "Prefer shallow models. Use a container node to group related nodes. Nest more than two levels only for genuinely separate subsystems."
+const ShallowModelGuidance = "Prefer shallow models. Use a container node to group related nodes. Nest more than three levels only for genuinely separate subsystems."
 
 // AuthoringGuidance is the model-first workflow guidance shared by the brief and the MCP
 // authoring tool descriptions.
 const AuthoringGuidance = "Model high-level first: start with the few top-level parts, then drill down only where asked. " +
-	"Treat container nodes as deployment zones (for example browser, edge, API, data) and keep nesting to about two levels. " +
+	"Treat container nodes as deployment zones (for example browser, edge, API, data) and keep nesting to about three levels. " +
 	"Before drilling down, ask the user how they want the top-level view organised. " +
 	"Do not add an edge that carries no information (every-pair wiring, or what the hierarchy already says). " +
 	"Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. " +

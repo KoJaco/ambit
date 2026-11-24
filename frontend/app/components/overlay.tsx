@@ -35,6 +35,8 @@ export function Overlay({
         (initialFocusRef?.current ?? panelRef.current)?.focus();
 
         const onKeyDown = (event: KeyboardEvent) => {
+            // An open themed Select (portaled outside the panel) handles its own Escape and Tab.
+            if ((event.target as Element | null)?.closest?.('[data-select-popup]')) return;
             if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();

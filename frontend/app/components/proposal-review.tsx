@@ -387,7 +387,7 @@ export function ProposalReview({
                                 >
                                     <header className="sticky top-0 z-10 flex flex-col gap-2.5 rounded-t-2xl border-b border-border bg-card/95 p-3 backdrop-blur">
                                         <div className="flex flex-col gap-1">
-                                            <h3 id={`proposal-title-${proposal.proposal_id}`} className="text-sm leading-snug font-semibold">
+                                            <h3 id={`proposal-title-${proposal.proposal_id}`} className="text-sm leading-snug font-semibold break-words whitespace-normal">
                                                 {proposal.unreadable
                                                     ? `Unreadable ${proposal.proposal_id}`
                                                     : proposal.summary || `${proposal.source} ${proposal.proposal_id}`}

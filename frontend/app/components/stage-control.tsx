@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Select } from "./ui/select";
 import { getCheckModel, getStage, putStage, type StageState } from "../api";
 import { decideStageChange, nextStage, stageChipLabel, stageMove } from "../method-ui";
 import { Overlay } from "./overlay";
@@ -67,7 +68,7 @@ function StageDialog({
     const titleId = useId();
     const selectId = useId();
     const closeRef = useRef<HTMLButtonElement>(null);
-    const selectRef = useRef<HTMLSelectElement>(null);
+    const selectRef = useRef<HTMLButtonElement>(null);
     const advanceRef = useRef<HTMLButtonElement>(null);
     const setRef = useRef<HTMLButtonElement>(null);
     const cancelRef = useRef<HTMLButtonElement>(null);
@@ -200,23 +201,18 @@ function StageDialog({
                                 <label htmlFor={selectId} className="text-xs font-medium">
                                     Set stage
                                 </label>
-                                <select
+                                <Select
                                     id={selectId}
                                     ref={selectRef}
                                     value={choice}
                                     disabled={busy}
-                                    onChange={(e) => {
-                                        setChoice(e.target.value);
+                                    onChange={(next) => {
+                                        setChoice(next);
                                         setStatus("");
                                     }}
-                                    className="min-h-7 rounded-lg border border-border bg-background px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                                >
-                                    {state.stages.map((s) => (
-                                        <option key={s.id} value={s.id}>
-                                            {s.name}
-                                        </option>
-                                    ))}
-                                </select>
+                                    className="min-h-7 min-w-40"
+                                    options={state.stages.map((s) => ({ value: s.id, label: s.name }))}
+                                />
                             </div>
                             <button
                                 type="button"

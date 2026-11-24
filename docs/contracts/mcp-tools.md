@@ -68,7 +68,7 @@ external actors, entry→module patterns). That guidance is **not** injected int
 [decision 0008](../decisions/0008-arch-graph-modeling-guidance.md). MCP tool descriptions
 for `seed_model`, `create_node`, `update_node`, and `set_relationship` summarise the same rules
 and end with one shared line: *"Prefer shallow models. Use a container node to group related
-nodes. Nest more than two levels only for genuinely separate subsystems."* (decision 0010;
+nodes. Nest more than three levels only for genuinely separate subsystems."* (decision 0010;
 `core.ShallowModelGuidance`). The `get_context` brief carries the same line as a single closing
 sentence, the one exception to the "no graph doctrine in the brief" rule. The tool surface is
 unchanged: group and ungroup are canvas operations that stage ordinary create/update/delete
@@ -171,7 +171,7 @@ to see control or data flow. Endpoints must reference existing node ids.
 ### Read and report tools (direct)
 
 Authoring guidance carried in tool descriptions and the `get_context` brief: model high-level
-first; containers are deployment zones; nest about two levels; ask the user how they want the
+first; containers are deployment zones; nest about three levels; ask the user how they want the
 top-level view before drilling down; add no edge that carries no information; set explicit ids
 on created nodes; call `list_icons` before choosing icons.
 

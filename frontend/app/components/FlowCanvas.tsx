@@ -334,6 +334,7 @@ export default function FlowCanvas({
     tool,
     refreshKey = 0,
     onSelectNode,
+    inspectedId,
     onSelectEdge,
     onRequestRecenterRef,
     onRequestZoomRef,
@@ -345,6 +346,8 @@ export default function FlowCanvas({
     tool: "grab" | "pointer";
     refreshKey?: number;
     onSelectNode?: (id: string | null) => void;
+    // Node open in the inspector; keeps a persistent ring even after the canvas selection is cleared.
+    inspectedId?: string | null;
     onSelectEdge?: (edge: Relationship | null) => void;
     onRequestRecenterRef?: (fn: () => void) => void;
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
@@ -767,7 +770,7 @@ export default function FlowCanvas({
         return ghostLayoutRef.current;
     }, [ghost, nodes]);
     const highlightKey = preview?.highlightKey ?? null;
-    const displayNodes = useMemo<ArchNode[]>(() => {
+    const previewNodes = useMemo<ArchNode[]>(() => {
         if (!preview || (ghost.ghostNodes.length === 0 && Object.keys(ghost.nodeMarks).length === 0)) return nodes;
         const real = nodes.map((item) => {
             const mark = ghost.nodeMarks[item.id];
@@ -810,6 +813,12 @@ export default function FlowCanvas({
             : [];
         return [...real, ...fresh];
     }, [nodes, ghost, ghostLayout, highlightKey, preview]);
+    const displayNodes = useMemo<ArchNode[]>(() => {
+        if (!inspectedId || !previewNodes.some((item) => item.id === inspectedId && item.type !== "ghost")) return previewNodes;
+        return previewNodes.map((item) =>
+            item.id === inspectedId && item.type !== "ghost" ? { ...item, data: { ...item.data, inspected: true } } : item,
+        );
+    }, [previewNodes, inspectedId]);
     const displayEdges = useMemo<Edge[]>(() => {
         if (!preview || (ghost.ghostEdges.length === 0 && Object.keys(ghost.edgeMarks).length === 0)) return edges;
         const variantProps = (variant: "new" | "changed" | "removed", label: string, key: string, proposalId: string, index: number, hasContract?: boolean): GhostEdgeData["ghost"] => ({

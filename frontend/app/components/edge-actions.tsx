@@ -20,6 +20,7 @@ import {
     normalizeEdgeContract,
     validateEdgeContract,
 } from "../node-contract";
+import { Select } from "./ui/select";
 import { Counter, fieldClass, labelClass } from "./node-contract-fields";
 import { specExcerpt } from "../excerpt";
 import { edgeKindStyle, type EdgeKindStyle } from "../kind-style";
@@ -262,19 +263,12 @@ function EdgeContractSection({ edge, onSaved }: { edge: Relationship; onSaved: (
                 <label htmlFor={`${uid}-format`} className={labelClass}>
                     Format
                 </label>
-                <select
+                <Select
                     id={`${uid}-format`}
-                    className={fieldClass}
                     value={draft.format ?? ""}
-                    onChange={(event) => setDraft({ ...draft, format: (event.target.value || undefined) as EdgeContract["format"] })}
-                >
-                    <option value="">None</option>
-                    {EDGE_FORMATS.map((f) => (
-                        <option key={f.value} value={f.value}>
-                            {f.label}
-                        </option>
-                    ))}
-                </select>
+                    onChange={(format) => setDraft({ ...draft, format: (format || undefined) as EdgeContract["format"] })}
+                    options={[{ value: "", label: "None" }, ...EDGE_FORMATS.map((f) => ({ value: f.value, label: f.label }))]}
+                />
             </div>
             <div className="flex flex-col gap-1.5">
                 <label htmlFor={`${uid}-ref`} className={labelClass}>

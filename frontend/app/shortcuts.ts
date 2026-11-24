@@ -134,6 +134,8 @@ const editableTags = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 export function isEditableTarget(target: TargetLike): boolean {
     if (!target) return false;
     if (target.isContentEditable) return true;
+    const role = target.getAttribute?.("role");
+    if (role === "listbox" || role === "combobox") return true;
     const attr = target.getAttribute?.("contenteditable");
     if (attr !== null && attr !== undefined && attr !== "false") return true;
     return editableTags.has((target.tagName ?? "").toUpperCase());
