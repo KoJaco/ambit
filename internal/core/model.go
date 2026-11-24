@@ -90,7 +90,11 @@ type Node struct {
 	DependsOn []NodeID
 	// Contract is nil when the node has none.
 	Contract *NodeContract
-	Unknown  map[string]jsonRaw
+	// ContractHash fingerprints this node's contract and its relationship contracts as
+	// they were when the status was last set to in_progress or done. Empty means no
+	// baseline was recorded (decision 0014).
+	ContractHash string
+	Unknown      map[string]jsonRaw
 }
 
 // Relationship is a directed cross-cutting edge. It is not a hierarchy edge.

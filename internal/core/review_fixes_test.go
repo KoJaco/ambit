@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -344,9 +345,10 @@ func TestBriefBuildOrderIsContainerAwareAndCascades(t *testing.T) {
 func TestBriefInterfacesSectionIsCapped(t *testing.T) {
 	idx, _ := newModel(t)
 	nmMake(t, idx, CreateInput{ID: "api", Name: "API", Type: "service"})
-	for _, id := range []string{"c1", "c2", "c3", "c4"} {
+	for i := 1; i <= 20; i++ {
+		id := fmt.Sprintf("c%d", i)
 		nmMake(t, idx, CreateInput{ID: NodeID(id), Name: id, Type: "frontend"})
-		if _, err := idx.SetRelationship(SetRelationshipInput{From: NodeID(id), To: "api", Label: "calls " + id, Kind: KindSync, Contract: &EdgeContract{Text: strings.Repeat("x", 3000)}}); err != nil {
+		if _, err := idx.SetRelationship(SetRelationshipInput{From: NodeID(id), To: "api", Label: "calls " + id, Kind: KindSync, Contract: &EdgeContract{Text: strings.Repeat("x", 3900)}}); err != nil {
 			t.Fatal(err)
 		}
 	}

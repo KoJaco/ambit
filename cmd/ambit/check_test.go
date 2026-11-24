@@ -126,3 +126,39 @@ func TestDriftStrictExitsNonZeroOnFindings(t *testing.T) {
 		t.Fatalf("strict report:\n%s", out)
 	}
 }
+
+func TestCheckWorksBeforeFirstCommit(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	run(t, dir, binPath, "init", dir)
+	writeRepoFile(t, filepath.Join(dir, "a.txt"), "x\n")
+	git(t, dir, "add", "-A")
+	// A repository with no commits must not fail with "unknown revision HEAD".
+	run(t, dir, binPath, "check")
+}
+
+func TestDriftNodeAndWorktreeFlags(t *testing.T) {
+	dir := t.TempDir()
+	gitInit(t, dir)
+	run(t, dir, binPath, "init", dir)
+	idx, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.Create(core.CreateInput{ID: "svc", Name: "Svc", Type: "service", Implementation: []string{"src/svc/**"}}); err != nil {
+		t.Fatal(err)
+	}
+	writeRepoFile(t, filepath.Join(dir, "stray.txt"), "x\n")
+
+	out := run(t, dir, binPath, "drift", "--node", "svc")
+	if strings.Contains(out, "stray.txt") || !strings.Contains(out, "src/svc/**") {
+		t.Fatalf("node report should hold only svc's globs:\n%s", out)
+	}
+	if out := runFail(t, dir, binPath, "drift", "--node", "nope"); !strings.Contains(out, "unknown node") {
+		t.Fatalf("unknown node:\n%s", out)
+	}
+	if out := runFail(t, dir, binPath, "drift", "--worktree", t.TempDir()); !strings.Contains(out, "worktree") {
+		t.Fatalf("foreign worktree:\n%s", out)
+	}
+	runFail(t, dir, binPath, "drift", "--node")
+}

@@ -18,6 +18,7 @@ Project rules (apply to everything you write):
 Build order:
   You depend on:
     - "Billing" (billing) (draft)
+      code: src/billing/**
   Not done yet: "Billing" (billing) (draft).
   If your work needs one of these, stop and report back rather than guessing its interface.
 
@@ -29,4 +30,4 @@ Model high-level first: start with the few top-level parts, then drill down only
 Specification for your node:
 Pay things
 
-When you are done, call check_drift to confirm the model and code agree, then call update_node_status for your node.
+When you are done, call check_drift with your node_id (add worktree if you work in a git worktree) to confirm the model and code agree, then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it.

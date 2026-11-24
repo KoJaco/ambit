@@ -391,12 +391,12 @@ func TestBriefProjectRulesInterfacesAndContract(t *testing.T) {
 			t.Fatalf("missing %q", want)
 		}
 	}
-	// Own contract is never truncated; sibling view is capped with a pointer.
+	// Neither own nor sibling contracts are truncated.
 	if !strings.Contains(api, strings.Repeat("P", 1500)) || !strings.Contains(api, "idempotent") || !strings.Contains(api, "Owns data") {
 		t.Fatalf("own contract incomplete:\n%s", api)
 	}
-	if strings.Contains(web, strings.Repeat("P", 900)) || !strings.Contains(web, "get_graph") {
-		t.Fatalf("sibling contract not capped:\n%s", web)
+	if !strings.Contains(web, strings.Repeat("P", 1500)) || strings.Contains(web, "contract truncated") {
+		t.Fatalf("sibling contract was cut:\n%s", web)
 	}
 	if !strings.Contains(web, "Contract errors: 409 dup") && !strings.Contains(web, "Contract payloads") {
 		t.Fatalf("sibling contract missing:\n%s", web)

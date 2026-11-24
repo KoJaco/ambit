@@ -100,7 +100,7 @@ func nextSteps(m *core.Method, stage string) []string {
 		steps = append(steps, "check_model is available on demand; this method enforces nothing.")
 	}
 	if m.Check.IncludeDrift {
-		steps = append(steps, "check_model includes check_drift output by default for this method; use it to find unowned files and overlapping globs.")
+		steps = append(steps, "check_model includes check_drift output by default for this method; use it to find unowned files and overlapping globs. Drift reads files git can see (tracked, plus untracked and not gitignored); pass node_id to limit it to one node and worktree to read a git worktree.")
 	}
 	if len(m.Stages) > 0 {
 		steps = append(steps, "The stage is set by a human only; no tool changes it.")

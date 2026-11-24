@@ -16,6 +16,9 @@ type BuildItem struct {
 	Wave int `json:"wave"`
 	// DependsOn is the node's declared depends_on, ordered by model order.
 	DependsOn []NodeID `json:"depends_on"`
+	// ContractChanged is true when the node's contract, or one of its relationship
+	// contracts, changed after the node was marked in_progress or done.
+	ContractChanged bool `json:"contract_changed,omitempty"`
 	// BlockedBy lists declared dependencies (own, and those cascaded from non-buildable
 	// container ancestors) that are not done.
 	BlockedBy []NodeID `json:"blocked_by"`
@@ -121,7 +124,7 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 		}
 		wave[b] = w
 		n := idx.Nodes[b]
-		item := BuildItem{ID: b, Name: n.Name, Status: n.Status, Done: done(b), Wave: w, DependsOn: []NodeID{}, BlockedBy: []NodeID{}}
+		item := BuildItem{ID: b, Name: n.Name, Status: n.Status, Done: done(b), ContractChanged: idx.contractChangedLocked(n), Wave: w, DependsOn: []NodeID{}, BlockedBy: []NodeID{}}
 		for _, d := range sortByPos(n.DependsOn, pos) {
 			item.DependsOn = append(item.DependsOn, d)
 		}
