@@ -204,8 +204,8 @@ the agent infer its constraints, and inference is exactly what should not be hap
 rules** (the `config.json` constraints, `must` first, present whenever any exist);
 **Interfaces you must honour** (only relationships that carry a contract, marked provider or
 consumer; edges without one are omitted, an explicit refinement recorded in decision 0012;
-the section is capped at about 4000 characters with a pointer to `get_graph` or the HTTP API
-for the rest); **your node's contract** (never truncated); **Build order** (unmet
+no per-interface cut; only a very large safety bound of 60000 characters, decision 0014);
+siblings show their full contract; **your node's contract** (never truncated); **Build order** (unmet
 dependencies, container-aware done rule, dependents relying on you); and a closing line to
 run `check_drift` and `update_node_status` when done, after the `check_scope` instruction.
 
@@ -246,13 +246,14 @@ parallel; `blocked_by` lists unmet dependencies. Optional `scope_node_id` limits
 subtree (unknown id is an error). Advisory only: it never blocks `update_node_status`. Call it
 before building.
 
-#### `get_graph()`
+#### `get_graph(include_contracts?)`
 
 Reads the whole model compactly and directly (no staging): `nodes` (id, name, type, parent,
-relationship_id, status, `depends_on` when set; no specs), `relationships` (id, from, to,
-label, kind, `has_contract` when the edge has one; no contract bodies) and
+relationship_id, status, `depends_on` and `has_contract` when set; no specs), `relationships` (id, from, to,
+label, kind, `has_contract` when the edge has one) and
 `pending_proposals` (id, source, summary, operation count; a `set_constraints` proposal has an operation with an
-empty `node_id`). Also `method` (`{id, name}`) and `stage` (`{id, name}`, or `null` for a
+empty `node_id`). With `include_contracts: true`, each node and relationship that has one also
+carries its full `contract` body. Also `method` (`{id, name}`) and `stage` (`{id, name}`, or `null` for a
 stage-less method). Call it before authoring so ids
 are reused and duplicates avoided.
 
@@ -290,13 +291,19 @@ unreadable flag).
 Returns `icons`: the closed icon registry as `{id, label}` rows, label being a one-line
 description. Same list as `GET /icons`. Use these ids for the `icon` field.
 
-#### `check_drift()`
+#### `check_drift(node_id?, worktree?)`
 
-Compares model globs with `git ls-files` (same implementation as `ambit drift`). Returns
-`unowned_files` (tracked files no node's `implementation` matches; `.arch/` is excluded),
-`unmatched_globs` (`{node, field, glob}` for `implementation`/`scope` globs matching no
-tracked file) and `overlaps` (`{path, owners}` for files owned by two or more nodes of which
-at least two are not in an ancestor/descendant relationship). Read-only.
+Compares model globs with the files git can see: tracked files plus untracked files that
+are not gitignored (same implementation as `ambit drift`). Returns
+`unowned_files` (files no node's `implementation` matches; `.arch/` and files matching the
+built-in or `drift_ignore` globs are excluded), `unmatched_globs` (`{node, field, glob}`
+for `implementation`/`scope` globs matching no file), `overlaps` (`{path, owners}` for
+files owned by two or more nodes of which at least two are not in an ancestor/descendant
+relationship) and `ignored_files` (count skipped by ignore globs). `node_id` limits the
+report to that node's globs and overlaps (unowned files are not reported). `worktree` reads
+files from another checkout of the same repository (a linked git worktree), so an agent
+can verify its own branch; the model still comes from the server's `.arch`. A path from a
+different repository is refused. Read-only.
 
 #### `update_node_status(node_id, status)`
 

@@ -106,7 +106,9 @@ func (e *toolEnv) handleUpdateNodeStatus(_ context.Context, _ *sdkmcp.CallToolRe
 	return nil, updateStatusOut{NodeID: in.NodeID, Status: in.Status}, nil
 }
 
-type getGraphIn struct{}
+type getGraphIn struct {
+	IncludeContracts bool `json:"include_contracts,omitempty" jsonschema:"also return every node and relationship contract body (can be large)"`
+}
 
 type pendingProposal struct {
 	ProposalID string `json:"proposal_id"`
@@ -139,8 +141,8 @@ func pendingSummaries(idx *core.Index) ([]pendingProposal, error) {
 	return out, nil
 }
 
-func (e *toolEnv) handleGetGraph(_ context.Context, _ *sdkmcp.CallToolRequest, _ getGraphIn) (*sdkmcp.CallToolResult, getGraphOut, error) {
-	view := e.idx.GraphView()
+func (e *toolEnv) handleGetGraph(_ context.Context, _ *sdkmcp.CallToolRequest, in getGraphIn) (*sdkmcp.CallToolResult, getGraphOut, error) {
+	view := e.idx.GraphViewWith(in.IncludeContracts)
 	m, err := e.idx.MethodByID(view.Method)
 	if err != nil {
 		m = e.idx.ActiveMethod()
@@ -182,10 +184,13 @@ func (e *toolEnv) handleListIcons(_ context.Context, _ *sdkmcp.CallToolRequest, 
 	return nil, listIconsOut{Icons: core.Icons()}, nil
 }
 
-type checkDriftIn struct{}
+type checkDriftIn struct {
+	NodeID   string `json:"node_id,omitempty" jsonschema:"limit the report to this node's globs and overlaps; omit for the whole model"`
+	Worktree string `json:"worktree,omitempty" jsonschema:"path of a git worktree of this repository to read files from, so an agent can verify its own work before merging"`
+}
 
-func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest, _ checkDriftIn) (*sdkmcp.CallToolResult, core.DriftReport, error) {
-	report, err := core.Drift(e.idx, e.dir)
+func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest, in checkDriftIn) (*sdkmcp.CallToolResult, core.DriftReport, error) {
+	report, err := core.DriftWith(e.idx, core.DriftOptions{Root: e.dir, FilesDir: in.Worktree, NodeID: core.NodeID(in.NodeID)})
 	if err != nil {
 		return nil, core.DriftReport{}, err
 	}

@@ -28,6 +28,7 @@ const (
 	RuleGlobOverlap        = "glob-overlap"
 	RuleOrphanNode         = "orphan-node"
 	RuleDependencyCycle    = "dependency-cycle"
+	RuleContractChanged    = "contract-changed"
 
 	// DefaultMaxDepth is the max-depth rule default (root nodes are depth 0).
 	DefaultMaxDepth = 3
@@ -140,6 +141,7 @@ var lintRules = []lintRule{
 	{RuleGlobOverlap, lintGlobOverlap},
 	{RuleOrphanNode, lintOrphanNode},
 	{RuleDependencyCycle, lintDependencyCycle},
+	{RuleContractChanged, lintContractChanged},
 }
 
 // LintRuleIDs lists the rule ids CheckModel knows, in report order.
@@ -424,5 +426,16 @@ func lintDependencyCycle(idx *Index, _ LintSetting, emit func(LintFinding)) {
 			ids[i] = string(c)
 		}
 		emit(LintFinding{NodeID: cycle[0], Message: fmt.Sprintf("dependency cycle among %s", strings.Join(ids, ", "))})
+	}
+}
+
+// lintContractChanged flags nodes marked in_progress or done whose contract, or a
+// relationship contract they take part in, changed after that status was set.
+func lintContractChanged(idx *Index, _ LintSetting, emit func(LintFinding)) {
+	for _, id := range idx.Order {
+		n := idx.Nodes[id]
+		if idx.contractChangedLocked(n) {
+			emit(LintFinding{NodeID: id, Message: fmt.Sprintf("contract changed since this node was marked %s; re-check the implementation, then set the status again", n.Status)})
+		}
 	}
 }

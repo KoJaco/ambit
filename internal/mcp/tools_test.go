@@ -423,8 +423,12 @@ func TestCheckDriftTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(r.Unowned, ",") != ".gitignore,main.go" || len(r.Unmatched) != 1 {
+	if strings.Join(r.Unowned, ",") != "main.go" || len(r.Unmatched) != 1 || r.Ignored != 1 {
 		t.Fatalf("report %+v", r)
+	}
+	_, one, err := env.handleCheckDrift(context.Background(), nil, checkDriftIn{NodeID: "nope-node"})
+	if err == nil {
+		t.Fatalf("unknown node should error, got %+v", one)
 	}
 }
 
@@ -639,5 +643,49 @@ func TestGetGraphExposesDependsOnAndHasContract(t *testing.T) {
 	}
 	if !found || len(g.Relationships) != 1 || !g.Relationships[0].HasContract {
 		t.Fatalf("graph %+v", g)
+	}
+}
+
+func TestGetGraphContracts(t *testing.T) {
+	idx, _ := openFixture(t)
+	id, err := idx.Create(core.CreateInput{Name: "Svc", Type: "service", Contract: &core.NodeContract{Payloads: "POST /x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := &toolEnv{idx: idx}
+	_, plain, err := env.handleGetGraph(context.Background(), nil, getGraphIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, full, err := env.handleGetGraph(context.Background(), nil, getGraphIn{IncludeContracts: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	find := func(out getGraphOut) core.GraphNode {
+		for _, n := range out.Nodes {
+			if n.ID == id {
+				return n
+			}
+		}
+		t.Fatalf("node %s missing", id)
+		return core.GraphNode{}
+	}
+	if p := find(plain); !p.HasContract || p.Contract != nil {
+		t.Fatalf("plain graph: %+v", p)
+	}
+	if f := find(full); !f.HasContract || f.Contract == nil || f.Contract.Payloads != "POST /x" {
+		t.Fatalf("full graph: %+v", f)
+	}
+	other, err := idx.Create(core.CreateInput{Name: "Other", Type: "service"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.SetRelationship(core.SetRelationshipInput{From: other, To: id, Label: "calls", Kind: core.KindSync, Contract: &core.EdgeContract{Text: "wire"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, full, _ = env.handleGetGraph(context.Background(), nil, getGraphIn{IncludeContracts: true})
+	_, plain, _ = env.handleGetGraph(context.Background(), nil, getGraphIn{})
+	if len(full.Relationships) != 1 || full.Relationships[0].Contract == nil || full.Relationships[0].Contract.Text != "wire" || plain.Relationships[0].Contract != nil {
+		t.Fatalf("edge contracts: full %+v plain %+v", full.Relationships, plain.Relationships)
 	}
 }

@@ -207,6 +207,9 @@ func (idx *Index) updateLocked(id NodeID, in UpdateInput) error {
 		}
 		next.Contract = c
 	}
+	if in.Status != nil && baselinesContract(next.Status) {
+		next.ContractHash = idx.contractFingerprint(id, next.Contract)
+	}
 	if err := idx.writeNode(&next); err != nil {
 		return err
 	}

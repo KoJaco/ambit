@@ -141,6 +141,12 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   matches known strings to icons on a best-effort basis and falls back to a generic shape.
   An unrecognised type is never an error.
 - `status` — one of `draft`, `specified`, `assigned`, `in_progress`, `done`, `blocked`.
+- `contract_hash` — optional string. A fingerprint of the node's contract plus the
+  contracts of every relationship it is an endpoint of, recorded whenever `status` is set to
+  `in_progress` or `done`. When the current fingerprint differs, the `contract-changed` lint
+  rule, `get_build_order` (`contract_changed`) and the brief flag the node
+  ([decision 0014](../decisions/0014-drift-and-contract-tracking.md)). Written by ambit;
+  do not edit by hand.
 
 #### Optional fields
 
@@ -181,7 +187,7 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   stored here.
 
 Node file key order on write: `id, name, type, parent_id, relationship_id, implementation,
-scope, protected, icon, color, renderer, schema, depends_on, contract, status`, then unknown
+scope, protected, icon, color, renderer, schema, depends_on, contract, contract_hash, status`, then unknown
 keys sorted. Over-limit values already on disk still load; new values over a limit are
 rejected on write.
 
@@ -273,6 +279,11 @@ Recognised keys (all optional; unknown keys are preserved on write):
 - `level_budget` — positive integer, default `24`. Visible node count on a level above which
   groups default to collapsed summaries.
 
+- `drift_ignore` — array of glob strings, added to the built-in tooling list
+  (`.gitignore`, `.github/**`, `go.mod`, `go.sum`, `package.json`, lockfiles, `tsconfig*.json`,
+  `LICENSE`, `README.md`, and similar). `drift` does not report matching files as unowned,
+  unless some node's `implementation` explicitly matches them
+  ([decision 0014](../decisions/0014-drift-and-contract-tracking.md)).
 - `constraints` — ordered list of project-wide rules `{ "id", "text", "severity" }`. `id` is
   a unique lowercase slug; `text` is 1 to 300 characters; `severity` is `must` (default
   when absent) or `should`. At most 24 entries on write. An invalid or duplicate entry on

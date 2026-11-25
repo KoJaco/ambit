@@ -6,11 +6,12 @@ import (
 	"unicode/utf8"
 )
 
-// siblingContractCap is the per-sibling character budget for contract text in a brief.
-const siblingContractCap = 800
+// siblingSpecCap is the per-sibling character budget for spec text in a brief. Contracts
+// are never cut: an agent must be able to code against an interface from its brief alone.
+const siblingSpecCap = 1200
 
 // BriefClosing is the last line of every brief.
-const BriefClosing = "When you are done, call check_drift to confirm the model and code agree, then call update_node_status for your node."
+const BriefClosing = "When you are done, call check_drift with your node_id (add worktree if you work in a git worktree) to confirm the model and code agree, then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it."
 
 // ShallowModelGuidance is the one-line modeling rule shared by the brief and the MCP
 // authoring tool descriptions (decision 0010).
@@ -36,6 +37,9 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	var b strings.Builder
 	b.WriteString(idx.methodPreambleLocked())
 	fmt.Fprintf(&b, "You are working on the architecture node %q (%s).\n\n", n.Name, id)
+	if idx.contractChangedLocked(n) {
+		fmt.Fprintf(&b, "NOTE: a contract this node must honour changed after it was marked %s (git log -p .arch/ shows the change). Re-check the existing implementation against the contracts below before you continue.\n\n", n.Status)
+	}
 
 	allowed := EffectiveScope(n)
 	fmt.Fprintf(&b, "You may modify only files matching these globs:\n")
@@ -66,22 +70,30 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	}
 
 	siblings := siblingNodes(idx, n)
+	siblingChars, siblingsCut := 0, 0
 	if len(siblings) > 0 {
 		fmt.Fprintf(&b, "\nSibling nodes (interfaces only — do not edit their implementation):\n")
 		for _, s := range siblings {
 			fmt.Fprintf(&b, "  - %q (%s, %s)\n", s.Name, s.ID, s.Type)
 			if strings.TrimSpace(s.Spec) != "" {
 				spec := strings.TrimSpace(s.Spec)
-				if len(spec) > 400 {
-					spec = spec[:400] + "..."
+				if cut, was := capText(spec, siblingSpecCap); was {
+					spec = cut + "\n(spec truncated)"
 				}
 				b.WriteString(indentLines(spec, "    "))
 				b.WriteByte('\n')
 			}
 			if text := siblingContractText(s.Contract); text != "" {
+				if siblingChars += utf8.RuneCountInString(text); siblingChars > interfacesCap {
+					siblingsCut++
+					continue
+				}
 				b.WriteString(indentLines(text, "    "))
 				b.WriteByte('\n')
 			}
+		}
+		if siblingsCut > 0 {
+			fmt.Fprintf(&b, "  (%d more sibling contract(s) omitted to keep this brief bounded; get_graph with include_contracts returns them)\n", siblingsCut)
 		}
 	}
 
@@ -111,24 +123,24 @@ func capText(s string, max int) (string, bool) {
 	return strings.TrimRight(string(r[:max]), " \n") + "...", true
 }
 
-// siblingContractText renders a sibling's contract payloads and errors, capped, with a
-// pointer to the full text. Empty when the sibling has no such content.
+// siblingContractText renders a sibling's contract in full. Empty when it has none.
 func siblingContractText(c *NodeContract) string {
-	if c == nil || (strings.TrimSpace(c.Payloads) == "" && len(c.Errors) == 0) {
+	if c == nil || c.IsEmpty() {
 		return ""
 	}
 	var parts []string
 	if p := strings.TrimSpace(c.Payloads); p != "" {
 		parts = append(parts, "Contract payloads: "+p)
 	}
-	if len(c.Errors) > 0 {
-		parts = append(parts, "Contract errors: "+strings.Join(c.Errors, "; "))
+	for _, l := range []struct {
+		title string
+		items []string
+	}{{"invariants", c.Invariants}, {"errors", c.Errors}, {"owns data", c.OwnsData}} {
+		if len(l.items) > 0 {
+			parts = append(parts, "Contract "+l.title+": "+strings.Join(l.items, "; "))
+		}
 	}
-	text, cut := capText(strings.Join(parts, "\n"), siblingContractCap)
-	if cut {
-		text += "\n(contract truncated; full text via get_graph or the HTTP API)"
-	}
-	return text
+	return strings.Join(parts, "\n")
 }
 
 func (idx *Index) writeProjectRules(b *strings.Builder) {
@@ -145,8 +157,9 @@ func (idx *Index) writeProjectRules(b *strings.Builder) {
 	}
 }
 
-// interfacesCap is the character budget for the whole Interfaces section.
-const interfacesCap = 4000
+// interfacesCap is a safety bound on the whole Interfaces section. It is far above
+// what a model with sensible contracts reaches; only a runaway model hits it.
+const interfacesCap = 60000
 
 // writeInterfaces lists each relationship touching n that carries a contract. The edge
 // A -> B reads "A calls B": B provides the interface and A consumes it.
@@ -204,9 +217,9 @@ func (idx *Index) writeInterfaces(b *strings.Builder, n *Node) {
 	b.WriteString("\nInterfaces you must honour:\n")
 	b.WriteString(sec.String())
 	if omitted > 0 {
-		fmt.Fprintf(b, "  (%d more interface(s) omitted to keep this brief short; more via get_graph or the HTTP API)\n", omitted)
+		fmt.Fprintf(b, "  (%d more interface(s) omitted to keep this brief short; more via get_graph with include_contracts)\n", omitted)
 	} else if truncated {
-		b.WriteString("  (interface truncated to keep this brief short; more via get_graph or the HTTP API)\n")
+		b.WriteString("  (interface truncated to keep this brief short; more via get_graph with include_contracts)\n")
 	}
 }
 
@@ -294,6 +307,9 @@ func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
 		for _, d := range sortedDeps(n.DependsOn) {
 			if o := idx.Nodes[d]; o != nil {
 				fmt.Fprintf(b, "    - %q (%s) (%s)\n", o.Name, d, o.Status)
+				if len(o.Implementation) > 0 {
+					fmt.Fprintf(b, "      code: %s\n", strings.Join(o.Implementation, ", "))
+				}
 			} else {
 				fmt.Fprintf(b, "    - %s (missing)\n", d)
 			}

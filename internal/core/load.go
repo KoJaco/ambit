@@ -3,6 +3,7 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/bmatcuk/doublestar/v4"
 	"os"
 	"path/filepath"
 	"sort"
@@ -38,6 +39,8 @@ type Index struct {
 	// when absent). Use ActiveMethod and EffectiveStage for the resolved values.
 	MethodID string
 	StageID  string
+	// DriftIgnore is the config.json drift_ignore globs, added to DefaultDriftIgnore.
+	DriftIgnore []string
 
 	userMethods  map[string]*Method
 	activeMethod *Method
@@ -185,8 +188,37 @@ func (idx *Index) readConfig() error {
 	idx.Constraints = idx.parseConstraints(obj)
 	idx.MethodID = strings.TrimSpace(idx.configString(obj, "method"))
 	idx.StageID = strings.TrimSpace(idx.configString(obj, "stage"))
+	idx.DriftIgnore = nil
+	for _, g := range idx.configStringList(obj, "drift_ignore") {
+		if !doublestar.ValidatePattern(toSlash(g)) {
+			idx.warn("config.json", fmt.Sprintf("drift_ignore: invalid glob %q ignored", g))
+			continue
+		}
+		idx.DriftIgnore = append(idx.DriftIgnore, g)
+	}
 	idx.loadMethods()
 	return nil
+}
+
+// configStringList reads an optional array of non-empty strings. Anything else is
+// ignored with a warning.
+func (idx *Index) configStringList(obj map[string]jsonRaw, key string) []string {
+	raw, ok := obj[key]
+	if !ok || isNull(raw) {
+		return nil
+	}
+	var items []string
+	if err := json.Unmarshal(raw, &items); err != nil {
+		idx.warn("config.json", fmt.Sprintf("%s must be an array of strings; ignoring", key))
+		return nil
+	}
+	var out []string
+	for _, it := range items {
+		if it = strings.TrimSpace(it); it != "" {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 // configPositiveInt reads a positive integer config value. Missing is the
@@ -486,6 +518,7 @@ func (idx *Index) reload() error {
 	idx.Constraints = next.Constraints
 	idx.MethodID = next.MethodID
 	idx.StageID = next.StageID
+	idx.DriftIgnore = next.DriftIgnore
 	idx.userMethods = next.userMethods
 	idx.activeMethod = next.activeMethod
 	idx.localUnknown = next.localUnknown

@@ -27,7 +27,7 @@ func TestMethodDefaultsToFreeform(t *testing.T) {
 	if m["id"] != "freeform" || m["source"] != "builtin" || m["stage"] != nil {
 		t.Fatalf("%v", m)
 	}
-	if rules := m["rules"].([]any); len(rules) != 10 {
+	if rules := m["rules"].([]any); len(rules) != 11 {
 		t.Fatalf("rules %v", rules)
 	}
 	if _, ok := m["gates"].(map[string]any); !ok {

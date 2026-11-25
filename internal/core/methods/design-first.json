@@ -21,7 +21,8 @@
     "edge-label": "advisory",
     "edge-kind": "advisory",
     "max-depth": "advisory",
-    "orphan-node": "advisory"
+    "orphan-node": "advisory",
+    "contract-changed": "advisory"
   },
   "check": {"include_drift": false}
 }

@@ -51,18 +51,30 @@ func main() {
 		fmt.Print(report)
 	case "drift":
 		strict := false
-		if len(os.Args) == 3 && os.Args[2] == "--strict" {
-			strict = true
-		} else if len(os.Args) != 2 {
-			usage(os.Stderr)
-			os.Exit(1)
+		var opts core.DriftOptions
+		opts.Root = "."
+		for args := os.Args[2:]; len(args) > 0; args = args[1:] {
+			switch {
+			case args[0] == "--strict":
+				strict = true
+			case (args[0] == "--node" || args[0] == "--worktree") && len(args) > 1:
+				if args[0] == "--node" {
+					opts.NodeID = core.NodeID(args[1])
+				} else {
+					opts.FilesDir = args[1]
+				}
+				args = args[1:]
+			default:
+				usage(os.Stderr)
+				os.Exit(1)
+			}
 		}
 		idx, err := core.Open(".")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ambit drift: %v\n", err)
 			os.Exit(1)
 		}
-		report, err := core.Drift(idx, ".")
+		report, err := core.DriftWith(idx, opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ambit drift: %v\n", err)
 			os.Exit(1)
@@ -139,5 +151,5 @@ func parseStartArgs(args []string) (string, error) {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir] [--method id]\n       ambit method list|show [id]|set <id>|export-skill [--target claude|cursor] [--out path|-] [--force]\n       ambit stage [show|set <id>]\n       ambit check-model [--strict] [--drift|--no-drift] [--all]\n       ambit check\n       ambit drift [--strict]\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init (prompts for a workflow method on a terminal). method and stage show or change the workflow method and project stage. check-model lints the model against the method (--strict exits 1 on enforced findings). check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
+	fmt.Fprintf(w, "usage: ambit init [dir] [--method id]\n       ambit method list|show [id]|set <id>|export-skill [--target claude|cursor] [--out path|-] [--force]\n       ambit stage [show|set <id>]\n       ambit check-model [--strict] [--drift|--no-drift] [--all]\n       ambit check\n       ambit drift [--strict] [--node id] [--worktree path]\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init (prompts for a workflow method on a terminal). method and stage show or change the workflow method and project stage. check-model lints the model against the method (--strict exits 1 on enforced findings). check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings; --node limits it to one node; --worktree reads files from a git worktree of this repository).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
 }
