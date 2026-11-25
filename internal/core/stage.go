@@ -93,6 +93,9 @@ func (idx *Index) UpdateStatusGated(id NodeID, status Status) error {
 	if err := idx.stageGateLocked(status); err != nil {
 		return err
 	}
+	if err := idx.completionGateLocked(id, status); err != nil {
+		return err
+	}
 	return idx.updateLocked(id, UpdateInput{Status: &status})
 }
 
@@ -112,6 +115,26 @@ func (idx *Index) stageGateLocked(status Status) error {
 			}
 			return fmt.Errorf("%w: %s", ErrStageGate, msg)
 		}
+	}
+	return nil
+}
+
+// completionGateLocked applies the method's completion policy to an agent setting
+// status. Humans use the UI or HTTP and are not gated.
+func (idx *Index) completionGateLocked(id NodeID, status Status) error {
+	if status != StatusDone && status != StatusNeedsReview {
+		return nil
+	}
+	m := idx.activeMethodLocked()
+	n := idx.Nodes[id]
+	if n == nil {
+		return nil
+	}
+	if !m.Completion.AgentMayComplete {
+		return fmt.Errorf("%w: method %q does not let agents mark a node %s; report your result to the architect, who sets the status", ErrCompletionGate, m.ID, status)
+	}
+	if status == StatusDone && reviewRequiredFor(m, n) {
+		return fmt.Errorf("%w: node %q needs review before it is done; set needs_review instead and the architect will mark it done", ErrCompletionGate, id)
 	}
 	return nil
 }

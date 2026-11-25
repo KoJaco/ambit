@@ -12,12 +12,13 @@ type NodeID string
 type Status string
 
 const (
-	StatusDraft      Status = "draft"
-	StatusSpecified  Status = "specified"
-	StatusAssigned   Status = "assigned"
-	StatusInProgress Status = "in_progress"
-	StatusDone       Status = "done"
-	StatusBlocked    Status = "blocked"
+	StatusDraft       Status = "draft"
+	StatusSpecified   Status = "specified"
+	StatusAssigned    Status = "assigned"
+	StatusInProgress  Status = "in_progress"
+	StatusNeedsReview Status = "needs_review"
+	StatusDone        Status = "done"
+	StatusBlocked     Status = "blocked"
 )
 
 const (
@@ -51,6 +52,8 @@ var (
 	ErrContainerConflict    = errors.New("parent_id and relationship_id are mutually exclusive")
 	ErrInvalidPresentation  = errors.New("invalid presentation field")
 	ErrStageGate            = errors.New("stage gate")
+	ErrCompletionGate       = errors.New("completion policy")
+	ErrBadNodeMeta          = errors.New("invalid node metadata")
 	ErrUnknownMethod        = errors.New("unknown method")
 	ErrBadMethod            = errors.New("invalid method")
 	ErrUnknownStage         = errors.New("unknown stage")
@@ -86,6 +89,11 @@ type Node struct {
 	Color          string
 	Renderer       string
 	Schema         []SchemaColumn
+	// Risk (low|medium|high), Review (none|required) and Verify (commands that prove the
+	// node works) are optional review metadata (decision 0015).
+	Risk   string
+	Review string
+	Verify []string
 	// DependsOn is the explicit build-order dependency list (never inferred from edges).
 	DependsOn []NodeID
 	// Contract is nil when the node has none.
@@ -156,6 +164,9 @@ type CreateInput struct {
 	Color          string
 	Renderer       string
 	Schema         []SchemaColumn
+	Risk           string
+	Review         string
+	Verify         []string
 	DependsOn      []NodeID
 	Contract       *NodeContract
 }
@@ -182,6 +193,10 @@ type UpdateInput struct {
 	Color          *string
 	Renderer       *string
 	Schema         *[]SchemaColumn
+	Risk           *string
+	Review         *string
+	// Verify replaces the commands; a non-nil empty slice clears them.
+	Verify *[]string
 	// DependsOn replaces the list; a non-nil empty slice clears it.
 	DependsOn *[]NodeID
 	// Contract replaces the contract; a non-nil empty contract clears it.
@@ -202,7 +217,7 @@ func EffectiveScope(n *Node) []string {
 
 func validStatus(s Status) bool {
 	switch s {
-	case StatusDraft, StatusSpecified, StatusAssigned, StatusInProgress, StatusDone, StatusBlocked:
+	case StatusDraft, StatusSpecified, StatusAssigned, StatusInProgress, StatusNeedsReview, StatusDone, StatusBlocked:
 		return true
 	default:
 		return false
@@ -237,6 +252,6 @@ func cloneRaw(in map[string]jsonRaw) map[string]jsonRaw {
 }
 
 func statusList() string {
-	return fmt.Sprintf("%s, %s, %s, %s, %s, %s",
-		StatusDraft, StatusSpecified, StatusAssigned, StatusInProgress, StatusDone, StatusBlocked)
+	return fmt.Sprintf("%s, %s, %s, %s, %s, %s, %s",
+		StatusDraft, StatusSpecified, StatusAssigned, StatusInProgress, StatusNeedsReview, StatusDone, StatusBlocked)
 }

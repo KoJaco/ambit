@@ -173,6 +173,7 @@ const STATUS_LABELS: Record<string, string> = {
     specified: "Specified",
     assigned: "Assigned",
     in_progress: "In progress",
+    needs_review: "Needs review",
     done: "Done",
     blocked: "Blocked",
 };
@@ -186,6 +187,8 @@ export function statusTone(status: string): ColorToken {
         case "in_progress":
         case "assigned":
             return "blue";
+        case "needs_review":
+            return "amber";
         case "done":
             return "teal";
         case "blocked":

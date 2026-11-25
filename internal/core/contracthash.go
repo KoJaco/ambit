@@ -35,7 +35,9 @@ func (idx *Index) contractFingerprint(id NodeID, own *NodeContract) string {
 }
 
 // baselinesContract reports whether setting this status records the contract baseline.
-func baselinesContract(s Status) bool { return s == StatusInProgress || s == StatusDone }
+func baselinesContract(s Status) bool {
+	return s == StatusInProgress || s == StatusNeedsReview || s == StatusDone
+}
 
 // contractChangedLocked is true when the node recorded a baseline and its contracts
 // differ from it now. The caller holds the lock.

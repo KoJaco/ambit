@@ -30,8 +30,12 @@ type seedNodeIn struct {
 	Implementation []string `json:"implementation,omitempty"`
 	Scope          []string `json:"scope,omitempty"`
 	Protected      bool     `json:"protected,omitempty"`
-	Spec           string   `json:"spec,omitempty"`
-	Icon           string   `json:"icon,omitempty"`
+	// Risk is low|medium|high, Review is none|required, Verify lists commands that prove the node works.
+	Risk   string   `json:"risk,omitempty"`
+	Review string   `json:"review,omitempty"`
+	Verify []string `json:"verify,omitempty"`
+	Spec   string   `json:"spec,omitempty"`
+	Icon   string   `json:"icon,omitempty"`
 	// DependsOn lists node ids that must be built first (real build ordering only).
 	DependsOn []string `json:"depends_on,omitempty"`
 	// Contract is the node interface: payloads, invariants, errors, owns_data.
@@ -87,6 +91,9 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 				Implementation: n.Implementation,
 				Scope:          n.Scope,
 				Protected:      n.Protected,
+				Risk:           n.Risk,
+				Review:         n.Review,
+				Verify:         n.Verify,
 				Icon:           n.Icon,
 				DependsOn:      nodeIDs(n.DependsOn),
 				Contract:       n.Contract,
@@ -127,18 +134,22 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 }
 
 type createNodeIn struct {
-	ID             string             `json:"id,omitempty"`
-	Name           string             `json:"name" jsonschema:"required"`
-	Type           string             `json:"type" jsonschema:"required"`
-	ParentID       string             `json:"parent_id,omitempty"`
-	RelationshipID string             `json:"relationship_id,omitempty"`
-	Implementation []string           `json:"implementation,omitempty"`
-	Scope          []string           `json:"scope,omitempty"`
-	Protected      bool               `json:"protected,omitempty"`
-	Spec           string             `json:"spec,omitempty"`
-	Icon           string             `json:"icon,omitempty"`
-	DependsOn      []string           `json:"depends_on,omitempty"`
-	Contract       *core.NodeContract `json:"contract,omitempty"`
+	ID             string   `json:"id,omitempty"`
+	Name           string   `json:"name" jsonschema:"required"`
+	Type           string   `json:"type" jsonschema:"required"`
+	ParentID       string   `json:"parent_id,omitempty"`
+	RelationshipID string   `json:"relationship_id,omitempty"`
+	Implementation []string `json:"implementation,omitempty"`
+	Scope          []string `json:"scope,omitempty"`
+	Protected      bool     `json:"protected,omitempty"`
+	// Risk is low|medium|high, Review is none|required, Verify lists commands that prove the node works.
+	Risk      string             `json:"risk,omitempty"`
+	Review    string             `json:"review,omitempty"`
+	Verify    []string           `json:"verify,omitempty"`
+	Spec      string             `json:"spec,omitempty"`
+	Icon      string             `json:"icon,omitempty"`
+	DependsOn []string           `json:"depends_on,omitempty"`
+	Contract  *core.NodeContract `json:"contract,omitempty"`
 }
 
 func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in createNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -157,6 +168,9 @@ func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolReques
 				Implementation: in.Implementation,
 				Scope:          in.Scope,
 				Protected:      in.Protected,
+				Risk:           in.Risk,
+				Review:         in.Review,
+				Verify:         in.Verify,
 				Icon:           in.Icon,
 				DependsOn:      nodeIDs(in.DependsOn),
 				Contract:       in.Contract,
@@ -177,6 +191,9 @@ type updateNodeIn struct {
 	Implementation *[]string `json:"implementation,omitempty"`
 	Scope          *[]string `json:"scope,omitempty"`
 	Protected      *bool     `json:"protected,omitempty"`
+	Risk           *string   `json:"risk,omitempty"`
+	Review         *string   `json:"review,omitempty"`
+	Verify         *[]string `json:"verify,omitempty"`
 	Spec           *string   `json:"spec,omitempty"`
 	Icon           *string   `json:"icon,omitempty"`
 	// DependsOn replaces the list when present; [] clears it. Omitted leaves it unchanged.
@@ -217,6 +234,9 @@ func updatePatch(in updateNodeIn) (core.UpdateInput, error) {
 		Implementation: in.Implementation,
 		Scope:          in.Scope,
 		Protected:      in.Protected,
+		Risk:           in.Risk,
+		Review:         in.Review,
+		Verify:         in.Verify,
 		Icon:           in.Icon,
 		Contract:       in.Contract,
 	}

@@ -50,6 +50,9 @@ type NodeView struct {
 	Implementation []string
 	Scope          []string
 	Protected      bool
+	Risk           string
+	Review         string
+	Verify         []string
 	Spec           string
 	Icon           string
 	Color          string
@@ -330,6 +333,9 @@ func snapshot(n *Node) NodeView {
 		Implementation: cloneStrings(n.Implementation),
 		Scope:          cloneStrings(n.Scope),
 		Protected:      n.Protected,
+		Risk:           n.Risk,
+		Review:         n.Review,
+		Verify:         cloneStrings(n.Verify),
 		Spec:           n.Spec,
 		Icon:           n.Icon,
 		Color:          n.Color,

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { NodeSnapshot, OpDiff } from "./api";
-import { planAccepted, runSteps, type StepApi } from "./proposal-history";
+import { acceptedEntry, planAccepted, runSteps, type StepApi } from "./proposal-history";
 
 function snap(id: string, over: Partial<NodeSnapshot> = {}): NodeSnapshot {
     return { id, name: id, type: "service", status: "draft", implementation: [], scope: [], protected: false, markdown: "", ...over };
@@ -129,5 +129,125 @@ describe("node model history", () => {
                 },
             ]),
         ).toBeNull();
+    });
+});
+
+describe("acceptedEntry restage", () => {
+    function setup() {
+        const calls: string[] = [];
+        const api = {
+            runSteps: vi.fn(async () => void calls.push("steps")),
+            restageProposal: vi.fn(async (id: string, ops?: number[]) => {
+                calls.push(`restage:${id}:${ops?.join(",")}`);
+                return "p2";
+            }),
+            acceptAll: vi.fn(async (id: string) => {
+                calls.push(`accept:${id}`);
+                return { applied: [0, 1, 2], skipped: [], failed: [] };
+            }),
+            getProposalState: vi.fn(async (id: string) => ({
+                proposal_id: id,
+                status: "pending",
+                operations: [0, 1, 2].map((index) => ({ index, op: "update_node", node_id: "x", status: "pending" })),
+            })),
+        };
+        return { calls, api };
+    }
+
+    it("undo restores the model first, then restages the applied indexes", async () => {
+        const { calls, api } = setup();
+        const entry = acceptedEntry("group", group, "p1", [2, 0, 1], api)!;
+        await entry.undo();
+        expect(calls).toEqual(["steps", "restage:p1:0,1,2"]);
+        expect(entry.undoNote!()).toBe("3 changes are back as a proposal to review.");
+    });
+
+    it("redo accepts the restaged proposal without replaying forward steps, then undo restages from it", async () => {
+        const { calls, api } = setup();
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await entry.undo();
+        await entry.redo();
+        expect(calls.slice(2)).toEqual(["accept:p2"]);
+        expect(api.runSteps).toHaveBeenCalledTimes(1);
+        await entry.undo();
+        expect(calls.at(-1)).toBe("restage:p2:0,1,2");
+    });
+
+    it("reports a restage failure after the model was restored", async () => {
+        const { api } = setup();
+        api.restageProposal.mockRejectedValueOnce(new Error("boom"));
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await expect(entry.undo()).rejects.toThrow(/undone but could not be restaged.*boom/);
+        expect(api.runSteps).toHaveBeenCalledTimes(1);
+    });
+
+    it("words the undo note in the singular for one change", async () => {
+        const { api } = setup();
+        const entry = acceptedEntry("g", [group[1]], "p1", [1], api)!;
+        await entry.undo();
+        expect(entry.undoNote!()).toBe("1 change is back as a proposal to review.");
+    });
+
+    it("refuses redo when a restaged op was rejected", async () => {
+        const { api } = setup();
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await entry.undo();
+        api.getProposalState.mockResolvedValueOnce({
+            proposal_id: "p2",
+            status: "pending",
+            operations: [
+                { index: 0, op: "x", node_id: "g", status: "pending" },
+                { index: 1, op: "x", node_id: "a", status: "rejected" },
+                { index: 2, op: "x", node_id: "b", status: "pending" },
+            ],
+        });
+        await expect(entry.redo()).rejects.toThrow(/Cannot redo/);
+        expect(api.acceptAll).not.toHaveBeenCalled();
+    });
+
+    it("refuses redo when a restaged op is stale", async () => {
+        const { api } = setup();
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await entry.undo();
+        api.getProposalState.mockResolvedValueOnce({
+            proposal_id: "p2",
+            status: "pending",
+            operations: [0, 1, 2].map((index) => ({ index, op: "x", node_id: "n", status: "pending", stale: index === 2 })),
+        });
+        await expect(entry.redo()).rejects.toThrow(/Cannot redo/);
+        expect(api.acceptAll).not.toHaveBeenCalled();
+    });
+
+    it("refuses redo when the state call fails", async () => {
+        const { api } = setup();
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await entry.undo();
+        api.getProposalState.mockRejectedValueOnce(new Error("offline"));
+        await expect(entry.redo()).rejects.toThrow(/offline/);
+        expect(api.acceptAll).not.toHaveBeenCalled();
+    });
+
+    it("can redo after a retry once the state is clean", async () => {
+        const { api } = setup();
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await entry.undo();
+        api.getProposalState.mockRejectedValueOnce(new Error("offline"));
+        await expect(entry.redo()).rejects.toThrow();
+        await entry.redo();
+        expect(api.acceptAll).toHaveBeenCalledWith("p2");
+    });
+
+    it("redo is unavailable after a failed restage", async () => {
+        const { api } = setup();
+        api.restageProposal.mockRejectedValueOnce(new Error("boom"));
+        const entry = acceptedEntry("group", group, "p1", [0, 1, 2], api)!;
+        await expect(entry.undo()).rejects.toThrow();
+        await expect(entry.redo()).rejects.toThrow(/no restaged proposal/);
+        expect(api.getProposalState).not.toHaveBeenCalled();
+        expect(api.acceptAll).not.toHaveBeenCalled();
+    });
+
+    it("returns null for irreversible ops", () => {
+        expect(acceptedEntry("x", [op({ op: "delete_node", node_id: "g" })], "p1", [0])).toBeNull();
     });
 });

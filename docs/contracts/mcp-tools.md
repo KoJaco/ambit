@@ -307,8 +307,8 @@ different repository is refused. Read-only.
 
 #### `update_node_status(node_id, status)`
 
-Sets a node's `status` to one of `draft`, `specified`, `assigned`, `in_progress`, `done`,
-`blocked`.
+Sets a node's `status` to one of `draft`, `specified`, `assigned`, `in_progress`,
+`needs_review`, `done`, `blocked`.
 
 **Writes directly, bypassing staging.** This is a deliberate exception. Routing it through
 review would mean an agent finishing work leaves a proposal sitting unreviewed, so `status`
@@ -319,9 +319,40 @@ does not carry that risk, and it is trivially revertable.
 **Stage gate.** Before writing, it asks the core `StageGate`. When the active method refuses
 that status in the current stage, the call fails with a tool error carrying the gate
 message (core `ErrStageGate`). Under `design-first` in the `design` stage, `assigned`,
-`in_progress` and `done` are refused; `draft`, `specified` and `blocked` are allowed.
+`in_progress`, `needs_review` and `done` are refused; `draft`, `specified` and `blocked` are allowed.
 `freeform` and `map-existing` never gate. The human UI and HTTP status control are not
 gated.
+
+**Completion policy** (decision 0015). Setting `done` or `needs_review` also asks the method's
+`completion` policy (core `ErrCompletionGate`, HTTP code `completion_gate`). With
+`review_required` an agent may not set `done`; it sets `needs_review` and a human sets `done`.
+With `agent_may_complete: false` an agent may set neither. A node's own `review` field
+(`required` or `none`) overrides `review_required` for that node. Built-in methods leave the
+policy open (agents may complete); a project turns it on with `method_overrides.completion`
+in `config.json` or in a user method. The human UI and HTTP status control are not gated.
+
+#### `check_done(node_id, worktree?, base?)`
+
+One pass/fail answer to "am I done?" for a node. It takes the files changed on the branch
+(committed, uncommitted and untracked, against `base`, default the merge-base with `main` or
+`master`; `.arch/` is left out), checks them against the node's scope, runs drift limited to
+the node, flags contracts that changed after the node's status was last set, lists the
+node's `verify` commands and reports the status the agent may set next (`completion`). It does
+not run the commands. `pass` means no scope violation and no node drift. Read-only.
+
+#### `get_proposal(proposal_id)` and `wait_for_proposal(proposal_id, timeout_s?)`
+
+`get_proposal` returns `{proposal_id, status, source, summary, operations[]}` where `status`
+is `pending`, `accepted`, `rejected`, `partial` (some accepted, some rejected) or
+`withdrawn` (deleted). Finished proposals are kept as records under
+`.arch/.proposals/.resolved/` (the 100 most recently resolved), so the answer survives accept and reject.
+`wait_for_proposal` blocks until the proposal is no longer pending or `timeout_s` passes
+(default 60, at most 300) and returns the same state plus `timed_out`. Staging tools point to
+it, so an agent need not ask the architect to reply "accepted".
+
+Operations within one `seed_model` call may reference each other in `parent_id` and
+`depends_on` in any order; creates are ordered parent-first and dependency-first before
+staging. A real cycle is still rejected.
 
 ## Invariants (Must Always Hold)
 

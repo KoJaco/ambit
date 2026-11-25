@@ -14,7 +14,29 @@ export type HistoryEntry = {
     label: string;
     undo: () => Promise<void>;
     redo: () => Promise<void>;
+    // Shown after a successful undo, e.g. when the undone changes came back as a proposal.
+    undoNote?: () => string;
 };
+
+// Thrown by an entry that can no longer run and should be dropped without clearing the rest.
+export class StaleEntryError extends Error {}
+
+const NOTE_LABEL_MAX = 60;
+
+// Short form of a (possibly very long) label for status notes and aria-labels.
+export function truncateLabel(label: string, max = NOTE_LABEL_MAX): string {
+    const text = label.replace(/\s+/g, " ").trim();
+    if (text.length <= max) return text;
+    return `${text.slice(0, max - 1).trimEnd()}\u2026`;
+}
+
+// "Undid: label. extra" without doubled punctuation.
+export function stepNote(dir: "undo" | "redo", label: string, extra?: string): string {
+    let head = `${dir === "undo" ? "Undid" : "Redid"}: ${truncateLabel(label)}`;
+    if (!extra) return head;
+    if (!/[.!?\u2026]$/.test(head)) head += ".";
+    return `${head} ${extra}`;
+}
 
 export type HistoryView = {
     canUndo: boolean;
@@ -60,6 +82,9 @@ export function createHistory(limit = HISTORY_LIMIT) {
             to.push(entry);
             if (to.length > limit) to.shift();
             return entry.label;
+        } catch (err) {
+            if (err instanceof StaleEntryError) from.pop();
+            throw err;
         } finally {
             busy = false;
             emit();
@@ -73,6 +98,7 @@ export function createHistory(limit = HISTORY_LIMIT) {
             future = [];
             emit();
         },
+        peek: (dir: "undo" | "redo") => (dir === "undo" ? past : future).at(-1),
         undo: () => step(past, future, "undo"),
         redo: () => step(future, past, "redo"),
         clear() {

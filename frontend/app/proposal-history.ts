@@ -3,6 +3,7 @@
 // replays the operations' before/after snapshots through the direct edit API.
 
 import {
+    acceptAll,
     createNode,
     deleteNode,
     deleteRelationship,
@@ -11,9 +12,13 @@ import {
     type NodePatch,
     type NodeSnapshot,
     type OpDiff,
+    getProposalState,
+    restageProposal,
+    type AcceptAllResult,
+    type ProposalState,
     type RelSnapshot,
 } from "./api";
-import type { HistoryEntry } from "./history";
+import { StaleEntryError, type HistoryEntry } from "./history";
 
 export type Step =
     | { kind: "create"; node: NodeSnapshot }
@@ -23,7 +28,7 @@ export type Step =
     | { kind: "delete-rel"; id: string };
 
 // Fields an update operation may list that history knows how to restore. "spec" is the markdown.
-const RESTORABLE = ["name", "type", "status", "parent_id", "implementation", "scope", "protected", "spec", "icon", "color", "depends_on", "contract"];
+const RESTORABLE = ["name", "type", "status", "parent_id", "implementation", "scope", "protected", "spec", "icon", "color", "depends_on", "contract", "risk", "review", "verify"];
 
 function patchFrom(node: NodeSnapshot, fields: string[]): NodePatch | null {
     const patch: NodePatch = {};
@@ -47,6 +52,15 @@ function patchFrom(node: NodeSnapshot, fields: string[]): NodePatch | null {
                 break;
             case "contract":
                 patch.contract = node.contract ?? {};
+                break;
+            case "risk":
+                patch.risk = node.risk ?? "";
+                break;
+            case "review":
+                patch.review = node.review ?? "";
+                break;
+            case "verify":
+                patch.verify = node.verify ?? [];
                 break;
             default:
                 (patch as Record<string, unknown>)[field] = node[field as keyof NodeSnapshot];
@@ -171,13 +185,72 @@ export async function runSteps(steps: Step[], api: StepApi = liveApi): Promise<v
     }
 }
 
+export type ProposalApi = {
+    restageProposal: (proposalId: string, operations?: number[]) => Promise<string>;
+    acceptAll: (proposalId: string) => Promise<AcceptAllResult>;
+    getProposalState: (proposalId: string) => Promise<ProposalState>;
+    runSteps: (steps: Step[]) => Promise<void>;
+};
+
+const liveProposalApi: ProposalApi = { restageProposal, acceptAll, getProposalState, runSteps };
+
 // Entry for the history stack, or null when the accepted ops cannot be reversed exactly.
-export function acceptedEntry(label: string, ops: OpDiff[]): HistoryEntry | null {
+//
+// Undo restores the model from the backward steps, then restages the accepted ops (by index) as a
+// new pending proposal so the user must re-accept or reject them. Redo accepts that restaged
+// proposal (acceptAll) instead of replaying forward steps, which would double-apply. The restaged
+// proposal then becomes the source for the next undo.
+export function acceptedEntry(
+    label: string,
+    ops: OpDiff[],
+    proposalId: string,
+    appliedIndexes: number[],
+    api: ProposalApi = liveProposalApi,
+): HistoryEntry | null {
     const plan = planAccepted(ops);
     if (!plan || plan.undo.length === 0) return null;
+    let sourceId = proposalId;
+    let sourceIndexes = [...appliedIndexes].sort((a, b) => a - b);
+    let restagedId: string | null = null;
     return {
         label,
-        undo: () => runSteps(plan.undo),
-        redo: () => runSteps(plan.redo),
+        undoNote: () => {
+            const n = sourceIndexes.length;
+            return n === 1 ? "1 change is back as a proposal to review." : `${n} changes are back as a proposal to review.`;
+        },
+        undo: async () => {
+            await api.runSteps(plan.undo);
+            try {
+                restagedId = await api.restageProposal(sourceId, sourceIndexes);
+            } catch (err) {
+                const reason = err instanceof Error ? err.message : "request failed";
+                throw new Error(`the changes were undone but could not be restaged as a proposal (${reason})`);
+            }
+        },
+        redo: async () => {
+            if (!restagedId) throw new Error("no restaged proposal to accept");
+            // Refuse unless every restaged op is still pending and fresh; accepting a partly
+            // resolved or stale proposal would apply only some of the change.
+            let state: ProposalState;
+            try {
+                state = await api.getProposalState(restagedId);
+            } catch (err) {
+                const reason = err instanceof Error ? err.message : "request failed";
+                throw new Error(`could not check the restaged proposal, so nothing was redone (${reason})`);
+            }
+            const ready =
+                state.operations.length === sourceIndexes.length &&
+                state.operations.every((o) => o.status === "pending" && !o.stale);
+            if (!ready) {
+                throw new StaleEntryError("Cannot redo: the proposal was rejected or changed.");
+            }
+            const result = await api.acceptAll(restagedId);
+            if (result.applied.length !== sourceIndexes.length) {
+                throw new Error(`accepted ${result.applied.length} of ${sourceIndexes.length} restaged changes`);
+            }
+            sourceId = restagedId;
+            sourceIndexes = [...result.applied].sort((a, b) => a - b);
+            restagedId = null;
+        },
     };
 }

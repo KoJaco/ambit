@@ -11,7 +11,19 @@ import (
 const siblingSpecCap = 1200
 
 // BriefClosing is the last line of every brief.
-const BriefClosing = "When you are done, call check_drift with your node_id (add worktree if you work in a git worktree) to confirm the model and code agree, then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it."
+const BriefClosing = "When you are done, call check_done with your node_id (add worktree if you work in a git worktree): it checks the files changed on your branch against your scope, runs check_drift for your node and flags interface changes in one pass. Then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it."
+
+// closingFor is BriefClosing adjusted to the method's completion policy for node n.
+func closingFor(m *Method, n *Node) string {
+	const tail = "Then call update_node_status for your node."
+	switch {
+	case !m.Completion.AgentMayComplete:
+		return strings.Replace(BriefClosing, tail, "Do not change your node's status to done or needs_review: report your result to the architect, who sets it.", 1)
+	case reviewRequiredFor(m, n):
+		return strings.Replace(BriefClosing, tail, "Then call update_node_status with needs_review for your node (not done): the architect marks it done after review.", 1)
+	}
+	return BriefClosing
+}
 
 // ShallowModelGuidance is the one-line modeling rule shared by the brief and the MCP
 // authoring tool descriptions (decision 0010).
@@ -103,6 +115,24 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	idx.writeBuildOrder(&b, n)
 
 	fmt.Fprintf(&b, "\nCall the check_scope tool with node_id %q periodically while you work, and again before you finish.\n", id)
+	if len(n.Verify) > 0 {
+		b.WriteString("\nVerify your work with these commands before you finish:\n")
+		for _, c := range n.Verify {
+			fmt.Fprintf(&b, "  - %s\n", c)
+		}
+	}
+	if n.Risk != "" || n.Review != "" {
+		var parts []string
+		if n.Risk != "" {
+			parts = append(parts, "risk "+n.Risk)
+		}
+		if n.Review == ReviewRequired {
+			parts = append(parts, "review required")
+		}
+		if len(parts) > 0 {
+			fmt.Fprintf(&b, "\nThis node is flagged: %s. Take extra care and keep the change small.\n", strings.Join(parts, ", "))
+		}
+	}
 
 	fmt.Fprintf(&b, "\nIf you propose changes to the architecture model: %s\n", ShallowModelGuidance)
 	fmt.Fprintf(&b, "%s\n", AuthoringGuidance)
@@ -110,7 +140,7 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	if len(n.Spec) > 0 {
 		fmt.Fprintf(&b, "\nSpecification for your node:\n%s\n", strings.TrimSpace(n.Spec))
 	}
-	fmt.Fprintf(&b, "\n%s\n", BriefClosing)
+	fmt.Fprintf(&b, "\n%s\n", closingFor(idx.activeMethodLocked(), n))
 	return b.String(), nil
 }
 

@@ -80,7 +80,7 @@ func nextSteps(m *core.Method, stage string) []string {
 	} else {
 		steps = append(steps,
 			"Call get_build_order, pick a node whose blocked_by is empty, then get_context and check_scope before editing code.",
-			"Use update_node_status to move nodes through assigned, in_progress and done.")
+			"Use update_node_status to move nodes through assigned and in_progress. "+completionStep(m)+" Call check_done with your node_id (and worktree, if you work in one) before you finish.")
 	}
 	var enforced, advisory []string
 	for _, id := range core.LintRuleIDs() {
@@ -125,3 +125,15 @@ func (e *toolEnv) handleCheckModel(_ context.Context, _ *sdkmcp.CallToolRequest,
 const getStartedDescription = "Start here. Returns the active workflow method ({id, name}), the project stage ({id, name} or null), the method guidance, the method's stages and short next_steps for this method and stage. Read-only: the method and stage are chosen by a human and no tool changes them."
 
 const checkModelDescription = "Lint the model against the active method's rules. Returns {ok, method, stage, findings[], counts, drift?}. Findings carry rule, severity (advisory|enforced), node_id or relationship_id and a message; ok is false only when an enforced finding exists. Optional include_drift (default: the method's setting) adds check_drift output; all_rules runs every rule as advisory. Read-only."
+
+// completionStep states, from the method's completion policy, how an agent finishes.
+func completionStep(m *core.Method) string {
+	switch {
+	case !m.Completion.AgentMayComplete:
+		return "Agents do not mark nodes finished under this method: report your result to the architect, who sets the status."
+	case m.Completion.ReviewRequired:
+		return "When finished, set needs_review (not done); the architect marks it done after review."
+	default:
+		return "When finished, set done."
+	}
+}

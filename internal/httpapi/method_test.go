@@ -57,7 +57,7 @@ func TestPutMethodAndStage(t *testing.T) {
 	if m["id"] != "design-first" || m["stage"].(map[string]any)["id"] != "design" {
 		t.Fatalf("%v", m)
 	}
-	if g := m["gates"].(map[string]any)["design"].([]any); len(g) != 3 {
+	if g := m["gates"].(map[string]any)["design"].([]any); len(g) != 4 {
 		t.Fatalf("gates %v", g)
 	}
 	rec = doJSON(t, idx, http.MethodPut, "/stage", map[string]string{"id": "build"})

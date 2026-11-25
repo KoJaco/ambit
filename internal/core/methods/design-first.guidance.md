@@ -1,6 +1,6 @@
 This project uses the design-first method. Design the whole system in the model before any code is written, then build.
 
-Stages. The project starts in the design stage and a human moves it to build. You cannot change the stage. While it is design, update_node_status refuses assigned, in_progress and done; draft, specified and blocked still work. Tell the human when the design looks ready, and do not try to work around the gate.
+Stages. The project starts in the design stage and a human moves it to build. You cannot change the stage. While it is design, update_node_status refuses assigned, in_progress, needs_review and done; draft, specified and blocked still work. Tell the human when the design looks ready, and do not try to work around the gate.
 
 In the design stage:
 - {{authoring_guidance}}

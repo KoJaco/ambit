@@ -35,6 +35,42 @@ func getProposal(idx *core.Index) http.HandlerFunc {
 	}
 }
 
+func getProposalState(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, err := idx.ProposalState(r.PathValue("id"))
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, st)
+	}
+}
+
+// postRestageProposal puts accepted operations back in front of the architect as a new
+// pending proposal. The UI calls it after undoing an accepted proposal.
+func postRestageProposal(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			ProposalID string `json:"proposal_id"`
+			Operations []int  `json:"operations"`
+		}
+		if err := decodeOptionalJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		if body.ProposalID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "proposal_id is required"})
+			return
+		}
+		id, err := idx.Restage(body.ProposalID, body.Operations)
+		if err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"proposal_id": id})
+	}
+}
+
 func postAcceptOperation(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		index, err := operationIndex(r)

@@ -16,7 +16,7 @@ type stageResponse struct {
 }
 
 func stagedMessage(source, id, detail string) string {
-	return fmt.Sprintf("Proposed %s as proposal %s. This has NOT been applied to the model. The architect must accept it in the ambit UI before it takes effect.", detail, id)
+	return fmt.Sprintf("Proposed %s as proposal %s. This has NOT been applied to the model. The architect must accept it in the ambit UI before it takes effect. Call wait_for_proposal with this proposal_id to wait for the decision (get_proposal reads it without waiting).", detail, id)
 }
 
 func (e *toolEnv) stage(ctx context.Context, in core.StageInput) (*sdkmcp.CallToolResult, stageResponse, error) {

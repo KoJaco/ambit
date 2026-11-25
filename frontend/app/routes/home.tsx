@@ -27,7 +27,7 @@ import {
     shouldAutoOpenReview,
     useRailState,
 } from "../right-rail-state";
-import { history, isOutsideChange, useHistory } from "../history";
+import { history, isOutsideChange, StaleEntryError, stepNote, useHistory } from "../history";
 import { useDesktopViewport } from "../hooks/use-desktop-viewport";
 
 export function meta({}: Route.MetaArgs) {
@@ -68,15 +68,24 @@ export default function Home() {
     const [historyNote, setHistoryNote] = useState<string | null>(null);
     useEffect(() => {
         if (!historyNote) return;
-        const timer = window.setTimeout(() => setHistoryNote(null), 3000);
+        const timer = window.setTimeout(() => setHistoryNote(null), historyNote.includes("proposal") ? 6000 : 3000);
         return () => window.clearTimeout(timer);
     }, [historyNote]);
     async function stepHistory(dir: "undo" | "redo") {
         try {
+            const entry = history.peek(dir);
             const label = await history[dir]();
             if (!label) return;
-            setHistoryNote(`${dir === "undo" ? "Undid" : "Redid"}: ${label}`);
+            const extra = dir === "undo" ? entry?.undoNote?.() : undefined;
+            setHistoryNote(stepNote(dir, label, extra));
         } catch (err) {
+            if (err instanceof StaleEntryError) {
+                // Only the refused entry is dropped; the rest of the history stays usable.
+                setHistoryNote(err.message);
+                setHistoryEpoch((value) => value + 1);
+                setRefreshKey((value) => value + 1);
+                return;
+            }
             history.clear();
             setHistoryNote(`Could not ${dir}: ${err instanceof Error ? err.message : "request failed"}. History cleared.`);
         }
@@ -252,10 +261,10 @@ export default function Home() {
                 <div
                     role="status"
                     aria-live="polite"
-                    className="pointer-events-none absolute bottom-20 left-1/2 z-50 -translate-x-1/2"
+                    className="pointer-events-none absolute bottom-20 left-1/2 z-50 w-max max-w-[min(32rem,calc(100%-26rem))] -translate-x-1/2"
                 >
                     {historyNote ? (
-                        <p className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground shadow-md">
+                        <p className="break-words rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-foreground shadow-md">
                             {historyNote}
                         </p>
                     ) : null}

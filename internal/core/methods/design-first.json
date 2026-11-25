@@ -10,7 +10,7 @@
     {"id": "build", "name": "Build", "preamble": "Project stage: build. The design is agreed. Implement your node against its spec and contract, and propose model changes rather than editing around them."}
   ],
   "initial_stage": "design",
-  "gates": {"status": {"design": ["assigned", "in_progress", "done"]}},
+  "gates": {"status": {"design": ["assigned", "in_progress", "needs_review", "done"]}},
   "lint": {
     "leaf-implementation": "enforced",
     "spec-present": "enforced",

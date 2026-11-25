@@ -253,7 +253,15 @@ file and its `~<hash>` variants so the client recomputes. A field edit does not.
 - **Accept-all / reject-all within a proposal** — convenience over the per-operation
   endpoints. Accept-all **skips stale operations** and reports which were skipped; it must
   never sweep a stale operation through.
-- **Delete a proposal** — discards it wholesale.
+- **Delete a proposal** — discards it wholesale (kept as a `withdrawn` record).
+- **Proposal state** — `GET /proposals/{id}/state` answers for pending and finished
+  proposals: `{proposal_id, status, operations[]}` with status `pending`, `accepted`,
+  `rejected`, `partial` or `withdrawn`.
+- **Restage** — `POST /proposals/restage` `{ "proposal_id", "operations"?: [index] }` copies
+  the accepted operations (all of them when omitted) of a pending or finished proposal into a
+  new pending proposal and answers `201 {"proposal_id"}`. Base hashes are kept, so it is not
+  stale when the model was first restored to its pre-accept state. `400` when an index is
+  not an accepted operation, `404` for an unknown proposal.
 - **Stage a group / ungroup / reparent proposal** — canvas structure edits never write
   silently; each stages exactly one proposal (multi-operation, reviewed like any other) and
   answers `201` with the same body as `GET /proposals/{id}`. Nothing in `.arch/nodes/`
@@ -323,7 +331,7 @@ request, `409` for a validation conflict such as a hierarchy cycle or accepting 
 operation without confirmation, `500` for an unreadable or malformed model.
 
 Error bodies are `{"error": "<message>"}`. The workflow-method errors add a stable `code`
-(additive; other errors carry none): `stage_gate` (409), `unknown_method` (400),
+(additive; other errors carry none): `stage_gate` (409), `completion_gate` (409), `unknown_method` (400),
 `bad_method` (409), `unknown_stage` (400), `stage_unsupported` (409). Clients should branch on `code`, not on the message.
 
 Every error body carries a human-readable message naming the specific node, operation, or

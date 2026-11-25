@@ -140,10 +140,16 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   `data store`, whatever the architect writes). No enum, no registry, no validation. The UI
   matches known strings to icons on a best-effort basis and falls back to a generic shape.
   An unrecognised type is never an error.
-- `status` — one of `draft`, `specified`, `assigned`, `in_progress`, `done`, `blocked`.
+- `status` — one of `draft`, `specified`, `assigned`, `in_progress`, `needs_review`, `done`,
+  `blocked`. Only `done` counts as done in the build order.
+- `risk` (`low`, `medium`, `high`), `review` (`none`, `required`) and `verify` (array of at
+  most 8 commands, each at most 300 characters) — optional review metadata
+  ([decision 0015](../decisions/0015-completion-policy-and-review-metadata.md)). `review`
+  overrides the method's `completion.review_required` for the node; `verify` is printed in the
+  brief and by `check_done`.
 - `contract_hash` — optional string. A fingerprint of the node's contract plus the
   contracts of every relationship it is an endpoint of, recorded whenever `status` is set to
-  `in_progress` or `done`. When the current fingerprint differs, the `contract-changed` lint
+  `in_progress`, `needs_review` or `done`. When the current fingerprint differs, the `contract-changed` lint
   rule, `get_build_order` (`contract_changed`) and the brief flag the node
   ([decision 0014](../decisions/0014-drift-and-contract-tracking.md)). Written by ambit;
   do not edit by hand.
@@ -187,7 +193,7 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   stored here.
 
 Node file key order on write: `id, name, type, parent_id, relationship_id, implementation,
-scope, protected, icon, color, renderer, schema, depends_on, contract, contract_hash, status`, then unknown
+scope, protected, risk, review, verify, icon, color, renderer, schema, depends_on, contract, contract_hash, status`, then unknown
 keys sorted. Over-limit values already on disk still load; new values over a limit are
 rejected on write.
 
@@ -298,6 +304,11 @@ Recognised keys (all optional; unknown keys are preserved on write):
 - `method` — id of the active workflow method ([decision 0013](../decisions/0013-workflow-methods.md)).
   Absent means `freeform`. A non-string value, or an id that names no built-in or
   `.arch/methods/` method, is ignored with a warning and the project behaves as `freeform`.
+- `method_overrides` — object applied on top of whichever method is active, so one parameter
+  can change without a method file: `lint` (rule id to `off|advisory|enforced` or
+  `{severity, params}`, for example `{"max-depth": {"severity": "advisory", "params":
+  {"max_depth": 4}}}`), `completion` (`agent_may_complete`, `review_required`) and
+  `check.include_drift`. Invalid entries warn and are ignored.
 - `stage` — id of the current project stage. Only meaningful when the method declares stages;
   an unknown stage uses the method's initial stage (warning), and a stage-less method ignores
   it. Written only by human surfaces (UI, `ambit stage set`, `PUT /stage`), never by an agent
@@ -310,7 +321,7 @@ Optional, committed. A user method is a JSON file whose `id` equals its filename
 (`methods/team.json` has `"id": "team"`). Shape: `schema_version` (1), `id`, `name`,
 `description`, `guidance`, `brief_preamble`, `stages` (`[{id, name, preamble}]`),
 `initial_stage`, `gates.status` (stage id to refused statuses), `lint` (rule id to
-`off|advisory|enforced` or `{severity, params}`), `check.include_drift`, `extends`. Long text
+`off|advisory|enforced` or `{severity, params}`), `check.include_drift`, `completion` (`agent_may_complete`, `review_required`), `extends`. Long text
 may be `{"file": "x.md"}`, a plain file name beside the method. `extends` names a built-in
 method; missing keys are inherited, and `lint` entries merge per rule. A user id equal to a
 built-in id shadows it, with a warning. Limits: `guidance` at most 6000 characters, each

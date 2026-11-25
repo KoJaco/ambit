@@ -51,6 +51,15 @@ type MethodCheck struct {
 	IncludeDrift bool `json:"include_drift"`
 }
 
+// MethodCompletion is the completion policy for agents that set node status over MCP.
+// AgentMayComplete false stops agents from marking a node finished at all. ReviewRequired
+// makes finishing mean needs_review, which only a human turns into done. A node's own
+// review setting overrides ReviewRequired (decision 0015).
+type MethodCompletion struct {
+	AgentMayComplete bool `json:"agent_may_complete"`
+	ReviewRequired   bool `json:"review_required"`
+}
+
 // Method is a resolved workflow method: file references are read and `extends` is applied.
 type Method struct {
 	SchemaVersion int                    `json:"schema_version"`
@@ -64,6 +73,7 @@ type Method struct {
 	Gates         MethodGates            `json:"gates"`
 	Lint          map[string]LintSetting `json:"lint"`
 	Check         MethodCheck            `json:"check"`
+	Completion    MethodCompletion       `json:"completion"`
 	Extends       string                 `json:"extends,omitempty"`
 	// Source is "builtin" or "user". Shadows is true for a user method whose id is a
 	// built-in id.
@@ -133,6 +143,10 @@ type methodFile struct {
 	Check         *struct {
 		IncludeDrift *bool `json:"include_drift"`
 	} `json:"check"`
+	Completion *struct {
+		AgentMayComplete *bool `json:"agent_may_complete"`
+		ReviewRequired   *bool `json:"review_required"`
+	} `json:"completion"`
 	Extends string `json:"extends"`
 }
 
@@ -186,7 +200,7 @@ func mustFreeform() *Method {
 	m, _ := BuiltinMethod(FreeformMethod)
 	if m == nil {
 		// Unreachable unless the embedded files are broken (covered by a test).
-		return &Method{SchemaVersion: 1, ID: FreeformMethod, Name: "Freeform", Lint: map[string]LintSetting{}, Source: methodSourceBuiltin}
+		return &Method{SchemaVersion: 1, ID: FreeformMethod, Name: "Freeform", Lint: map[string]LintSetting{}, Source: methodSourceBuiltin, Completion: MethodCompletion{AgentMayComplete: true}}
 	}
 	return m
 }
@@ -212,7 +226,8 @@ func parseMethod(data []byte, wantID string, base *Method, read func(string) (st
 	if f.ID != wantID {
 		return nil, nil, badMethod("id %q does not match the file name %q", f.ID, wantID)
 	}
-	m := &Method{SchemaVersion: 1, ID: f.ID, Name: f.ID, Source: source, Lint: map[string]LintSetting{}, Extends: f.Extends}
+	m := &Method{SchemaVersion: 1, ID: f.ID, Name: f.ID, Source: source, Lint: map[string]LintSetting{}, Extends: f.Extends,
+		Completion: MethodCompletion{AgentMayComplete: true}}
 	if base != nil {
 		c := *base
 		m.Name, m.Description, m.Guidance, m.BriefPreamble = c.Name, c.Description, c.Guidance, c.BriefPreamble
@@ -226,6 +241,7 @@ func parseMethod(data []byte, wantID string, base *Method, read func(string) (st
 			m.Lint[k] = v
 		}
 		m.Check = c.Check
+		m.Completion = c.Completion
 	}
 	text := func(field string, t *textRef) (string, error) {
 		if t.file == "" {
@@ -314,6 +330,14 @@ func parseMethod(data []byte, wantID string, base *Method, read func(string) (st
 	if f.Check != nil && f.Check.IncludeDrift != nil {
 		m.Check.IncludeDrift = *f.Check.IncludeDrift
 	}
+	if f.Completion != nil {
+		if f.Completion.AgentMayComplete != nil {
+			m.Completion.AgentMayComplete = *f.Completion.AgentMayComplete
+		}
+		if f.Completion.ReviewRequired != nil {
+			m.Completion.ReviewRequired = *f.Completion.ReviewRequired
+		}
+	}
 
 	// Limits and cross-checks on the resolved method.
 	if n := utf8.RuneCountInString(m.Guidance); n > MaxMethodGuidance {
@@ -392,6 +416,7 @@ func (idx *Index) loadMethods() {
 			m = mustFreeform()
 		}
 	}
+	m = idx.applyMethodOverrides(m)
 	idx.activeMethod = m
 	if idx.StageID != "" {
 		switch {

@@ -1,7 +1,9 @@
 import clsx from "clsx";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useId, useLayoutEffect, useRef, useState } from "react";
-import type { BuildOrder, NodeContract } from "../api";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { BuildOrder, NodeContract, NodeReview, NodeRisk } from "../api";
+import { REVIEW_OPTIONS, RISK_OPTIONS, VERIFY_ITEM_MAX, VERIFY_MAX_ITEMS, verifyProblems } from "../node-review";
+import { Select } from "./ui/select";
 import type { DependsOption } from "../node-contract";
 import {
     CONTRACT_LISTS,
@@ -46,7 +48,7 @@ export function Counter({ id, length, max }: { id: string; length: number; max: 
 
 // Single-line list item that wraps and grows with its content. Enter is swallowed because items
 // are single-line strings.
-function AutoGrowItem({
+export function AutoGrowItem({
     value,
     onValueChange,
     className,
@@ -307,5 +309,130 @@ export function BuildBadges({
             ) : null}
             {badge.inCycle ? <li className={clsx(pill, "bg-destructive/10 font-medium text-destructive")}>dependency cycle</li> : null}
         </ul>
+    );
+}
+
+export function ReviewFields({
+    risk,
+    review,
+    verify,
+    onChange,
+    serverError,
+}: {
+    risk: NodeRisk | undefined;
+    review: NodeReview | undefined;
+    verify: string[] | undefined;
+    onChange: (next: { risk: NodeRisk; review: NodeReview; verify: string[] }) => void;
+    serverError?: string | null;
+}) {
+    const uid = useId();
+    const items = verify ?? [];
+    const problems = verifyProblems(items);
+    const current = { risk: risk ?? "", review: review ?? "", verify: items };
+    // Stable row keys, kept parallel to the list; rebuilt if the list changes from outside.
+    const keyCounter = useRef(0);
+    const rowKeys = useRef<number[]>([]);
+    if (rowKeys.current.length !== items.length) rowKeys.current = items.map(() => keyCounter.current++);
+    const listRef = useRef<HTMLUListElement>(null);
+    const addRef = useRef<HTMLButtonElement>(null);
+    // Row to focus after the next render: an index, or "add" for the button.
+    const pendingFocus = useRef<number | "add" | null>(null);
+    useEffect(() => {
+        const target = pendingFocus.current;
+        if (target === null) return;
+        pendingFocus.current = null;
+        if (target === "add") addRef.current?.focus();
+        else listRef.current?.querySelectorAll("textarea")[target]?.focus();
+    });
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-risk`} className={labelClass}>
+                    Risk
+                </label>
+                <Select
+                    id={`${uid}-risk`}
+                    value={current.risk}
+                    onChange={(next) => onChange({ ...current, risk: next as NodeRisk })}
+                    options={RISK_OPTIONS}
+                />
+            </div>
+            <div className="flex flex-col gap-1.5">
+                <label htmlFor={`${uid}-review`} className={labelClass}>
+                    Review
+                </label>
+                <Select
+                    id={`${uid}-review`}
+                    value={current.review}
+                    onChange={(next) => onChange({ ...current, review: next as NodeReview })}
+                    options={REVIEW_OPTIONS}
+                />
+            </div>
+            <fieldset className="flex min-w-0 flex-col gap-1.5">
+                <legend className={clsx(labelClass, "mb-1.5")}>Verify commands</legend>
+                {items.length === 0 ? <p className="text-xs text-muted-foreground">None yet.</p> : null}
+                {problems.list ? (
+                    <p role="alert" className="text-xs text-destructive">
+                        {problems.list}
+                    </p>
+                ) : null}
+                <ul ref={listRef} className="flex flex-col gap-1.5">
+                    {items.map((item, index) => (
+                        <li key={rowKeys.current[index]} className="flex flex-col gap-0.5">
+                            <div className="flex items-start gap-1.5">
+                                <AutoGrowItem
+                                    aria-label={`Verify command ${index + 1}`}
+                                    aria-describedby={`${uid}-v-${index}-count${problems.items[index] ? ` ${uid}-v-${index}-error` : ""}`}
+                                    aria-invalid={problems.items[index] ? true : undefined}
+                                    className={clsx(fieldClass, "min-w-0 flex-1 font-mono text-xs")}
+                                    value={item}
+                                    onValueChange={(next) => onChange({ ...current, verify: items.map((v, i) => (i === index ? next : v)) })}
+                                />
+                                <button
+                                    type="button"
+                                    aria-label={`Remove verify command ${index + 1}`}
+                                    className={iconButtonClass}
+                                    onClick={() => {
+                                        rowKeys.current = rowKeys.current.filter((_, i) => i !== index);
+                                        pendingFocus.current = index < items.length - 1 ? index : "add";
+                                        onChange({ ...current, verify: items.filter((_, i) => i !== index) });
+                                    }}
+                                >
+                                    <XIcon className="size-4" aria-hidden />
+                                </button>
+                            </div>
+                            {problems.items[index] ? (
+                                <p id={`${uid}-v-${index}-error`} role="alert" className="text-xs text-destructive">
+                                    {problems.items[index]}
+                                </p>
+                            ) : null}
+                            <Counter id={`${uid}-v-${index}-count`} length={item.trim().length} max={VERIFY_ITEM_MAX} />
+                        </li>
+                    ))}
+                </ul>
+                <button
+                    type="button"
+                    ref={addRef}
+                    disabled={items.length >= VERIFY_MAX_ITEMS}
+                    className="inline-flex min-h-7 w-fit items-center gap-1 rounded-full bg-accent px-3 py-1 text-xs font-medium hover:bg-accent/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                    onClick={() => {
+                        rowKeys.current = [...rowKeys.current, keyCounter.current++];
+                        pendingFocus.current = items.length;
+                        onChange({ ...current, verify: [...items, ""] });
+                    }}
+                >
+                    <PlusIcon className="size-3.5" aria-hidden />
+                    Add command
+                </button>
+                <p className="text-xs text-muted-foreground">
+                    {items.length} / {VERIFY_MAX_ITEMS} commands{items.length >= VERIFY_MAX_ITEMS ? ". Limit reached." : ""}
+                </p>
+            </fieldset>
+            {serverError ? (
+                <p role="alert" className="text-xs text-destructive">
+                    {serverError}
+                </p>
+            ) : null}
+        </div>
     );
 }

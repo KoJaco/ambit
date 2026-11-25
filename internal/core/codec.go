@@ -284,6 +284,25 @@ func decodeNode(data []byte) (*Node, error) {
 		}
 		n.Contract = c
 	}
+	for _, f := range []struct {
+		key string
+		dst *string
+	}{{"risk", &n.Risk}, {"review", &n.Review}} {
+		if raw, ok := take(obj, f.key); ok && !isNull(raw) {
+			v, err := decodeString(raw)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", f.key, err)
+			}
+			*f.dst = v
+		}
+	}
+	if raw, ok := take(obj, "verify"); ok && !isNull(raw) {
+		var cmds []string
+		if err := json.Unmarshal(raw, &cmds); err != nil {
+			return nil, fmt.Errorf("verify must be an array of strings")
+		}
+		n.Verify = cmds
+	}
 	if raw, ok := take(obj, "contract_hash"); ok && !isNull(raw) {
 		h, err := decodeString(raw)
 		if err != nil {
@@ -342,6 +361,21 @@ func encodeNode(n *Node) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if n.Risk != "" {
+		if err = put("risk", n.Risk); err != nil {
+			return nil, err
+		}
+	}
+	if n.Review != "" {
+		if err = put("review", n.Review); err != nil {
+			return nil, err
+		}
+	}
+	if len(n.Verify) > 0 {
+		if err = put("verify", n.Verify); err != nil {
+			return nil, err
+		}
+	}
 	if n.Icon != "" {
 		if err = put("icon", n.Icon); err != nil {
 			return nil, err
@@ -385,7 +419,7 @@ func encodeNode(n *Node) ([]byte, error) {
 	if err = put("status", string(n.Status)); err != nil {
 		return nil, err
 	}
-	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "icon", "color", "renderer", "schema", "depends_on", "contract", "contract_hash", "status"}
+	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "risk", "review", "verify", "icon", "color", "renderer", "schema", "depends_on", "contract", "contract_hash", "status"}
 	return encodeObject(order, vals, n.Unknown)
 }
 
