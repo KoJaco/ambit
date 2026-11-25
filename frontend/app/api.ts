@@ -195,6 +195,10 @@ export type RelationshipLevel = {
     warnings: Warning[];
 };
 
+// "" means not set (the server omits it).
+export type NodeRisk = "low" | "medium" | "high" | "";
+export type NodeReview = "none" | "required" | "";
+
 export type NodeDetail = {
     id: string;
     name: string;
@@ -213,6 +217,9 @@ export type NodeDetail = {
     assigned?: boolean;
     depends_on?: string[];
     contract?: NodeContract;
+    risk?: NodeRisk;
+    review?: NodeReview;
+    verify?: string[];
 };
 
 export type NodePatch = {
@@ -231,6 +238,9 @@ export type NodePatch = {
     // PATCH: present replaces, omitted leaves unchanged, [] / {} clears.
     depends_on?: string[];
     contract?: NodeContract;
+    risk?: NodeRisk;
+    review?: NodeReview;
+    verify?: string[];
 };
 
 export type Position = { id: string; x: number; y: number };
@@ -430,6 +440,9 @@ export type NodeSnapshot = {
     color?: string;
     depends_on?: string[];
     contract?: NodeContract;
+    risk?: NodeRisk;
+    review?: NodeReview;
+    verify?: string[];
 };
 
 export type RelSnapshot = {
@@ -503,8 +516,28 @@ export function rejectOperation(id: string, index: number): Promise<void> {
     return send(`/proposals/${encodeURIComponent(id)}/operations/${index}/reject`, { method: "POST" });
 }
 
+export type ProposalState = {
+    proposal_id: string;
+    status: string;
+    operations: { index: number; op: string; node_id: string; status: string; stale?: boolean }[];
+};
+
+export function getProposalState(id: string): Promise<ProposalState> {
+    return send(`/proposals/${encodeURIComponent(id)}/state`);
+}
+
 export function acceptAll(id: string): Promise<AcceptAllResult> {
     return send(`/proposals/${encodeURIComponent(id)}/accept`, { method: "POST" });
+}
+
+// Creates a new pending proposal from a proposal's accepted operations (by index; all when omitted).
+export async function restageProposal(proposalId: string, operations?: number[]): Promise<string> {
+    const result = await send<{ proposal_id: string }>("/proposals/restage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ proposal_id: proposalId, ...(operations ? { operations } : {}) }),
+    });
+    return result.proposal_id;
 }
 
 export function rejectAll(id: string): Promise<void> {

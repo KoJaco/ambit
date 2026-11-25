@@ -26,6 +26,9 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			Implementation: body.Implementation,
 			Scope:          body.Scope,
 			Protected:      body.Protected,
+			Risk:           body.Risk,
+			Review:         body.Review,
+			Verify:         body.Verify,
 			Status:         core.Status(body.Status),
 			Icon:           body.Icon,
 			Color:          body.Color,
@@ -62,6 +65,9 @@ func patchNode(idx *core.Index) http.HandlerFunc {
 			Implementation: body.Implementation,
 			Scope:          body.Scope,
 			Protected:      body.Protected,
+			Risk:           body.Risk,
+			Review:         body.Review,
+			Verify:         body.Verify,
 		}
 		if body.Status != nil {
 			status := core.Status(*body.Status)
@@ -208,6 +214,9 @@ func nodeBody(n core.NodeView, assigned core.NodeID) nodeJSON {
 		Implementation: impl,
 		Scope:          scope,
 		Protected:      n.Protected,
+		Risk:           n.Risk,
+		Review:         n.Review,
+		Verify:         n.Verify,
 		Markdown:       n.Spec,
 		Icon:           n.Icon,
 		Color:          n.Color,
@@ -246,6 +255,9 @@ type createJSON struct {
 	Implementation []string            `json:"implementation"`
 	Scope          []string            `json:"scope"`
 	Protected      bool                `json:"protected"`
+	Risk           string              `json:"risk"`
+	Review         string              `json:"review"`
+	Verify         []string            `json:"verify"`
 	Markdown       string              `json:"markdown"`
 	Icon           string              `json:"icon"`
 	Color          string              `json:"color"`
@@ -264,6 +276,9 @@ type patchJSON struct {
 	Implementation *[]string            `json:"implementation"`
 	Scope          *[]string            `json:"scope"`
 	Protected      *bool                `json:"protected"`
+	Risk           *string              `json:"risk"`
+	Review         *string              `json:"review"`
+	Verify         *[]string            `json:"verify"`
 	Markdown       *string              `json:"markdown"`
 	Icon           *string              `json:"icon"`
 	Color          *string              `json:"color"`

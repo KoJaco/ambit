@@ -63,7 +63,14 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if err := idx.validateDependsOn(id, in.ParentID, in.DependsOn); err != nil {
 		return "", err
 	}
+	risk, review, verify, err := normalizeNodeMeta(in.Risk, in.Review, in.Verify)
+	if err != nil {
+		return "", err
+	}
 	node := &Node{
+		Risk:           risk,
+		Review:         review,
+		Verify:         verify,
 		ID:             id,
 		Name:           in.Name,
 		Type:           in.Type,
@@ -120,6 +127,7 @@ func (idx *Index) updateLocked(id NodeID, in UpdateInput) error {
 	next.Implementation = cloneStrings(node.Implementation)
 	next.Scope = cloneStrings(node.Scope)
 	next.DependsOn = append([]NodeID(nil), node.DependsOn...)
+	next.Verify = cloneStrings(node.Verify)
 	next.Unknown = cloneRaw(node.Unknown)
 
 	if in.Name != nil {
@@ -178,6 +186,22 @@ func (idx *Index) updateLocked(id NodeID, in UpdateInput) error {
 	}
 	if in.Protected != nil {
 		next.Protected = *in.Protected
+	}
+	if in.Risk != nil || in.Review != nil || in.Verify != nil {
+		risk, review, verify := next.Risk, next.Review, next.Verify
+		if in.Risk != nil {
+			risk = *in.Risk
+		}
+		if in.Review != nil {
+			review = *in.Review
+		}
+		if in.Verify != nil {
+			verify = *in.Verify
+		}
+		var err error
+		if next.Risk, next.Review, next.Verify, err = normalizeNodeMeta(risk, review, verify); err != nil {
+			return err
+		}
 	}
 	if in.Spec != nil {
 		next.Spec = *in.Spec

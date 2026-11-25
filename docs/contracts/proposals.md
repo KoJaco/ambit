@@ -182,8 +182,14 @@ prose missing, and `index.json` never disagrees with what is on disk.
 **Rejecting marks the operation `rejected`; it does not delete the proposal.** The architect
 may accept some operations and reject others in the same sitting, and may leave and return.
 
-**A proposal is removed once every operation is resolved** — all accepted, all rejected, or
-a mix. Nothing in v1 expires an abandoned proposal with operations still `pending`.
+**A proposal leaves the pending list once every operation is resolved** — all accepted, all
+rejected, or a mix. Its directory is copied to `.arch/.proposals/.resolved/<id>/` first, with
+`resolved.json` (`resolved_at`, status `accepted`, `rejected`, `partial` or `withdrawn`), and
+only the 100 most recently resolved are kept. The record is gitignored with the rest of `.proposals/`. It
+lets `get_proposal` and `GET /proposals/{id}/state` answer after the fact, and lets
+`POST /proposals/restage` rebuild accepted operations as a new pending proposal (the UI
+does this when the architect undoes an accepted proposal). Nothing in v1 expires an
+abandoned proposal with operations still `pending`.
 
 ### Staleness
 

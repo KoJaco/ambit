@@ -46,6 +46,8 @@ func apiRoutes(idx *core.Index, h *hub) []route {
 		{"GET /icons", getIcons},
 		{"GET /proposals", getProposals(idx)},
 		{"GET /proposals/{id}", getProposal(idx)},
+		{"GET /proposals/{id}/state", getProposalState(idx)},
+		{"POST /proposals/restage", postRestageProposal(idx)},
 		{"POST /proposals/group", postGroupProposal(idx)},
 		{"POST /proposals/ungroup", postUngroupProposal(idx)},
 		{"POST /proposals/reparent", postReparentProposal(idx)},

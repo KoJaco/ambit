@@ -281,6 +281,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"set_relationship": true, "delete_relationship": true, "get_context": true, "check_scope": true, "update_node_status": true,
 		"get_graph": true, "list_proposals": true, "list_icons": true, "check_drift": true,
 		"set_constraints": true, "get_build_order": true, "get_started": true, "check_model": true,
+		"get_proposal": true, "wait_for_proposal": true, "check_done": true,
 	}
 	for _, tool := range res.Tools {
 		delete(want, tool.Name)
@@ -288,8 +289,8 @@ func TestMCPServerListsTools(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing tools %v (got %d)", want, len(res.Tools))
 	}
-	if len(res.Tools) != 17 {
-		t.Fatalf("got %d tools, want 17", len(res.Tools))
+	if len(res.Tools) != 20 {
+		t.Fatalf("got %d tools, want 20", len(res.Tools))
 	}
 }
 
@@ -687,5 +688,85 @@ func TestGetGraphContracts(t *testing.T) {
 	_, plain, _ = env.handleGetGraph(context.Background(), nil, getGraphIn{})
 	if len(full.Relationships) != 1 || full.Relationships[0].Contract == nil || full.Relationships[0].Contract.Text != "wire" || plain.Relationships[0].Contract != nil {
 		t.Fatalf("edge contracts: full %+v plain %+v", full.Relationships, plain.Relationships)
+	}
+}
+
+func TestProposalToolsReportAndWait(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+	_, staged, err := env.handleSeedModel(ctx, nil, seedModelIn{
+		Transcript: "t", Nodes: []seedNodeIn{{ID: "svc", Name: "Svc", Type: "service", Spec: "# s\n"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(staged.Message, "wait_for_proposal") {
+		t.Fatalf("message should point at wait_for_proposal: %s", staged.Message)
+	}
+	_, st, err := env.handleGetProposal(ctx, nil, getProposalIn{ProposalID: staged.ProposalID})
+	if err != nil || st.Status != core.ProposalPending {
+		t.Fatalf("pending: %+v %v", st, err)
+	}
+	_, w, err := env.handleWaitForProposal(ctx, nil, waitForProposalIn{ProposalID: staged.ProposalID, TimeoutS: 1})
+	if err != nil || !w.TimedOut || w.Status != core.ProposalPending {
+		t.Fatalf("wait while pending: %+v %v", w, err)
+	}
+	acceptOnly(t, idx)
+	_, w, err = env.handleWaitForProposal(ctx, nil, waitForProposalIn{ProposalID: staged.ProposalID, TimeoutS: 1})
+	if err != nil || w.TimedOut || w.Status != core.ProposalAccepted {
+		t.Fatalf("wait after accept: %+v %v", w, err)
+	}
+	if _, _, err := env.handleGetProposal(ctx, nil, getProposalIn{ProposalID: "p-20200101-0000-abcd"}); err == nil {
+		t.Fatal("unknown proposal should error")
+	}
+}
+
+func TestCheckDoneToolAndStatusGate(t *testing.T) {
+	idx, dir := openFixture(t)
+	env := &toolEnv{idx: idx, dir: dir}
+	ctx := context.Background()
+	for _, args := range [][]string{{"init"}, {"config", "user.name", "t"}, {"config", "user.email", "t@e.x"}} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	id, err := idx.Create(core.CreateInput{Name: "Svc", Type: "service", Implementation: []string{"svc/**"}, Verify: []string{"make test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", "-A"}, {"commit", "-m", "base"}} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "svc"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "svc", "a.go"), []byte("package svc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, rep, err := env.handleCheckDone(ctx, nil, checkDoneIn{NodeID: string(id)})
+	if err != nil || !rep.Pass || len(rep.Verify) != 1 || rep.Completion.FinishStatus != "done" {
+		t.Fatalf("check_done: %+v %v", rep, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "stray.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, rep, _ = env.handleCheckDone(ctx, nil, checkDoneIn{NodeID: string(id)}); rep.Pass || len(rep.Violations) != 1 {
+		t.Fatalf("stray file should fail scope: %+v", rep)
+	}
+	if err := idx.SetConfigKeys(map[string]any{"method_overrides": map[string]any{"completion": map[string]any{"review_required": true}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := env.handleUpdateNodeStatus(ctx, nil, updateStatusIn{NodeID: string(id), Status: "done"}); err == nil || !strings.Contains(err.Error(), "needs_review") {
+		t.Fatalf("done should be refused: %v", err)
+	}
+	if _, _, err := env.handleUpdateNodeStatus(ctx, nil, updateStatusIn{NodeID: string(id), Status: "needs_review"}); err != nil {
+		t.Fatalf("needs_review: %v", err)
 	}
 }

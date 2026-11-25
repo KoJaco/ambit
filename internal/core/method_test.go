@@ -41,7 +41,7 @@ func TestBuiltinMethodsLoad(t *testing.T) {
 	if !strings.Contains(df.Guidance, ShallowModelGuidance) || !strings.Contains(df.Guidance, AuthoringGuidance) {
 		t.Fatal("design-first guidance must embed the shared constants")
 	}
-	if df.InitialStage != "design" || len(df.Stages) != 2 || len(df.Gates.Status["design"]) != 3 {
+	if df.InitialStage != "design" || len(df.Stages) != 2 || len(df.Gates.Status["design"]) != 4 {
 		t.Fatalf("design-first: %+v", df)
 	}
 	me, _ := BuiltinMethod("map-existing")
@@ -84,7 +84,7 @@ func TestUserMethodExtendsAndFiles(t *testing.T) {
 	if m.ID != "team" || m.Guidance != "Team guidance." || m.Source != "user" {
 		t.Fatalf("%+v", m)
 	}
-	if len(m.Stages) != 2 || m.InitialStage != "design" || len(m.Gates.Status["design"]) != 3 {
+	if len(m.Stages) != 2 || m.InitialStage != "design" || len(m.Gates.Status["design"]) != 4 {
 		t.Fatalf("inherited stages/gates missing: %+v", m)
 	}
 	if m.Lint["spec-present"].Severity != "enforced" || m.Lint["icon-set"].Severity != "enforced" || m.Lint["max-depth"].Params["max_depth"] != float64(1) {

@@ -9,7 +9,7 @@ description: "Ambit workflow method \"Design first\" (design-first). Use when mo
 
 This project uses the design-first method. Design the whole system in the model before any code is written, then build.
 
-Stages. The project starts in the design stage and a human moves it to build. You cannot change the stage. While it is design, update_node_status refuses assigned, in_progress and done; draft, specified and blocked still work. Tell the human when the design looks ready, and do not try to work around the gate.
+Stages. The project starts in the design stage and a human moves it to build. You cannot change the stage. While it is design, update_node_status refuses assigned, in_progress, needs_review and done; draft, specified and blocked still work. Tell the human when the design looks ready, and do not try to work around the gate.
 
 In the design stage:
 - Model high-level first: start with the few top-level parts, then drill down only where asked. Treat container nodes as deployment zones (for example browser, edge, API, data) and keep nesting to about three levels. Before drilling down, ask the user how they want the top-level view organised. Do not add an edge that carries no information (every-pair wiring, or what the hierarchy already says). Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. Call list_icons to pick icon ids and get_graph to see what already exists.

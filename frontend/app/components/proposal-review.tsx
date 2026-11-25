@@ -18,7 +18,7 @@ import { detailCanAccept, detailNames, detailNeedsConfirm, proposalDetailBlocks,
 import { isEditableElement, reviewEscapeAction } from "../right-rail-state";
 import { useNodeSnapshots } from "../use-node-snapshots";
 import { ProposalVisual } from "./proposal-visuals";
-import { history } from "../history";
+import { history, truncateLabel } from "../history";
 import { ghostKey } from "../ghost-preview";
 import { acceptedEntry } from "../proposal-history";
 import {
@@ -167,10 +167,10 @@ export function ProposalReview({
 
     // Accepting is what changes the model, so it is what undo has to reverse. An accept that
     // cannot be reversed exactly clears history rather than leave steps that no longer fit.
-    function recordAcceptance(summary: string | undefined, ops: OpDiff[], applied: number[]) {
+    function recordAcceptance(proposalId: string, summary: string | undefined, ops: OpDiff[], applied: number[]) {
         const done = ops.filter((op) => applied.includes(op.index));
         if (done.length === 0) return;
-        const entry = acceptedEntry(summary || "accepted proposal", done);
+        const entry = acceptedEntry(summary || "accepted proposal", done, proposalId, done.map((op) => op.index));
         if (entry) history.record(entry);
         else history.clear();
     }
@@ -183,7 +183,7 @@ export function ProposalReview({
                 await acceptOperation(proposal.proposal_id, row.index, row.needsConfirm);
                 done.push(row.index);
             }
-            recordAcceptance(label, diff?.operations ?? [], done);
+            recordAcceptance(proposal.proposal_id, label, diff?.operations ?? [], done);
             await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
         });
     }
@@ -343,7 +343,7 @@ export function ProposalReview({
                             onAccept={() =>
                                 void run(async () => {
                                     await acceptOperation(detail.proposalId, detail.index, detailNeedsConfirm(detailOp));
-                                    recordAcceptance(diffs[detail.proposalId]?.summary, [detailOp], [detail.index]);
+                                    recordAcceptance(detail.proposalId, diffs[detail.proposalId]?.summary, [detailOp], [detail.index]);
                                     setDetail(null);
                                     await reloadOne(detail.proposalId, setSummaries, setDiffs);
                                 })
@@ -447,7 +447,7 @@ export function ProposalReview({
                                                                 ...current,
                                                                 [proposal.proposal_id]: result.skipped,
                                                             }));
-                                                            recordAcceptance(proposal.summary, ops, result.applied);
+                                                            recordAcceptance(proposal.proposal_id, proposal.summary, ops, result.applied);
                                                             await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
                                                         })
                                                     }
@@ -458,7 +458,7 @@ export function ProposalReview({
                                                 <button
                                                     type="button"
                                                     className={outlineButton}
-                                                    aria-label={`Reject all changes in ${proposal.summary || proposal.proposal_id}`}
+                                                    aria-label={`Reject all changes in ${truncateLabel(proposal.summary || proposal.proposal_id)}`}
                                                     disabled={busy || pending === 0}
                                                     onClick={() =>
                                                         void run(async () => {

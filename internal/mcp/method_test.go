@@ -251,7 +251,7 @@ func TestGetStartedNextStepsFollowMethodData(t *testing.T) {
 		t.Fatal(err)
 	}
 	steps := startedSteps(t, idx, dir)
-	if !strings.Contains(steps, "refuses assigned, in_progress, done") || !strings.Contains(steps, "to build") || !strings.Contains(steps, "enforced findings") || strings.Contains(steps, "get_build_order") {
+	if !strings.Contains(steps, "refuses assigned, in_progress, needs_review, done") || !strings.Contains(steps, "to build") || !strings.Contains(steps, "enforced findings") || strings.Contains(steps, "get_build_order") {
 		t.Fatalf("%s", steps)
 	}
 	if err := idx.SetStage("build"); err != nil {

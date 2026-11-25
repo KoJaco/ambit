@@ -240,6 +240,9 @@ type nodeJSON struct {
 	Implementation []string            `json:"implementation"`
 	Scope          []string            `json:"scope"`
 	Protected      bool                `json:"protected"`
+	Risk           string              `json:"risk,omitempty"`
+	Review         string              `json:"review,omitempty"`
+	Verify         []string            `json:"verify,omitempty"`
 	Markdown       string              `json:"markdown"`
 	Icon           string              `json:"icon,omitempty"`
 	Color          string              `json:"color,omitempty"`
@@ -333,7 +336,7 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrHasDependents):
 		code = http.StatusConflict
 	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation),
-		errors.Is(err, core.ErrBadContract), errors.Is(err, core.ErrBadConstraint), errors.Is(err, core.ErrBadDependency),
+		errors.Is(err, core.ErrBadContract), errors.Is(err, core.ErrBadNodeMeta), errors.Is(err, core.ErrBadConstraint), errors.Is(err, core.ErrBadDependency),
 		errors.Is(err, core.ErrInvalidPresentation):
 		code = http.StatusBadRequest
 	}
@@ -349,6 +352,8 @@ func methodErrorCode(err error) (string, int) {
 	switch {
 	case errors.Is(err, core.ErrStageGate):
 		return "stage_gate", http.StatusConflict
+	case errors.Is(err, core.ErrCompletionGate):
+		return "completion_gate", http.StatusConflict
 	case errors.Is(err, core.ErrUnknownMethod):
 		return "unknown_method", http.StatusBadRequest
 	case errors.Is(err, core.ErrBadMethod):

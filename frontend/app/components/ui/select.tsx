@@ -225,7 +225,9 @@ export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select
                               position: "fixed",
                               left: pos?.left ?? 0,
                               top: pos?.top ?? 0,
-                              width: pos?.width,
+                              minWidth: pos?.width,
+                              width: "max-content",
+                              maxWidth: "min(28rem, 90vw)",
                               maxHeight: pos?.maxHeight,
                               visibility: pos ? "visible" : "hidden",
                           }}

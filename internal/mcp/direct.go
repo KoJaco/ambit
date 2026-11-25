@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"time"
 
 	"github.com/KoJaco/ambit/internal/core"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -172,6 +173,63 @@ func (e *toolEnv) handleListProposals(_ context.Context, _ *sdkmcp.CallToolReque
 		list = []core.ProposalSummary{}
 	}
 	return nil, listProposalsOut{Proposals: list}, nil
+}
+
+type checkDoneIn struct {
+	NodeID   string `json:"node_id" jsonschema:"the node you were assigned"`
+	Worktree string `json:"worktree,omitempty" jsonschema:"path of the git worktree you work in; omit when you work in the main checkout"`
+	Base     string `json:"base,omitempty" jsonschema:"git ref your branch started from; default is the merge-base with main or master"`
+}
+
+func (e *toolEnv) handleCheckDone(_ context.Context, _ *sdkmcp.CallToolRequest, in checkDoneIn) (*sdkmcp.CallToolResult, core.DoneReport, error) {
+	rep, err := core.CheckDone(e.idx, core.DoneOptions{Root: e.dir, FilesDir: in.Worktree, NodeID: core.NodeID(in.NodeID), Base: in.Base})
+	if err != nil {
+		return nil, core.DoneReport{}, err
+	}
+	return nil, rep, nil
+}
+
+type getProposalIn struct {
+	ProposalID string `json:"proposal_id" jsonschema:"id returned when the proposal was staged"`
+}
+
+func (e *toolEnv) handleGetProposal(_ context.Context, _ *sdkmcp.CallToolRequest, in getProposalIn) (*sdkmcp.CallToolResult, core.ProposalStateInfo, error) {
+	st, err := e.idx.ProposalState(in.ProposalID)
+	if err != nil {
+		return nil, core.ProposalStateInfo{}, err
+	}
+	return nil, st, nil
+}
+
+const (
+	defaultProposalWait = 60
+	maxProposalWait     = 300
+)
+
+type waitForProposalIn struct {
+	ProposalID string `json:"proposal_id" jsonschema:"id returned when the proposal was staged"`
+	TimeoutS   int    `json:"timeout_s,omitempty" jsonschema:"seconds to wait for the architect (default 60, at most 300)"`
+}
+
+type waitForProposalOut struct {
+	core.ProposalStateInfo
+	// TimedOut is true when the proposal was still pending after the wait.
+	TimedOut bool `json:"timed_out"`
+}
+
+func (e *toolEnv) handleWaitForProposal(ctx context.Context, _ *sdkmcp.CallToolRequest, in waitForProposalIn) (*sdkmcp.CallToolResult, waitForProposalOut, error) {
+	secs := in.TimeoutS
+	if secs <= 0 {
+		secs = defaultProposalWait
+	}
+	if secs > maxProposalWait {
+		secs = maxProposalWait
+	}
+	st, timedOut, err := e.idx.WaitForProposal(ctx, in.ProposalID, time.Duration(secs)*time.Second, 0)
+	if err != nil {
+		return nil, waitForProposalOut{}, err
+	}
+	return nil, waitForProposalOut{ProposalStateInfo: st, TimedOut: timedOut}, nil
 }
 
 type listIconsIn struct{}

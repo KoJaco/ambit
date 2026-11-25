@@ -214,3 +214,37 @@ func TestGroupUngroupReparentHTTPRoundTrip(t *testing.T) {
 		t.Fatal("ungroup not applied")
 	}
 }
+
+func TestProposalHTTPStateAndRestage(t *testing.T) {
+	idx, _ := newModel(t)
+	pid, err := idx.Stage(core.StageInput{Source: core.SourceSeedModel, Ops: []core.StageOp{
+		{Op: core.OpCreateNode, Create: core.CreateInput{ID: "svc", Name: "Svc", Type: "service", Spec: "# s\n"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st := doJSON(t, idx, http.MethodGet, "/proposals/"+pid+"/state", nil); st.Code != http.StatusOK || !strings.Contains(st.Body.String(), `"status":"pending"`) {
+		t.Fatalf("state %d %s", st.Code, st.Body.String())
+	}
+	if res := doJSON(t, idx, http.MethodPost, "/proposals/"+pid+"/accept", nil); res.Code != http.StatusOK {
+		t.Fatalf("accept %d %s", res.Code, res.Body.String())
+	}
+	if st := doJSON(t, idx, http.MethodGet, "/proposals/"+pid+"/state", nil); !strings.Contains(st.Body.String(), `"status":"accepted"`) {
+		t.Fatalf("state %s", st.Body.String())
+	}
+	if rs := doJSON(t, idx, http.MethodPost, "/proposals/restage", map[string]any{"proposal_id": "p-20200101-0000-abcd"}); rs.Code != http.StatusNotFound {
+		t.Fatalf("restage unknown %d %s", rs.Code, rs.Body.String())
+	}
+	if err := idx.Delete("svc"); err != nil {
+		t.Fatal(err)
+	}
+	rs := doJSON(t, idx, http.MethodPost, "/proposals/restage", map[string]any{"proposal_id": pid, "operations": []int{0}})
+	if rs.Code != http.StatusCreated || !strings.Contains(rs.Body.String(), `"proposal_id":"p-`) {
+		t.Fatalf("restage %d %s", rs.Code, rs.Body.String())
+	}
+	var out map[string]string
+	_ = json.Unmarshal(rs.Body.Bytes(), &out)
+	if res := doJSON(t, idx, http.MethodPost, "/proposals/"+out["proposal_id"]+"/accept", nil); res.Code != http.StatusOK || idx.Nodes["svc"] == nil {
+		t.Fatalf("accept restaged %d %s", res.Code, res.Body.String())
+	}
+}

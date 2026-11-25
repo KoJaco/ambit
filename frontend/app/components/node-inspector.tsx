@@ -40,13 +40,13 @@ import {
     dependsText,
     normalizeContract,
     normalizeDependsOn,
-    saveErrorTarget,
     validateContract,
     type DependsOption,
 } from "../node-contract";
-import { BuildBadges, ContractFields, DependsPicker } from "./node-contract-fields";
+import { BuildBadges, ContractFields, DependsPicker, ReviewFields } from "./node-contract-fields";
+import { comparable, resolveSaveErrorTarget, reviewSummary, toPatch, validateVerify } from "../node-review";
 
-const STATUSES = ["draft", "specified", "assigned", "in_progress", "done", "blocked"] as const;
+const STATUSES = ["draft", "specified", "assigned", "in_progress", "needs_review", "done", "blocked"] as const;
 
 export default function NodeInspector({
     nodeId,
@@ -71,6 +71,7 @@ export default function NodeInspector({
     const appearanceId = `${uid}-appearance`;
     const contractId = `${uid}-contract`;
     const dependsId = `${uid}-depends`;
+    const reviewId = `${uid}-review`;
     const [node, setNode] = useState<NodeDetail | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -78,6 +79,7 @@ export default function NodeInspector({
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [contractOpen, setContractOpen] = useState(false);
     const [dependsOpen, setDependsOpen] = useState(false);
+    const [reviewOpen, setReviewOpen] = useState(false);
     const [buildOrder, setBuildOrder] = useState<BuildOrder | null>(null);
     const [allNodes, setAllNodes] = useState<DependsOption[] | null>(null);
     const [presentationTouched, setPresentationTouched] = useState(false);
@@ -95,6 +97,7 @@ export default function NodeInspector({
         setPresentationTouched(false);
         setContractOpen(false);
         setDependsOpen(false);
+        setReviewOpen(false);
         getNode(nodeId, ac.signal)
             .then((loaded) => {
                 baseline.current = loaded;
@@ -240,7 +243,7 @@ export default function NodeInspector({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [node]);
 
-    const contractInvalid = !!node && validateContract(node.contract).length > 0;
+    const contractInvalid = !!node && (validateContract(node.contract).length > 0 || validateVerify(node.verify).length > 0);
 
     async function save() {
         if (!node) return;
@@ -278,7 +281,7 @@ export default function NodeInspector({
         })
         : null;
 
-    const errorTarget = error ? saveErrorTarget(error) : null;
+    const errorTarget = error ? resolveSaveErrorTarget(error) : null;
     const markPresentation = () => setPresentationTouched(true);
 
     const state = assignmentState(assignment, nodeId);
@@ -389,6 +392,22 @@ export default function NodeInspector({
                                 nodes={allNodes}
                                 onChange={(next) => setNode({ ...node, depends_on: next })}
                                 serverError={errorTarget === "depends" ? error : null}
+                            />
+                        </CollapsibleSection>
+                        <CollapsibleSection
+                            title="Review"
+                            id={reviewId}
+                            open={reviewOpen || errorTarget === "review"}
+                            onToggle={() => setReviewOpen((open) => !open)}
+                            maxHeightClass="max-h-[60vh]"
+                            summary={<span className="text-xs text-muted-foreground">{reviewSummary(node)}</span>}
+                        >
+                            <ReviewFields
+                                risk={node.risk}
+                                review={node.review}
+                                verify={node.verify}
+                                onChange={(next) => setNode({ ...node, ...next })}
+                                serverError={errorTarget === "review" ? error : null}
                             />
                         </CollapsibleSection>
                         <CollapsibleSection
@@ -614,54 +633,8 @@ const inputClass =
     "w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
 const sectionLabelClass = "text-xs font-medium uppercase tracking-wide text-muted-foreground";
 
-// Blank contract rows and ordering do not count as edits.
-function comparable(node: NodeDetail | null): unknown {
-    return node && { ...node, depends_on: normalizeDependsOn(node.depends_on), contract: normalizeContract(node.contract) };
-}
-
 function statusOptions(current: string): readonly string[] {
     if ((STATUSES as readonly string[]).includes(current)) return STATUSES;
     return [current, ...STATUSES];
 }
 
-// presentation=false leaves icon/colour/renderer/schema untouched, as a save without appearance edits does.
-// `compare` is the node as it was before the edit: depends_on and contract are sent only when
-// they differ from it (or, with `only`, when that patch sent them), so a save never overwrites a
-// change made elsewhere.
-function toPatch(
-    node: NodeDetail,
-    presentation: boolean,
-    compare?: NodeDetail | null,
-    only?: Parameters<typeof updateNode>[1],
-): Parameters<typeof updateNode>[1] {
-    const patch: Parameters<typeof updateNode>[1] = {
-        name: node.name,
-        type: node.type,
-        status: node.status,
-        implementation: lines(node.implementation),
-        scope: lines(node.scope),
-        protected: node.protected,
-        markdown: node.markdown,
-    };
-    const deps = normalizeDependsOn(node.depends_on);
-    const contract = normalizeContract(node.contract);
-    const sendDeps = only
-        ? only.depends_on !== undefined
-        : !!compare && JSON.stringify(deps) !== JSON.stringify(normalizeDependsOn(compare.depends_on));
-    const sendContract = only
-        ? only.contract !== undefined
-        : !!compare && JSON.stringify(contract) !== JSON.stringify(normalizeContract(compare.contract));
-    if (sendDeps) patch.depends_on = deps;
-    if (sendContract) patch.contract = contract;
-    if (presentation) {
-        patch.icon = node.icon ?? "";
-        patch.color = node.color ?? "";
-        patch.renderer = node.renderer ?? "";
-        patch.schema = (node.schema ?? []).filter((row) => row.title.trim() !== "" && row.type.trim() !== "");
-    }
-    return patch;
-}
-
-function lines(value: string[]): string[] {
-    return value.map((line) => line.trim()).filter((line) => line !== "");
-}

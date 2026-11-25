@@ -151,6 +151,9 @@ type NodeSnapshot struct {
 	Implementation []string       `json:"implementation"`
 	Scope          []string       `json:"scope"`
 	Protected      bool           `json:"protected"`
+	Risk           string         `json:"risk,omitempty"`
+	Review         string         `json:"review,omitempty"`
+	Verify         []string       `json:"verify,omitempty"`
 	Markdown       string         `json:"markdown"`
 	Icon           string         `json:"icon,omitempty"`
 	Color          string         `json:"color,omitempty"`
@@ -271,7 +274,7 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 	stagedRels := []Relationship{}
 
 	sawConstraints := false
-	for _, inOp := range in.Ops {
+	for _, inOp := range orderCreates(in.Ops) {
 		if inOp.Op == OpSetConstraints {
 			if sawConstraints {
 				return "", fmt.Errorf("%w: set_constraints may appear once per proposal", ErrBadOperation)
@@ -405,6 +408,10 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 	if err := validateDependsOnIn(nodes, id, in.Create.ParentID, in.Create.DependsOn); err != nil {
 		return operation{}, nil, err
 	}
+	metaRisk, metaReview, metaVerify, err := normalizeNodeMeta(in.Create.Risk, in.Create.Review, in.Create.Verify)
+	if err != nil {
+		return operation{}, nil, err
+	}
 	node := &Node{
 		ID:             id,
 		Name:           in.Create.Name,
@@ -415,6 +422,9 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 		Implementation: cloneStrings(in.Create.Implementation),
 		Scope:          cloneStrings(in.Create.Scope),
 		Protected:      in.Create.Protected,
+		Risk:           metaRisk,
+		Review:         metaReview,
+		Verify:         metaVerify,
 		Spec:           in.Create.Spec,
 		Icon:           strings.TrimSpace(in.Create.Icon),
 		Color:          strings.TrimSpace(in.Create.Color),
@@ -990,6 +1000,10 @@ func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []ope
 		return err
 	}
 	m.Operations = original
+	// A proposal that finished during the failed call was archived; it is pending again.
+	if dir, err := idx.resolvedPath(m.ProposalID); err == nil {
+		_ = os.RemoveAll(dir)
+	}
 	if err := writeManifest(idx.mustProposalPath(m.ProposalID), *m); err != nil {
 		return err
 	}
@@ -1031,6 +1045,9 @@ func (idx *Index) DeleteProposal(id string) error {
 			return fmt.Errorf("%w: %s", ErrProposalNotFound, id)
 		}
 		return err
+	}
+	if m, err := readManifest(dir); err == nil && m.ManifestVersion == proposalManifestVersion && m.ProposalID == id {
+		idx.archiveResolved(m, ProposalWithdrawn)
 	}
 	return os.RemoveAll(dir)
 }
@@ -1497,6 +1514,7 @@ func (idx *Index) finishOp(m *manifest, index int, status string) error {
 	m.Operations[index].Status = status
 	dir := idx.mustProposalPath(m.ProposalID)
 	if allResolved(m.Operations) {
+		idx.archiveResolved(*m, outcomeOf(m.Operations))
 		return os.RemoveAll(dir)
 	}
 	return writeManifest(dir, *m)
@@ -1854,6 +1872,25 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 		n.Protected = *in.Protected
 		fields = append(fields, "protected")
 	}
+	if in.Risk != nil || in.Review != nil || in.Verify != nil {
+		risk, review, verify := n.Risk, n.Review, n.Verify
+		if in.Risk != nil {
+			risk = *in.Risk
+			fields = append(fields, "risk")
+		}
+		if in.Review != nil {
+			review = *in.Review
+			fields = append(fields, "review")
+		}
+		if in.Verify != nil {
+			verify = *in.Verify
+			fields = append(fields, "verify")
+		}
+		var err error
+		if n.Risk, n.Review, n.Verify, err = normalizeNodeMeta(risk, review, verify); err != nil {
+			return nil, err
+		}
+	}
 	if in.Icon != nil {
 		if err := applyIconPatch(n, in.Icon); err != nil {
 			return nil, err
@@ -2035,6 +2072,9 @@ func snapshotNode(n *Node) *NodeSnapshot {
 		Implementation: impl,
 		Scope:          scope,
 		Protected:      n.Protected,
+		Risk:           n.Risk,
+		Review:         n.Review,
+		Verify:         append([]string(nil), n.Verify...),
 		Markdown:       n.Spec,
 		Icon:           n.Icon,
 		Color:          n.Color,

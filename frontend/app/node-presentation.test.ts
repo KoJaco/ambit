@@ -21,6 +21,7 @@ describe("status helpers", () => {
         expect(statusLabel("assigned")).toBe("Assigned");
         expect(statusLabel("in_progress")).toBe("In progress");
         expect(statusLabel("done")).toBe("Done");
+        expect(statusLabel("needs_review")).toBe("Needs review");
         expect(statusLabel("blocked")).toBe("Blocked");
         expect(statusLabel("weird")).toBe("weird");
     });
@@ -29,6 +30,7 @@ describe("status helpers", () => {
         expect(statusTone("in_progress")).toBe("blue");
         expect(statusTone("assigned")).toBe("blue");
         expect(statusTone("done")).toBe("teal");
+        expect(statusTone("needs_review")).toBe("amber");
         expect(statusTone("blocked")).toBe("rose");
         expect(statusTone("specified")).toBe("violet");
         expect(statusTone("draft")).toBe("neutral");
