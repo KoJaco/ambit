@@ -75,6 +75,7 @@
     --sheet-1: #fdfcfa;
     --sheet-2: #fbfaf7;
     --selection-ring: rgb(61 111 217 / 0.12);
+    --inspect-ring: #3d6fd9;
 }
 
 .dark {
@@ -136,6 +137,7 @@
     --sheet-1: #22201c;
     --sheet-2: #201e1a;
     --selection-ring: rgb(143 168 255 / 0.18);
+    --inspect-ring: #8fa8ff;
 }
 
   @theme inline {
@@ -476,4 +478,12 @@ body {
     outline: 3px solid var(--ring);
     outline-offset: 4px;
     border-radius: 16px;
+}
+
+/* Node open in the inspector: a solid ring with a background gap, so it stays distinct from the
+   dashed ghost style and the faint transient selection halo, and persists after the pane is clicked. */
+.inspected-ring.inspected-ring {
+    box-shadow:
+        0 0 0 2px var(--background),
+        0 0 0 4px var(--inspect-ring);
 }

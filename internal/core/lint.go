@@ -30,7 +30,7 @@ const (
 	RuleDependencyCycle    = "dependency-cycle"
 
 	// DefaultMaxDepth is the max-depth rule default (root nodes are depth 0).
-	DefaultMaxDepth = 2
+	DefaultMaxDepth = 3
 )
 
 // LintSetting is a method's setting for one rule: a severity string, or an object

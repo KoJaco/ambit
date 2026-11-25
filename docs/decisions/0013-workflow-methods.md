@@ -57,7 +57,7 @@ Ambit core stays neutral. It offers three mechanisms: a project `stage`, a model
 
 ## Initial lint rules
 
-`leaf-implementation`, `leaf-contract`, `spec-present`, `icon-set`, `edge-label`, `edge-kind`, `max-depth` (param `max_depth`, default 2), `glob-overlap`, `orphan-node`, `dependency-cycle`. `note` and `external` node types are exempt from the leaf rules and from `orphan-node`. Method files and `{file}` texts must be regular files of at most 64 KiB inside `.arch/methods/` (symlinks and special files are rejected and the method is skipped with a warning).
+`leaf-implementation`, `leaf-contract`, `spec-present`, `icon-set`, `edge-label`, `edge-kind`, `max-depth` (param `max_depth`, default 3), `glob-overlap`, `orphan-node`, `dependency-cycle`. `note` and `external` node types are exempt from the leaf rules and from `orphan-node`. Method files and `{file}` texts must be regular files of at most 64 KiB inside `.arch/methods/` (symlinks and special files are rejected and the method is skipped with a warning).
 
 ## Built-in methods
 

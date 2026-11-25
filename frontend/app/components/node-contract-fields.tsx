@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { PlusIcon, XIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { BuildOrder, NodeContract } from "../api";
 import type { DependsOption } from "../node-contract";
 import {
@@ -41,6 +41,41 @@ export function Counter({ id, length, max }: { id: string; length: number; max: 
                 <span id={id} className="sr-only" />
             )}
         </>
+    );
+}
+
+// Single-line list item that wraps and grows with its content. Enter is swallowed because items
+// are single-line strings.
+function AutoGrowItem({
+    value,
+    onValueChange,
+    className,
+    ...rest
+}: {
+    value: string;
+    onValueChange: (next: string) => void;
+    className?: string;
+} & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChange" | "className">) {
+    const ref = useRef<HTMLTextAreaElement>(null);
+    useLayoutEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
+    }, [value]);
+    return (
+        <textarea
+            {...rest}
+            ref={ref}
+            rows={1}
+            className={clsx(className, "resize-none overflow-hidden transition-[height] duration-150 motion-reduce:transition-none")}
+            value={value}
+            onChange={(event) => onValueChange(event.target.value.replace(/[\r\n]+/g, " "))}
+            onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) event.preventDefault();
+                rest.onKeyDown?.(event);
+            }}
+        />
     );
 }
 
@@ -95,15 +130,15 @@ export function ContractFields({
                         <ul className="flex flex-col gap-1.5">
                             {items.map((item, index) => (
                                 <li key={index} className="flex flex-col gap-0.5">
-                                    <div className="flex items-center gap-1.5">
-                                        <input
+                                    <div className="flex items-start gap-1.5">
+                                        <AutoGrowItem
                                             aria-label={`${itemLabel} ${index + 1}`}
                                             aria-describedby={`${uid}-${key}-${index}-count${listProblems.items[index] ? ` ${uid}-${key}-${index}-error` : ""}`}
                                             aria-invalid={listProblems.items[index] ? true : undefined}
                                             className={clsx(fieldClass, "min-w-0 flex-1 text-sm")}
                                             value={item}
-                                            onChange={(event) =>
-                                                onChange({ ...contract, [key]: items.map((v, i) => (i === index ? event.target.value : v)) })
+                                            onValueChange={(next) =>
+                                                onChange({ ...contract, [key]: items.map((v, i) => (i === index ? next : v)) })
                                             }
                                         />
                                         <button
@@ -176,6 +211,31 @@ export function DependsPicker({
             <p id={`${uid}-hint`} className="text-xs text-muted-foreground">
                 Nodes that must be built first. A node cannot depend on itself.
             </p>
+            {selected.length > 0 ? (
+                <ul className="flex flex-wrap gap-1.5" aria-label="Selected dependencies">
+                    {selected.map((id) => {
+                        const name = options.find((o) => o.id === id)?.name ?? id;
+                        return (
+                            <li
+                                key={id}
+                                className="inline-flex max-w-full items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2.5 pr-1 text-xs font-medium text-primary"
+                            >
+                                <span className="min-w-0 break-words" title={id}>
+                                    {name}
+                                </span>
+                                <button
+                                    type="button"
+                                    aria-label={`Remove dependency ${name}`}
+                                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-full hover:bg-primary/20 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring"
+                                    onClick={() => onChange(toggleDependency(selected, id, selfId))}
+                                >
+                                    <XIcon className="size-3.5" aria-hidden />
+                                </button>
+                            </li>
+                        );
+                    })}
+                </ul>
+            ) : null}
             {options.length > 8 ? (
                 <input
                     aria-label="Filter nodes"

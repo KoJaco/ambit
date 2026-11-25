@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { Select } from "./ui/select";
 import { getMethod, getMethods, putMethod, type MethodDetail, type MethodSummary } from "../api";
 import { formatRuleParams, gatesSummary, orderRules, severityLabel, switchNotice } from "../method-ui";
 import { Overlay } from "./overlay";
@@ -27,7 +28,7 @@ export function MethodSheet({
     const titleId = useId();
     const selectId = useId();
     const closeRef = useRef<HTMLButtonElement>(null);
-    const selectRef = useRef<HTMLSelectElement>(null);
+    const selectRef = useRef<HTMLButtonElement>(null);
     const [method, setMethod] = useState<MethodDetail | null>(null);
     const [methods, setMethods] = useState<MethodSummary[]>([]);
     const [choice, setChoice] = useState("");
@@ -100,25 +101,19 @@ export function MethodSheet({
                                 <label htmlFor={selectId} className="text-xs font-medium">
                                     Switch method
                                 </label>
-                                <select
+                                <Select
                                     id={selectId}
                                     ref={selectRef}
                                     aria-describedby={`${selectId}-note`}
                                     value={choice}
                                     disabled={busy}
-                                    onChange={(event) => {
-                                        setChoice(event.target.value);
+                                    onChange={(next) => {
+                                        setChoice(next);
                                         setNotice("");
                                     }}
-                                    className="min-h-7 rounded-lg border border-border bg-background px-2 py-1 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                                >
-                                    {methods.map((m) => (
-                                        <option key={m.id} value={m.id}>
-                                            {m.name}
-                                            {m.active ? " (current)" : ""}
-                                        </option>
-                                    ))}
-                                </select>
+                                    className="min-h-7 min-w-40"
+                                    options={methods.map((m) => ({ value: m.id, label: `${m.name}${m.active ? " (current)" : ""}` }))}
+                                />
                             </div>
                             <button
                                 type="button"

@@ -128,19 +128,20 @@ func TestLintMaxDepthParam(t *testing.T) {
 	l0 := mk(t, idx, CreateInput{Name: "L0", Type: "boundary"})
 	l1 := mk(t, idx, CreateInput{Name: "L1", Type: "boundary", ParentID: l0})
 	l2 := mk(t, idx, CreateInput{Name: "L2", Type: "boundary", ParentID: l1})
-	mk(t, idx, CreateInput{Name: "L3", Type: "service", ParentID: l2})
+	l3 := mk(t, idx, CreateInput{Name: "L3", Type: "boundary", ParentID: l2})
+	mk(t, idx, CreateInput{Name: "L4", Type: "service", ParentID: l3})
 	if _, err := idx.SetMethod("deepdef"); err != nil {
 		t.Fatal(err)
 	}
 	f := onlyRule(findingsFor(t, idx, CheckModelOptions{}), RuleMaxDepth)
-	if len(f) != 1 || f[0].NodeID != "l3" {
-		t.Fatalf("default max_depth 2: %+v", f)
+	if len(f) != 1 || f[0].NodeID != "l4" {
+		t.Fatalf("default max_depth 3: %+v", f)
 	}
 	if _, err := idx.SetMethod("deep"); err != nil {
 		t.Fatal(err)
 	}
 	f = onlyRule(findingsFor(t, idx, CheckModelOptions{}), RuleMaxDepth)
-	if len(f) != 2 {
+	if len(f) != 3 {
 		t.Fatalf("max_depth 1: %+v", f)
 	}
 }

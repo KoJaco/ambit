@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { useEffect, useId, useRef, useState } from "react";
+import { Select } from "./ui/select";
 import { Tooltip } from "./tooltip";
 import {
     clearAssignment,
@@ -348,18 +349,13 @@ export default function NodeInspector({
                             </label>
                             <div className="flex items-center gap-2">
                                 <span className={nodeDotClass(statusTone(node.status))} aria-hidden />
-                                <select
+                                <Select
                                     id={`${uid}-status`}
-                                    className={clsx(inputClass, "flex-1")}
+                                    className="flex-1"
                                     value={node.status}
-                                    onChange={(event) => setNode({ ...node, status: event.target.value })}
-                                >
-                                    {statusOptions(node.status).map((status) => (
-                                        <option key={status} value={status}>
-                                            {statusLabel(status)}
-                                        </option>
-                                    ))}
-                                </select>
+                                    onChange={(status) => setNode({ ...node, status })}
+                                    options={statusOptions(node.status).map((status) => ({ value: status, label: statusLabel(status) }))}
+                                />
                             </div>
                         </div>
                         <CollapsibleSection

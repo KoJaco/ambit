@@ -50,15 +50,6 @@ func TestDiffNamesRenameListsBothPaths(t *testing.T) {
 	}
 }
 
-func TestDiffNamesRequiresCommit(t *testing.T) {
-	dir := t.TempDir()
-	gitInitRepo(t, dir)
-	_, err := DiffNames(dir)
-	if err == nil || !strings.Contains(err.Error(), "HEAD") {
-		t.Fatalf("err %v", err)
-	}
-}
-
 func mustDiffNames(t *testing.T, dir string) []string {
 	t.Helper()
 	got, err := DiffNames(dir)
@@ -102,5 +93,19 @@ func writeFile(t *testing.T, path, body string) {
 	}
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDiffNamesNoCommits(t *testing.T) {
+	dir := t.TempDir()
+	gitInitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "a.go"), "package a\n")
+	gitCmd(t, dir, "add", "a.go")
+	got, err := DiffNames(dir)
+	if err != nil {
+		t.Fatalf("DiffNames on repo with no commits: %v", err)
+	}
+	if len(got) != 1 || got[0] != "a.go" {
+		t.Fatalf("got %v, want [a.go]", got)
 	}
 }

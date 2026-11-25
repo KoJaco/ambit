@@ -24,19 +24,16 @@ describe("returnNodeIdAfterDelete", () => {
 describe("visibleCrumbs", () => {
     const n = (id: string, type: string) => ({ id, name: id, type });
 
-    it("omits grouping containers and keeps summary ancestors", () => {
-        expect(visibleCrumbs([n("zone", "container"), n("client-pwa", "app")]).map((c) => c.id)).toEqual([
-            "client-pwa",
-        ]);
-        expect(
-            visibleCrumbs([n("zone", "container"), n("web", "app"), n("inner", "Container"), n("leaf", "service")]).map(
-                (c) => c.id,
-            ),
-        ).toEqual(["web", "leaf"]);
+    it("keeps grouping containers in the chain as non-links", () => {
+        const crumbs = visibleCrumbs([n("zone", "container"), n("web", "app"), n("inner", "Container"), n("leaf", "service")]);
+        expect(crumbs.map((c) => c.id)).toEqual(["zone", "web", "inner", "leaf"]);
+        expect(crumbs.map((c) => c.link)).toEqual([false, true, false, true]);
     });
 
-    it("keeps the viewed node even when it is a container", () => {
-        expect(visibleCrumbs([n("web", "app"), n("zone", "container")]).map((c) => c.id)).toEqual(["web", "zone"]);
+    it("keeps the viewed node as a link even when it is a container", () => {
+        const crumbs = visibleCrumbs([n("web", "app"), n("zone", "container")]);
+        expect(crumbs.map((c) => c.id)).toEqual(["web", "zone"]);
+        expect(crumbs[1].link).toBe(true);
     });
 
     it("builds node hrefs and handles empty chains", () => {

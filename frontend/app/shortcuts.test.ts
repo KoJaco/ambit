@@ -80,6 +80,8 @@ describe("isEditableTarget / resolveShortcut", () => {
         expect(isEditableTarget({ tagName: "DIV", getAttribute: () => "" })).toBe(true);
         expect(isEditableTarget({ tagName: "DIV", getAttribute: () => "false" })).toBe(false);
         expect(isEditableTarget({ tagName: "BUTTON" })).toBe(false);
+        expect(isEditableTarget({ tagName: "UL", getAttribute: (n: string) => (n === "role" ? "listbox" : null) })).toBe(true);
+        expect(isEditableTarget({ tagName: "BUTTON", getAttribute: (n: string) => (n === "role" ? "combobox" : null) })).toBe(true);
         expect(isEditableTarget(null)).toBe(false);
     });
 

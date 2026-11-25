@@ -48,6 +48,19 @@ type seedRelIn struct {
 	Contract *core.EdgeContract `json:"contract,omitempty"`
 }
 
+// seedSummary builds the proposal summary, keeping up to summaryTranscriptMax
+// runes of the transcript.
+func seedSummary(ops int, transcript string) string {
+	summary := fmt.Sprintf("%d operation(s) from transcript: ", ops)
+	if r := []rune(transcript); len(r) > summaryTranscriptMax {
+		return summary + string(r[:summaryTranscriptMax]) + "..."
+	}
+	return summary + transcript
+}
+
+// summaryTranscriptMax caps the transcript text kept in a proposal summary.
+const summaryTranscriptMax = 500
+
 func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest, in seedModelIn) (*sdkmcp.CallToolResult, stageResponse, error) {
 	if strings.TrimSpace(in.Transcript) == "" {
 		return toolErr(fmt.Errorf("%w: transcript is required", core.ErrBadOperation))
@@ -104,12 +117,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 	for _, nid := range in.DeleteNodes {
 		ops = append(ops, core.StageOp{Op: core.OpDeleteNode, NodeID: core.NodeID(nid)})
 	}
-	summary := fmt.Sprintf("%d operation(s) from transcript", len(ops))
-	if len(in.Transcript) > 80 {
-		summary += ": " + in.Transcript[:80] + "..."
-	} else {
-		summary += ": " + in.Transcript
-	}
+	summary := seedSummary(len(ops), in.Transcript)
 	_, out, err := e.stage(ctx, core.StageInput{
 		Source:  core.SourceSeedModel,
 		Summary: summary,

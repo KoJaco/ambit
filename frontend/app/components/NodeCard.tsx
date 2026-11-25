@@ -46,6 +46,8 @@ export type ArchNodeData = {
     onUngroup?: (id: string) => void;
     // Set only on ghost-preview nodes (type "ghost"): a pending new node, never real model data.
     ghost?: { container: boolean };
+    // True while this node is open in the inspector (persists after the canvas selection clears).
+    inspected?: boolean;
 };
 
 export type ArchNode = Node<ArchNodeData, CanvasNodeType>;
@@ -93,6 +95,7 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                     selected
                         ? "border-[1.5px] border-primary shadow-[0_0_0_4px_var(--selection-ring)]"
                         : "border-border hover:border-foreground/25",
+                    data.inspected && "inspected-ring",
                 )}
             >
                 <Handle type="target" position={Position.Left} />

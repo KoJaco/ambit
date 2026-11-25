@@ -176,6 +176,7 @@ export default function Home() {
                         refreshKey={refreshKey}
                         preview={canvasPreview}
                         tool={tool === "grab" ? "grab" : "pointer"}
+                        inspectedId={selectedEdge ? null : selectedId}
                         onSelectNode={(id) => {
                             setSelectedId(id);
                             if (id === null) return;
