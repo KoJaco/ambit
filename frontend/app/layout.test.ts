@@ -283,3 +283,36 @@ describe("group shrink after members leave", () => {
         expect(one.g.height).toBeLessThan(two.g.height);
     });
 });
+
+describe("new container and orphaned members", () => {
+    const sizes = { a: { width: 220, height: 96 }, b: { width: 220, height: 96 }, c: { width: 220, height: 96 } };
+
+    it("pushes a non-member sibling that sits between the members of a new container", () => {
+        const placed = [
+            { id: "a", position: { x: 500, y: 300 } },
+            { id: "b", position: { x: 800, y: 340 } },
+            { id: "c", position: { x: 650, y: 320 } },
+        ];
+        const nodes = [{ id: "g" }, { id: "a", parentId: "g" }, { id: "b", parentId: "g" }, { id: "c" }];
+        const seeded = seedPositions(nodes, placed, sizes);
+        const newSizes = { ...sizes, ...computeGroupSizes(nodes, seeded, sizes) };
+        const out = pushOverlaps(nodes, seeded, {}, newSizes);
+        const g = out.g;
+        expect(g).toEqual(seeded.g);
+        const box = { ...g, ...newSizes.g };
+        const c = out.c;
+        const clearsX = c.x >= box.x + box.width || c.x + 220 <= box.x;
+        const clearsY = c.y >= box.y + box.height || c.y + 96 <= box.y;
+        expect(clearsX || clearsY).toBe(true);
+    });
+
+    it("keeps the absolute spot of a member whose old parent was deleted", () => {
+        const placed = [
+            { id: "g", position: { x: 400, y: 200 } },
+            { id: "a", parentId: "g", position: { x: 16, y: 48 } },
+        ];
+        // g is gone (ungroup with delete); a is now top level.
+        const out = seedPositions([{ id: "a" }], placed, sizes);
+        expect(out.a).toEqual({ x: 416, y: 248 });
+    });
+});

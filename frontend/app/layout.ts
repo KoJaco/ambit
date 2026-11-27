@@ -215,7 +215,8 @@ export function seedPositions(
         const parent = parentOf(node);
         children.set(parent, [...(children.get(parent) ?? []), node]);
         const old = before.get(node.id);
-        if (old && (old.parentId && known.has(old.parentId) ? old.parentId : "") === parent) {
+        // A node whose old parent vanished is not "kept": its stored position is relative to it.
+        if (old && (old.parentId ? (known.has(old.parentId) ? old.parentId : null) : "") === parent) {
             positions[node.id] = { ...old.position };
         }
     }
@@ -262,7 +263,11 @@ export function seedPositions(
         const parent = parentOf(node);
         // Only members of a brand-new container keep their screen spot (grouping). A node moved into
         // or out of an existing group is placed fresh: its old spot is inside the old group's box.
-        let anchor = parent && !before.has(parent) ? oldAbsOf(node.id) : undefined;
+        // Also when its old parent is gone (ungroup that deletes the container): its stored position
+        // is relative to that parent, so use where it was on screen.
+        const old = before.get(node.id);
+        const orphaned = !!old?.parentId && !known.has(old.parentId);
+        let anchor = (parent && !before.has(parent)) || orphaned ? oldAbsOf(node.id) : undefined;
         if (!anchor && before.has(node.id)) continue;
         if (!anchor) {
             const kidAnchors = (children.get(node.id) ?? []).map((kid) => oldAbsOf(kid.id)).filter((p): p is Point => !!p);
@@ -356,11 +361,17 @@ export function pushOverlaps(
         const parent = node.parentId && known.has(node.parentId) ? node.parentId : "";
         byParent.set(parent, [...(byParent.get(parent) ?? []), node.id]);
     }
+    // A container with no old size is new: it grows from nothing at its spot, pushing non-member
+    // siblings that sit between its members.
+    const hasMembers = new Set<string>();
+    for (const node of nodes) if (node.parentId && known.has(node.parentId)) hasMembers.add(node.parentId);
     const eps = 0.5;
     const sizeOf = (id: string) => newSizes[id] ?? { width: nodeWidth, height: nodeHeight };
     for (const siblings of byParent.values()) {
+        const oldOf = (id: string): NodeSize | undefined =>
+            oldSizes[id] ?? (hasMembers.has(id) ? { width: 0, height: 0 } : undefined);
         const growers = siblings.filter((id) => {
-            const old = oldSizes[id];
+            const old = oldOf(id);
             const now = newSizes[id];
             return !!old && !!now && !!out[id] && (now.width > old.width + eps || now.height > old.height + eps);
         });
@@ -393,7 +404,7 @@ export function pushOverlaps(
             }
         };
         for (const id of growers) {
-            const old = oldSizes[id];
+            const old = oldOf(id)!;
             push({ x: out[id].x, y: out[id].y, ...old }, id, siblings.length);
         }
     }
