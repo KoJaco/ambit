@@ -36,6 +36,7 @@ export function ContainerNode({ id, data, selected }: NodeProps<ArchNode>) {
                 (data.depth ?? 1) >= 2 ? "bg-[var(--group-2)] ring-1 ring-inset ring-foreground/[0.06]" : "bg-[var(--group)]",
                 selected && "shadow-[0_0_0_4px_var(--selection-ring)]",
                 data.inspected && "inspected-ring",
+                data.dropTarget && "drop-target-ring",
             )}
         >
             {/* Right and bottom edges only: the top-left corner stays put, so members keep their

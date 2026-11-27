@@ -192,6 +192,7 @@ export default function Home() {
                         preview={canvasPreview}
                         tool={tool === "grab" ? "grab" : "pointer"}
                         inspectedId={selectedEdge ? null : selectedId}
+                        onPaneClick={() => setReviewOpen(false)}
                         onSelectNode={(id) => {
                             setSelectedId(id);
                             if (id === null) return;

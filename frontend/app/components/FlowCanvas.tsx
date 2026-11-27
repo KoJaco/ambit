@@ -36,6 +36,7 @@ import {
     type SchemaColumn,
 } from "../api";
 import {
+    acceptsDrop,
     containerAt,
     drillsOnDoubleClick,
     outsideReparentTarget,
@@ -344,6 +345,7 @@ export default function FlowCanvas({
     onRequestRecenterRef,
     onRequestZoomRef,
     onProposalStaged,
+    onPaneClick: onPaneClickHost,
     preview,
 }: {
     nodeId?: string;
@@ -358,6 +360,8 @@ export default function FlowCanvas({
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
     // Called after a structure edit staged a proposal; the host brings the review panel forward.
     onProposalStaged?: () => void;
+    // Called after a click on empty canvas (the canvas has already cleared selection and inspector).
+    onPaneClick?: () => void;
     // Pending proposals drawn as ghosts over this level. Display only: never saved or laid out.
     preview?: CanvasPreview;
 }) {
@@ -378,6 +382,8 @@ export default function FlowCanvas({
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
     const dragStart = useRef<{ id: string; position: Point } | null>(null);
+    // Group or summary card the dragged node would land in, ringed while the drag is over it.
+    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
     // View modes are per level (base key), kept out of the model: see layout-cache notes in
     // docs/contracts/local-http-api.md. The layout key additionally carries the expanded-set hash.
@@ -828,11 +834,21 @@ export default function FlowCanvas({
         return [...real, ...fresh];
     }, [nodes, ghost, ghostLayout, highlightKey, preview]);
     const displayNodes = useMemo<ArchNode[]>(() => {
-        if (!inspectedId || !previewNodes.some((item) => item.id === inspectedId && item.type !== "ghost")) return previewNodes;
+        const marked = (id: string) => id === inspectedId || id === dropTargetId;
+        if (!previewNodes.some((item) => item.type !== "ghost" && marked(item.id))) return previewNodes;
         return previewNodes.map((item) =>
-            item.id === inspectedId && item.type !== "ghost" ? { ...item, data: { ...item.data, inspected: true } } : item,
+            item.type !== "ghost" && marked(item.id)
+                ? {
+                      ...item,
+                      data: {
+                          ...item.data,
+                          ...(item.id === inspectedId ? { inspected: true } : {}),
+                          ...(item.id === dropTargetId ? { dropTarget: true } : {}),
+                      },
+                  }
+                : item,
         );
-    }, [previewNodes, inspectedId]);
+    }, [previewNodes, inspectedId, dropTargetId]);
     const displayEdges = useMemo<Edge[]>(() => {
         if (!preview || (ghost.ghostEdges.length === 0 && Object.keys(ghost.edgeMarks).length === 0)) return edges;
         const variantProps = (variant: "new" | "changed" | "removed", label: string, key: string, proposalId: string, index: number, hasContract?: boolean): GhostEdgeData["ghost"] => ({
@@ -941,11 +957,12 @@ export default function FlowCanvas({
         dragStart.current = { id: node.id, position: { ...node.position } };
     };
 
-    // Absolute rects of open containers, from React Flow's measured nodes.
+    // Absolute rects of nodes that accept a drop (open groups and collapsed summary cards), from
+    // React Flow's measured nodes.
     function containerRects(): Rect[] {
         const rects: Rect[] = [];
         for (const item of nodesRef.current) {
-            if (item.type !== "container") continue;
+            if (!acceptsDrop(item)) continue;
             const internal = getInternalNode(item.id);
             if (!internal) continue;
             const origin = internal.internals.positionAbsolute;
@@ -980,7 +997,15 @@ export default function FlowCanvas({
         return containerAt(screenToFlowPosition(pointer), containerRects(), [node.id]);
     }
 
+    const onNodeDrag: OnNodeDrag<ArchNode> = (event, node) => {
+        const target = dropOutsideTarget(event, node) ?? dropInTarget(event, node);
+        // "" is the level itself (no node to ring), and a node never targets its own parent group.
+        const next = target && target !== node.parentId ? target : null;
+        setDropTargetId((current) => (current === next ? current : next));
+    };
+
     const onNodeDragStop: OnNodeDrag<ArchNode> = (event, node) => {
+        setDropTargetId(null);
         const outside = dropOutsideTarget(event, node) ?? dropInTarget(event, node);
         if (outside !== null) {
             const start = dragStart.current?.id === node.id ? dragStart.current.position : null;
@@ -1047,6 +1072,15 @@ export default function FlowCanvas({
         clearSelection();
         onSelectNode?.(null);
     }, [clearSelection, onSelectNode]);
+
+    // A click on empty canvas closes whatever the right rail shows for this level: the inspector
+    // (node or edge) and, through the host, an open Review panel. Escape still works as before.
+    const onPaneClick = useCallback(() => {
+        clearSelection();
+        onSelectEdge?.(null);
+        onSelectNode?.(null);
+        onPaneClickHost?.();
+    }, [clearSelection, onSelectEdge, onSelectNode, onPaneClickHost]);
 
     // The bottom bar (ControlBar) swaps the toolbar for the group/ungroup form or the selection
     // bar. This canvas owns the state and the staging; the bar only renders it.
@@ -1131,6 +1165,8 @@ export default function FlowCanvas({
                 onEdgeClick={onEdgeClick}
                 onEdgeDoubleClick={onEdgeDoubleClick}
                 onNodeDragStart={onNodeDragStart}
+                onNodeDrag={onNodeDrag}
+                onPaneClick={onPaneClick}
                 onNodeDragStop={onNodeDragStop}
                 panOnDrag={tool === "grab"}
                 selectionOnDrag={tool === "pointer"}

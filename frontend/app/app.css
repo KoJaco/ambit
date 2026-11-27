@@ -480,6 +480,13 @@ body {
     border-radius: 16px;
 }
 
+/* Group or summary card a dragged node would be dropped into. A dashed outline (not colour alone)
+   marks it, so it reads without relying on the ring colour. */
+.drop-target-ring.drop-target-ring {
+    outline: 3px dashed var(--ring);
+    outline-offset: 3px;
+}
+
 /* Node open in the inspector: a solid ring with a background gap, so it stays distinct from the
    dashed ghost style and the faint transient selection halo, and persists after the pane is clicked. */
 .inspected-ring.inspected-ring {

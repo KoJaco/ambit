@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    acceptsDrop,
     containerAt,
     defaultGroupName,
     groupableSelection,
@@ -87,5 +88,25 @@ describe("drillsOnDoubleClick", () => {
         expect(drillsOnDoubleClick("card")).toBe(true);
         expect(drillsOnDoubleClick("schema")).toBe(true);
         expect(drillsOnDoubleClick(undefined)).toBe(true);
+    });
+});
+
+describe("acceptsDrop", () => {
+    it("accepts open groups and collapsed summary cards only", () => {
+        expect(acceptsDrop({ type: "container" })).toBe(true);
+        expect(acceptsDrop({ type: "card", data: { renderer: "group", child_count: 3, expanded: false } })).toBe(true);
+        expect(acceptsDrop({ type: "card", data: { renderer: "default", child_count: 2 } })).toBe(true);
+        expect(acceptsDrop({ type: "card", data: { child_count: 0 } })).toBe(false);
+        expect(acceptsDrop({ type: "external" })).toBe(false);
+        expect(acceptsDrop({ type: "ghost" })).toBe(false);
+    });
+
+    it("drops onto a summary card found by containerAt, preferring the smaller target", () => {
+        const rects = [
+            { id: "zone", x: 0, y: 0, width: 600, height: 400 },
+            { id: "summary", x: 100, y: 100, width: 220, height: 140 },
+        ];
+        expect(containerAt({ x: 150, y: 150 }, rects, ["dragged"])).toBe("summary");
+        expect(containerAt({ x: 500, y: 300 }, rects, ["dragged"])).toBe("zone");
     });
 });

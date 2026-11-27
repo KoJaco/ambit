@@ -48,6 +48,8 @@ export type ArchNodeData = {
     ghost?: { container: boolean };
     // True while this node is open in the inspector (persists after the canvas selection clears).
     inspected?: boolean;
+    // True while a dragged node would be dropped into this group or summary card.
+    dropTarget?: boolean;
 };
 
 export type ArchNode = Node<ArchNodeData, CanvasNodeType>;
@@ -96,6 +98,7 @@ export function NodeCard({ id, data, selected }: NodeProps<ArchNode>) {
                         ? "border-[1.5px] border-primary shadow-[0_0_0_4px_var(--selection-ring)]"
                         : "border-border hover:border-foreground/25",
                     data.inspected && "inspected-ring",
+                    data.dropTarget && "drop-target-ring",
                 )}
             >
                 <Handle type="target" position={Position.Left} />
