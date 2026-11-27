@@ -402,3 +402,28 @@ describe("node model fields", () => {
         expect(connect[0].change).toBe("calls · sync · contract: OpenAPI · api.yaml");
     });
 });
+
+describe("rename rows", () => {
+    it("shows a rename with both ids", () => {
+        const rows = proposalRows(
+            diff([
+                {
+                    index: 0,
+                    op: "rename_node",
+                    node_id: "a",
+                    new_id: "alpha",
+                    status: "pending",
+                    stale: false,
+                    fields: [],
+                    current: node({ id: "a", name: "A" }),
+                    proposed: null,
+                    relationship: null,
+                    current_relationship: null,
+                },
+            ]),
+        );
+        expect(rows[0].verb).toBe("Rename");
+        expect(rows[0].summary).toBe("Rename a → alpha");
+        expect(rows[0].change).toBe("Id a → alpha");
+    });
+});

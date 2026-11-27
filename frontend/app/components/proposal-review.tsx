@@ -574,6 +574,7 @@ const VERB_STYLE: Record<RowVerb, string> = {
     Connect: "bg-violet-500/15 text-violet-800 dark:text-violet-300",
     "Remove connection": "bg-red-500/15 text-red-800 dark:text-red-300",
     Rules: "bg-amber-500/15 text-amber-900 dark:text-amber-300",
+    Rename: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
     Other: "bg-muted text-muted-foreground",
 };
 

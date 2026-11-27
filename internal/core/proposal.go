@@ -116,6 +116,7 @@ type OpSummary struct {
 	Index       int      `json:"index"`
 	Op          string   `json:"op"`
 	NodeID      string   `json:"node_id"`
+	NewID       string   `json:"new_id,omitempty"`
 	Status      string   `json:"status"`
 	Stale       bool     `json:"stale"`
 	StaleReason string   `json:"stale_reason,omitempty"`
@@ -139,6 +140,7 @@ type OpDiff struct {
 	Index               int           `json:"index"`
 	Op                  string        `json:"op"`
 	NodeID              string        `json:"node_id"`
+	NewID               string        `json:"new_id,omitempty"`
 	Status              string        `json:"status"`
 	Stale               bool          `json:"stale"`
 	StaleReason         string        `json:"stale_reason,omitempty"`
@@ -1892,6 +1894,7 @@ func (idx *Index) inspect(id string) (ProposalSummary, manifest, error) {
 			Index:       i,
 			Op:          op.Op,
 			NodeID:      op.NodeID,
+			NewID:       op.NewID,
 			Status:      op.Status,
 			Stale:       stale,
 			StaleReason: reason,
@@ -1918,6 +1921,7 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		Index:       index,
 		Op:          op.Op,
 		NodeID:      op.NodeID,
+		NewID:       op.NewID,
 		Status:      op.Status,
 		Stale:       stale,
 		StaleReason: reason,

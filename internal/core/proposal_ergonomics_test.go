@@ -472,3 +472,20 @@ func TestChangeSetValidatedAndExposed(t *testing.T) {
 		t.Fatalf("restage lost change_set: %+v", st)
 	}
 }
+
+func TestRenameNodeNewIDInListAndDiff(t *testing.T) {
+	idx, _ := newModel(t)
+	a := mustCreate(t, idx, CreateInput{ID: "a", Name: "A", Type: "service"})
+	pid, err := idx.Stage(StageInput{Source: OpRenameNode, Ops: []StageOp{{Op: OpRenameNode, NodeID: a, NewID: "alpha"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := idx.ListProposals()
+	if err != nil || len(list) != 1 || list[0].Operations[0].NewID != "alpha" {
+		t.Fatalf("list %+v err %v", list, err)
+	}
+	d, err := idx.ProposalDiff(pid)
+	if err != nil || d.Operations[0].NewID != "alpha" {
+		t.Fatalf("diff %+v err %v", d, err)
+	}
+}

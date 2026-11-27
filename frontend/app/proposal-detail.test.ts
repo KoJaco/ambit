@@ -326,3 +326,10 @@ describe("node model fields", () => {
         expect(unresolvedNodeIds(diff, o)).toEqual([]);
     });
 });
+
+describe("rename detail", () => {
+    it("describes a rename", () => {
+        const blocks = proposalDetailBlocks(op({ op: "rename_node", node_id: "a", new_id: "alpha" }));
+        expect(blocks.some((b) => "text" in b && b.text === "Rename a → alpha")).toBe(true);
+    });
+});

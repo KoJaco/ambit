@@ -422,6 +422,7 @@ export type OpSummary = {
     index: number;
     op: string;
     node_id: string;
+    new_id?: string;
     status: string;
     stale: boolean;
     stale_reason?: string;
@@ -463,6 +464,7 @@ export type OpDiff = {
     index: number;
     op: string;
     node_id: string;
+    new_id?: string;
     status: string;
     stale: boolean;
     stale_reason?: string;
