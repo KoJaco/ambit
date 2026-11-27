@@ -31,6 +31,19 @@ type DriftReport struct {
 	Overlaps  []Overlap       `json:"overlaps"`
 	// Ignored counts files skipped because they match a drift_ignore glob.
 	Ignored int `json:"ignored_files"`
+	// Hint suggests drift_ignore when many unowned files are reported.
+	Hint string `json:"hint,omitempty"`
+}
+
+// driftHintThreshold is the unowned-file count above which a drift_ignore hint is added.
+const driftHintThreshold = 25
+
+// driftIgnoreHint returns the drift_ignore suggestion for n unowned files, or "".
+func driftIgnoreHint(n int) string {
+	if n <= driftHintThreshold {
+		return ""
+	}
+	return "Many unowned files: add globs for files no node should own to drift_ignore in .arch/config.json (or run `ambit config drift-ignore add <glob>`)."
 }
 
 // Findings is the total number of drift findings.
@@ -233,6 +246,7 @@ func driftLocked(idx *Index, files []string, only NodeID) (DriftReport, error) {
 		}
 	}
 	sort.Strings(report.Unowned)
+	report.Hint = driftIgnoreHint(len(report.Unowned))
 	return report, nil
 }
 
@@ -320,6 +334,9 @@ func FormatDrift(r DriftReport) string {
 		b.WriteString("Drift compares the model with files git can see (tracked, plus untracked files that are not gitignored). Files in another worktree are only seen when that worktree is passed.\n")
 		if r.Ignored > 0 {
 			fmt.Fprintf(&b, "(%d file(s) skipped by drift_ignore.)\n", r.Ignored)
+		}
+		if hint := driftIgnoreHint(len(r.Unowned)); hint != "" {
+			b.WriteString(hint + "\n")
 		}
 	}
 	return b.String()

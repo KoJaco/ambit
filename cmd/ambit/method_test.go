@@ -450,3 +450,18 @@ func TestInitMCPMergesAndNeverOverwrites(t *testing.T) {
 		t.Fatalf("%s", data)
 	}
 }
+
+func TestConfigDriftIgnoreAdd(t *testing.T) {
+	dir := initDir(t, "--no-mcp")
+	var out, errw bytes.Buffer
+	if code := cmdConfig(dir, []string{"drift-ignore", "add", "dist/**"}, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, ".arch", "config.json"))
+	if !strings.Contains(string(data), "dist/**") {
+		t.Fatalf("%s", data)
+	}
+	if code := cmdConfig(dir, []string{"drift-ignore", "add"}, &out, &errw); code != 1 {
+		t.Fatal("usage error expected")
+	}
+}

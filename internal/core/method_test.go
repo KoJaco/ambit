@@ -453,3 +453,11 @@ func TestWatchSeesCrossProcessSetMethodAndStage(t *testing.T) {
 	}
 	expect("design-first", "design")
 }
+
+func TestAuthoringGuidanceCoversSummaryAndExternalNodes(t *testing.T) {
+	for _, want := range []string{"summary card", "flesh it out into child nodes", "type external start/end nodes", "one labelled edge per channel"} {
+		if !strings.Contains(AuthoringGuidance, want) {
+			t.Errorf("AuthoringGuidance missing %q", want)
+		}
+	}
+}

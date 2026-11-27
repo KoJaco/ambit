@@ -5,7 +5,35 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
+
+// AddDriftIgnore appends glob to the drift_ignore list in config.json. It reports
+// whether the list changed (false when the glob is already present). Invalid globs are
+// rejected.
+func (idx *Index) AddDriftIgnore(glob string) (bool, error) {
+	glob = strings.TrimSpace(glob)
+	if glob == "" || !doublestar.ValidatePattern(toSlash(glob)) {
+		return false, fmt.Errorf("invalid glob %q", glob)
+	}
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	var current []string
+	if data, err := os.ReadFile(filepath.Join(idx.arch(), "config.json")); err == nil {
+		if obj, perr := parseObject(data); perr == nil {
+			current = idx.configStringList(obj, "drift_ignore")
+		}
+	}
+	for _, g := range current {
+		if g == glob {
+			return false, nil
+		}
+	}
+	current = append(current, glob)
+	return true, idx.setConfigKeysLocked(map[string]any{"drift_ignore": current})
+}
 
 // SetConfigKeys sets top-level config.json keys. A nil value removes the key. All other
 // keys, including ones this version does not interpret, are preserved. The file is

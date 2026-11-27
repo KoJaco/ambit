@@ -303,7 +303,9 @@ relationship) and `ignored_files` (count skipped by ignore globs). `node_id` lim
 report to that node's globs and overlaps (unowned files are not reported). `worktree` reads
 files from another checkout of the same repository (a linked git worktree), so an agent
 can verify its own branch; the model still comes from the server's `.arch`. A path from a
-different repository is refused. Read-only.
+different repository is refused. When more than 25 files are unowned the report carries a
+`hint` (and `check_model` drift output the same) to add globs to `drift_ignore` in
+`.arch/config.json`; `ambit config drift-ignore add <glob>` does that from the CLI. Read-only.
 
 #### `update_node_status(node_id, status)`
 
