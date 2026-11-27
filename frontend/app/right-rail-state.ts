@@ -1,16 +1,18 @@
 import { useSyncExternalStore } from "react";
 
 // Tracks which right-rail panels are mounted so page chrome can get out of their way:
-// `panels` counts open RightRailPanels, `toggles` counts panels that host their own theme toggle.
-type RailState = { panels: number; toggles: number };
+// `panels` counts open RightRailPanels, `toggles` counts panels that host their own theme toggle,
+// `review` counts mounted Review panels (the Review component itself renders nothing when closed or empty).
+export type RailState = { panels: number; toggles: number; review: number };
 
-let state: RailState = { panels: 0, toggles: 0 };
+let state: RailState = { panels: 0, toggles: 0, review: 0 };
 const listeners = new Set<() => void>();
 
 function update(patch: Partial<Record<keyof RailState, number>>) {
     state = {
         panels: state.panels + (patch.panels ?? 0),
         toggles: state.toggles + (patch.toggles ?? 0),
+        review: state.review + (patch.review ?? 0),
     };
     listeners.forEach((listener) => listener());
 }
@@ -29,6 +31,34 @@ function subscribe(listener: () => void) {
 
 export function useRailState(): RailState {
     return useSyncExternalStore(subscribe, () => state, () => state);
+}
+
+export type RightRailFront = "inspector" | "review";
+
+// Whether the inspector and Review sheets stack. Review is only a sheet while it actually renders
+// one, so an always-mounted-but-empty Review never pushes the inspector into the back.
+export function railStackLayout(input: { hasInspector: boolean; reviewMounted: boolean; front: RightRailFront }): {
+    stacked: boolean;
+    inspectorFront: boolean;
+    reviewFront: boolean;
+} {
+    const stacked = input.hasInspector && input.reviewMounted;
+    return {
+        stacked,
+        inspectorFront: !stacked || input.front === "inspector",
+        reviewFront: !stacked || input.front === "review",
+    };
+}
+
+// Which sheet is in front once Review is gone: the inspector, so it is not left behind a stale choice.
+export function frontAfterReviewChange(front: RightRailFront, reviewMounted: boolean): RightRailFront {
+    return reviewMounted ? front : "inspector";
+}
+
+// Length of the sheet exit animation. None when the user prefers reduced motion (WCAG 2.2 SC 2.3.3).
+export const PANEL_EXIT_MS = 150;
+export function panelExitMs(prefersReducedMotion: boolean): number {
+    return prefersReducedMotion ? 0 : PANEL_EXIT_MS;
 }
 
 // Where the page-level theme toggle belongs: hidden when a panel hosts one, shifted left of the

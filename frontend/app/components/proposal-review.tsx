@@ -33,6 +33,8 @@ import {
     type RowVerb,
 } from "../proposal-rows";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
+import { proposalAge, proposalTimestamp } from "../proposal-meta";
+import { usePanelPresence } from "../hooks/use-panel-presence";
 import { ReviewOpActions } from "./review-op-actions";
 
 type DetailSelection = { proposalId: string; index: number };
@@ -276,11 +278,15 @@ export function ProposalReview({
         (row ?? document.getElementById("review-heading"))?.focus();
     }, [detailKey]);
 
-    if (!open || (summaries.length === 0 && !error)) return null;
+    const showSheet = open && (summaries.length > 0 || !!error);
+    const presence = usePanelPresence(showSheet);
+    if (!presence.mounted) return null;
 
     return (
         <RightRailPanel
             label="Review"
+            railKind="review"
+            exiting={presence.exiting}
             onPointerDown={() => {
                 onFocus?.();
             }}
@@ -407,6 +413,18 @@ export function ProposalReview({
                                                             {origin}
                                                         </span>
                                                         <span>{line.source}</span>
+                                                        <span aria-hidden>·</span>
+                                                        <code className="font-mono text-[11px]" title="Proposal id">
+                                                            {proposal.proposal_id}
+                                                        </code>
+                                                        {proposalAge(proposal.created_at) ? (
+                                                            <>
+                                                                <span aria-hidden>·</span>
+                                                                <time dateTime={proposal.created_at} title={proposalTimestamp(proposal.created_at)}>
+                                                                    {proposalAge(proposal.created_at)}
+                                                                </time>
+                                                            </>
+                                                        ) : null}
                                                     </p>
                                                     {line.staleCount > 0 ? (
                                                         <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">

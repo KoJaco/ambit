@@ -22,6 +22,7 @@ import { readGoToSelect } from "../method-ui";
 import { returnNodeIdAfterDelete } from "../relationship-breadcrumb";
 import {
     floatingToggleMode,
+    frontAfterReviewChange,
     isEditableElement,
     isInspectorDirty,
     shouldAutoOpenReview,
@@ -94,6 +95,11 @@ export default function Home() {
         setRefreshKey((value) => value + 1);
     }
     const [frontPanel, setFrontPanel] = useState<RightRailFront>("review");
+    // When Review unmounts (closed, or no proposals left) the inspector must not stay "behind" a stale choice.
+    const reviewMounted = useRailState().review > 0;
+    useEffect(() => {
+        setFrontPanel((front) => frontAfterReviewChange(front, reviewMounted));
+    }, [reviewMounted]);
     // Whether the Review panel is shown. Closing it keeps the proposals; the toolbar badge reopens it.
     const [reviewOpen, setReviewOpen] = useState(true);
     function showReview() {
