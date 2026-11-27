@@ -295,7 +295,7 @@ describe("new container and orphaned members", () => {
         ];
         const nodes = [{ id: "g" }, { id: "a", parentId: "g" }, { id: "b", parentId: "g" }, { id: "c" }];
         const seeded = seedPositions(nodes, placed, sizes);
-        const newSizes = { ...sizes, ...computeGroupSizes(nodes, seeded, sizes) };
+        const newSizes: Record<string, { width: number; height: number }> = { ...sizes, ...computeGroupSizes(nodes, seeded, sizes) };
         const out = pushOverlaps(nodes, seeded, {}, newSizes);
         const g = out.g;
         expect(g).toEqual(seeded.g);
