@@ -23,7 +23,12 @@ func (idx *Index) AddDriftIgnore(glob string) (bool, error) {
 	var current []string
 	if data, err := os.ReadFile(filepath.Join(idx.arch(), "config.json")); err == nil {
 		if obj, perr := parseObject(data); perr == nil {
-			current = idx.configStringList(obj, "drift_ignore")
+			if raw, ok := obj["drift_ignore"]; ok && !isNull(raw) {
+				// Refuse rather than overwrite a value we cannot interpret as a string list.
+				if err := json.Unmarshal(raw, &current); err != nil {
+					return false, fmt.Errorf("config.json: drift_ignore is not an array of strings; fix it before adding globs")
+				}
+			}
 		}
 	}
 	for _, g := range current {

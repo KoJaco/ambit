@@ -16,6 +16,7 @@ import (
 func parseInitArgs(args []string) (dir, method string, mcp mcpMode, err error) {
 	dir = "."
 	haveDir := false
+	npx, noMCP := false, false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -31,9 +32,9 @@ func parseInitArgs(args []string) (dir, method string, mcp mcpMode, err error) {
 				return "", "", mcpLocal, fmt.Errorf("--method needs a method id")
 			}
 		case a == "--npx":
-			mcp = mcpNpx
+			mcp, npx = mcpNpx, true
 		case a == "--no-mcp":
-			mcp = mcpSkip
+			mcp, noMCP = mcpSkip, true
 		case strings.HasPrefix(a, "-"):
 			return "", "", mcpLocal, fmt.Errorf("unknown flag %q", a)
 		case haveDir:
@@ -41,6 +42,9 @@ func parseInitArgs(args []string) (dir, method string, mcp mcpMode, err error) {
 		default:
 			dir, haveDir = a, true
 		}
+	}
+	if npx && noMCP {
+		return "", "", mcpLocal, fmt.Errorf("--npx and --no-mcp cannot be used together")
 	}
 	return dir, method, mcp, nil
 }

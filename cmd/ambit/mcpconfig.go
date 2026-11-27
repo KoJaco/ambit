@@ -30,8 +30,13 @@ func ambitMCPEntry(npx bool) map[string]any {
 func mergeMCPConfig(existing []byte, npx bool) (out []byte, changed bool, err error) {
 	doc := map[string]any{}
 	if len(bytes.TrimSpace(existing)) > 0 {
-		if err := json.Unmarshal(existing, &doc); err != nil {
+		dec := json.NewDecoder(bytes.NewReader(existing))
+		dec.UseNumber() // keep large integers and exact number text intact
+		if err := dec.Decode(&doc); err != nil {
 			return nil, false, fmt.Errorf("existing file is not valid JSON: %w", err)
+		}
+		if doc == nil {
+			return nil, false, fmt.Errorf("existing file is not a JSON object")
 		}
 	}
 	servers, ok := doc["mcpServers"].(map[string]any)
@@ -46,11 +51,48 @@ func mergeMCPConfig(existing []byte, npx bool) (out []byte, changed bool, err er
 	}
 	servers["ambit"] = ambitMCPEntry(npx)
 	doc["mcpServers"] = servers
-	out, err = json.MarshalIndent(doc, "", "  ")
-	if err != nil {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(doc); err != nil {
 		return nil, false, err
 	}
-	return append(out, '\n'), true, nil
+	return buf.Bytes(), true, nil
+}
+
+// writeFileAtomic writes data to a temp file beside path and renames it over path, keeping the
+// mode of an existing file (0o644 for a new one).
+func writeFileAtomic(path string, data []byte) error {
+	mode := os.FileMode(0o644)
+	if st, err := os.Stat(path); err == nil {
+		mode = st.Mode().Perm()
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	cleanup := func() { _ = os.Remove(name) }
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		_ = tmp.Close()
+		cleanup()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(name, path); err != nil {
+		cleanup()
+		return err
+	}
+	return nil
 }
 
 // writeMCPConfigs creates or merges .mcp.json in dir, and .cursor/mcp.json when .cursor/
@@ -77,7 +119,7 @@ func writeMCPConfigs(dir string, npx bool) []string {
 			lines = append(lines, fmt.Sprintf("mcp: %s already configures ambit (unchanged)", rel))
 			continue
 		}
-		if err := os.WriteFile(path, out, 0o644); err != nil {
+		if err := writeFileAtomic(path, out); err != nil {
 			lines = append(lines, fmt.Sprintf("mcp: could not write %s: %v", rel, err))
 			continue
 		}

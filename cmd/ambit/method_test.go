@@ -465,3 +465,58 @@ func TestConfigDriftIgnoreAdd(t *testing.T) {
 		t.Fatal("usage error expected")
 	}
 }
+
+func TestParseInitArgsRejectsNpxWithNoMCP(t *testing.T) {
+	for _, args := range [][]string{{"--npx", "--no-mcp"}, {"--no-mcp", "--npx"}} {
+		if _, _, _, err := parseInitArgs(args); err == nil {
+			t.Fatalf("%v accepted", args)
+		}
+	}
+}
+
+func TestMergeMCPConfigPreservesNumbersAndHTML(t *testing.T) {
+	in := `{"big":12345678901234567890,"note":"a<b>&c","mcpServers":{}}`
+	out, changed, err := mergeMCPConfig([]byte(in), false)
+	if err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "12345678901234567890") || !strings.Contains(s, "a<b>&c") || strings.Contains(s, "\\u003c") {
+		t.Fatalf("%s", s)
+	}
+}
+
+func TestWriteMCPConfigsAtomicKeepsMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mcp.json")
+	if err := os.WriteFile(path, []byte(`{"extra":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeMCPConfigs(dir, false)
+	st, err := os.Stat(path)
+	if err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatal(st.Mode(), err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("temp file left behind: %v", entries)
+	}
+	if readJSON(t, path)["mcpServers"] == nil {
+		t.Fatal("not merged")
+	}
+}
+
+func TestConfigDriftIgnoreAddRefusesNonArray(t *testing.T) {
+	dir := initDir(t, "--no-mcp")
+	cfg := filepath.Join(dir, ".arch", "config.json")
+	if err := os.WriteFile(cfg, []byte(`{"drift_ignore":"dist/**"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errw bytes.Buffer
+	if code := cmdConfig(dir, []string{"drift-ignore", "add", "x/**"}, &out, &errw); code == 0 {
+		t.Fatal("expected failure")
+	}
+	if data, _ := os.ReadFile(cfg); string(data) != `{"drift_ignore":"dist/**"}` {
+		t.Fatalf("config rewritten: %s", data)
+	}
+}
