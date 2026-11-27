@@ -39,6 +39,7 @@ type ProposalStateInfo struct {
 	Status     string    `json:"status"`
 	Source     string    `json:"source,omitempty"`
 	Summary    string    `json:"summary,omitempty"`
+	ChangeSet  string    `json:"change_set,omitempty"`
 	CreatedAt  string    `json:"created_at,omitempty"`
 	ResolvedAt string    `json:"resolved_at,omitempty"`
 	Operations []OpState `json:"operations"`
@@ -176,7 +177,7 @@ func (idx *Index) proposalStateLocked(id string) (ProposalStateInfo, error) {
 		m, err := idx.loadReadable(id)
 		if err == nil {
 			return ProposalStateInfo{
-				ID: m.ProposalID, Status: ProposalPending, Source: m.Source, Summary: m.Summary,
+				ID: m.ProposalID, Status: ProposalPending, Source: m.Source, Summary: m.Summary, ChangeSet: m.ChangeSet,
 				CreatedAt: m.CreatedAt, Operations: opStates(idx, m.Operations, true),
 			}, nil
 		}
@@ -202,7 +203,7 @@ func (idx *Index) resolvedStateLocked(id string) (ProposalStateInfo, error) {
 		return ProposalStateInfo{}, err
 	}
 	info := ProposalStateInfo{
-		ID: m.ProposalID, Status: outcomeOf(m.Operations), Source: m.Source, Summary: m.Summary,
+		ID: m.ProposalID, Status: outcomeOf(m.Operations), Source: m.Source, Summary: m.Summary, ChangeSet: m.ChangeSet,
 		CreatedAt: m.CreatedAt, Operations: opStates(idx, m.Operations, false),
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "resolved.json")); err == nil {
@@ -354,12 +355,53 @@ func (idx *Index) Restage(id string, indexes []int) (string, error) {
 	}
 	nm := manifest{
 		ManifestVersion: proposalManifestVersion, ProposalID: newID, CreatedAt: now.Format(time.RFC3339),
-		Source: m.Source, Summary: summary, Operations: ops,
+		Source: m.Source, Summary: summary, ChangeSet: m.ChangeSet, Operations: ops,
 	}
 	if err := writeManifest(dst, nm); err != nil {
 		return fail(err)
 	}
 	return newID, nil
+}
+
+// orderOps returns the operations in staging (and so accept) order. Creates are ordered by
+// orderCreates. Among the update_node operations (which keep their slots), those that move
+// a node in the hierarchy come first, so every depends_on cycle check runs against the
+// final tree whichever order the operations were written in. Renames move to the end, so
+// every other operation of a proposal refers to a node by its current id. Everything
+// else keeps its position.
+func orderOps(ops []StageOp) []StageOp {
+	ops = orderCreates(ops)
+	var renames []StageOp
+	var kept []StageOp
+	for _, op := range ops {
+		if op.Op == OpRenameNode {
+			renames = append(renames, op)
+			continue
+		}
+		kept = append(kept, op)
+	}
+	var slots []int
+	var moves, others []StageOp
+	for i, op := range kept {
+		if op.Op != OpUpdateNode {
+			continue
+		}
+		slots = append(slots, i)
+		if op.Update.Parent != nil || op.Update.Relationship != nil {
+			moves = append(moves, op)
+		} else {
+			others = append(others, op)
+		}
+	}
+	out := append([]StageOp(nil), kept...)
+	for k, pos := range slots {
+		if k < len(moves) {
+			out[pos] = moves[k]
+		} else {
+			out[pos] = others[k-len(moves)]
+		}
+	}
+	return append(out, renames...)
 }
 
 // orderCreates reorders the create_node operations among themselves so a node comes
