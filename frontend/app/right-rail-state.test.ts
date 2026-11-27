@@ -3,6 +3,8 @@ import {
     floatingToggleMode,
     frontAfterReviewChange,
     isEditableElement,
+    nextPanelPresence,
+    paneClickCloses,
     panelExitMs,
     railStackLayout,
     reviewEscapeAction,
@@ -78,5 +80,24 @@ describe("panelExitMs", () => {
     it("skips the exit animation for reduced motion", () => {
         expect(panelExitMs(true)).toBe(0);
         expect(panelExitMs(false)).toBeGreaterThan(0);
+    });
+});
+
+describe("paneClickCloses", () => {
+    it("keeps an inspector with unsaved edits open", () => {
+        expect(paneClickCloses(true).inspector).toBe(false);
+        expect(paneClickCloses(false).inspector).toBe(true);
+    });
+});
+
+describe("nextPanelPresence", () => {
+    it("lingers on the render where show turns false", () => {
+        expect(nextPanelPresence({ show: true, lingering: false }, false, false)).toEqual({ show: false, lingering: true });
+    });
+    it("unmounts at once with reduced motion", () => {
+        expect(nextPanelPresence({ show: true, lingering: false }, false, true)).toEqual({ show: false, lingering: false });
+    });
+    it("stops lingering when shown again", () => {
+        expect(nextPanelPresence({ show: false, lingering: true }, true, false)).toEqual({ show: true, lingering: false });
     });
 });

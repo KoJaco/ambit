@@ -49,7 +49,7 @@ import {
 import type { StructureRequest } from "./structure-panel";
 import { barStore } from "../bottom-bar";
 import { history } from "../history";
-import { useRailState } from "../right-rail-state";
+import { isInspectorDirty, paneClickCloses, useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { buildExternalStubs, isStubActivationKey, stubAriaLabel } from "../external-stubs";
 import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions, type NodeSize, type Point } from "../layout";
@@ -1082,8 +1082,10 @@ export default function FlowCanvas({
     // (node or edge) and, through the host, an open Review panel. Escape still works as before.
     const onPaneClick = useCallback(() => {
         clearSelection();
-        onSelectEdge?.(null);
-        onSelectNode?.(null);
+        if (paneClickCloses(isInspectorDirty()).inspector) {
+            onSelectEdge?.(null);
+            onSelectNode?.(null);
+        }
         onPaneClickHost?.();
     }, [clearSelection, onSelectEdge, onSelectNode, onPaneClickHost]);
 

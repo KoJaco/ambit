@@ -79,6 +79,11 @@ export function isInspectorDirty(): boolean {
     return inspectorDirty;
 }
 
+// What a click on empty canvas closes: the inspector stays when it holds unsaved edits.
+export function paneClickCloses(inspectorDirty: boolean): { inspector: boolean } {
+    return { inspector: !inspectorDirty };
+}
+
 type ElementLike = { tagName?: string; isContentEditable?: boolean } | null | undefined;
 
 // True when the focused element takes typed text, so a panel change would pull the rug out.
@@ -105,4 +110,16 @@ export function shouldAutoOpenReview(input: {
 export function reviewEscapeAction(input: { detailOpen: boolean; editingFocus: boolean }): "back" | "close" | "none" {
     if (input.editingFocus) return "none";
     return input.detailOpen ? "back" : "close";
+}
+
+// Presence of an exit-animating panel as pure state: `lingering` flips on the render where `show`
+// turns false (so the panel never unmounts for a frame), unless reduced motion is on.
+export function nextPanelPresence(
+    prev: { show: boolean; lingering: boolean },
+    show: boolean,
+    prefersReducedMotion: boolean,
+): { show: boolean; lingering: boolean } {
+    if (show) return { show, lingering: false };
+    if (prev.show) return { show, lingering: panelExitMs(prefersReducedMotion) > 0 };
+    return { show, lingering: prev.lingering };
 }

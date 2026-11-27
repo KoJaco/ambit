@@ -6,11 +6,16 @@ const nodes: Record<string, Record<string, string | undefined>> = {
     zone: { id: "zone", name: "Zone", type: "container", parent_id: "root" },
     a: { id: "a", name: "A", type: "service", parent_id: "zone" },
     b: { id: "b", name: "B", type: "service", parent_id: "zone" },
+    x: { id: "x", name: "X", type: "service", relationship_id: "r2" },
+    p: { id: "p", name: "P", type: "service", parent_id: "x" },
+    q: { id: "q", name: "Q", type: "service", parent_id: "x" },
     mid: { id: "mid", name: "Mid", type: "service", relationship_id: "r1" },
 };
 vi.mock("./api", () => ({
     getNode: async (id: string) => nodes[id],
-    getRelationshipLevel: async () => ({ relationship: { id: "r1", from: "a", to: "b", label: "", kind: "" } }),
+    getRelationshipLevel: async (id: string) => ({
+        relationship: id === "r2" ? { id: "r2", from: "p", to: "q", label: "", kind: "" } : { id: "r1", from: "a", to: "b", label: "", kind: "" },
+    }),
 }));
 
 describe("returnNodeIdAfterDelete", () => {
@@ -62,5 +67,10 @@ describe("nodeAncestorChain", () => {
     it("continues above a relationship interior node", async () => {
         const crumbs = await nodeAncestorChain("mid", undefined, true);
         expect(crumbs.map((c) => c.id)).toEqual(["root", "zone", "mid"]);
+    });
+
+    it("terminates on a cyclic relationship/ancestor fixture", async () => {
+        const crumbs = await nodeAncestorChain("x", undefined, true);
+        expect(crumbs.map((c) => c.id)).toEqual(["x"]);
     });
 });

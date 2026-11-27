@@ -21,14 +21,18 @@ export function visibleCrumbs(chain: { id: string; name: string; type: string }[
     }));
 }
 
+/** Shared across the nodeAncestorChain <-> relationshipPrefixCrumbs recursion so a cycle ends. */
+type Visited = { nodes: Set<string>; rels: Set<string> };
+
 /** Ancestors from root down to startId (inclusive when includeStart). */
 export async function nodeAncestorChain(
     startId: string,
     signal?: AbortSignal,
     includeStart = false,
+    visited: Visited = { nodes: new Set(), rels: new Set() },
 ): Promise<BreadcrumbCrumb[]> {
     const chain: { id: string; name: string; type: string }[] = [];
-    const seen = new Set<string>();
+    const seen = visited.nodes;
     let current: string | undefined = startId;
     let interiorOf: string | undefined;
     if (!includeStart) {
@@ -44,11 +48,12 @@ export async function nodeAncestorChain(
     }
     chain.reverse();
     const crumbs = visibleCrumbs(chain);
-    if (!interiorOf) return crumbs;
+    if (!interiorOf || visited.rels.has(interiorOf)) return crumbs;
+    visited.rels.add(interiorOf);
     // The chain starts inside a relationship: continue above it through the edge's endpoints.
     try {
         const level = await getRelationshipLevel(interiorOf, signal);
-        const above = await relationshipPrefixCrumbs(level.relationship, undefined, signal);
+        const above = await relationshipPrefixCrumbs(level.relationship, undefined, signal, visited);
         const known = new Set(crumbs.map((c) => c.id));
         return [...above.filter((c) => !known.has(c.id)), ...crumbs];
     } catch {
@@ -63,9 +68,10 @@ export async function relationshipPrefixCrumbs(
     rel: Relationship,
     fromNodeId: string | undefined,
     signal?: AbortSignal,
+    visited: Visited = { nodes: new Set(), rels: new Set() },
 ): Promise<BreadcrumbCrumb[]> {
     if (fromNodeId) {
-        return nodeAncestorChain(fromNodeId, signal, true);
+        return nodeAncestorChain(fromNodeId, signal, true, visited);
     }
     const [fromNode, toNode] = await Promise.all([
         getNode(rel.from, signal),
@@ -75,13 +81,13 @@ export async function relationshipPrefixCrumbs(
         fromNode.parent_id &&
         fromNode.parent_id === toNode.parent_id
     ) {
-        return nodeAncestorChain(fromNode.parent_id, signal, true);
+        return nodeAncestorChain(fromNode.parent_id, signal, true, visited);
     }
     if (fromNode.parent_id) {
-        return nodeAncestorChain(fromNode.parent_id, signal, true);
+        return nodeAncestorChain(fromNode.parent_id, signal, true, visited);
     }
     if (toNode.parent_id) {
-        return nodeAncestorChain(toNode.parent_id, signal, true);
+        return nodeAncestorChain(toNode.parent_id, signal, true, visited);
     }
     return [];
 }

@@ -1,25 +1,26 @@
-import { useEffect, useRef, useState } from "react";
-import { panelExitMs } from "../right-rail-state";
+import { useEffect, useState } from "react";
+import { nextPanelPresence, panelExitMs } from "../right-rail-state";
+
+function prefersReducedMotion(): boolean {
+    return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
 
 // Keeps a sheet mounted for the length of its exit animation after `show` turns false.
 // With prefers-reduced-motion the sheet unmounts at once. `exiting` is true while it lingers.
+// `lingering` is derived during render (previous value held in state) so the closing panel is
+// never unmounted and remounted between the prop change and an effect.
 export function usePanelPresence(show: boolean): { mounted: boolean; exiting: boolean } {
-    const [lingering, setLingering] = useState(false);
-    const wasShown = useRef(false);
+    const [state, setState] = useState({ show, lingering: false });
+    let current = state;
+    if (state.show !== show) {
+        current = nextPanelPresence(state, show, prefersReducedMotion());
+        setState(current);
+    }
+    const lingering = current.lingering;
     useEffect(() => {
-        if (show) {
-            wasShown.current = true;
-            setLingering(false);
-            return;
-        }
-        if (!wasShown.current) return;
-        wasShown.current = false;
-        const reduced = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-        const ms = panelExitMs(!!reduced);
-        if (ms === 0) return;
-        setLingering(true);
-        const timer = window.setTimeout(() => setLingering(false), ms);
+        if (show || !lingering) return;
+        const timer = window.setTimeout(() => setState((s) => (s.show ? s : { ...s, lingering: false })), panelExitMs(prefersReducedMotion()));
         return () => window.clearTimeout(timer);
-    }, [show]);
+    }, [show, lingering]);
     return { mounted: show || lingering, exiting: !show && lingering };
 }
