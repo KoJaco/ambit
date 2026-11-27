@@ -58,6 +58,8 @@ import {
     groupTints,
     layoutSignature,
     layoutUsable,
+    memberSignature,
+    usableGroupSizes,
     fallbackViewDefaults,
     maxLevelFetches,
     overBudgetHint,
@@ -168,12 +170,15 @@ function containerSizing(
     positions: Record<string, Point>,
     sizes: Record<string, NodeSize>,
     baseKey: string,
-    // Sizes groups already had on screen: a toggle may grow a group but never shrinks it.
+    // Sizes groups already had on screen: a toggle may grow a group but never shrinks it. Empty when
+    // membership changed, so a group that lost members shrinks back to fit.
     floor: Record<string, NodeSize> = {},
 ) {
+    // Only the architect's own resizes count, and only while the group still has the members it had then.
+    const resized = usableGroupSizes(loadGroupSizes(baseKey), compound);
     return {
         mins: computeGroupSizes(compound, positions, sizes),
-        applied: computeGroupSizes(compound, positions, sizes, maxSizes(loadGroupSizes(baseKey), floor)),
+        applied: computeGroupSizes(compound, positions, sizes, maxSizes(resized, floor)),
     };
 }
 
@@ -425,9 +430,10 @@ export default function FlowCanvas({
     const cacheKeyRef = useRef("");
     // Group sizes are keyed by the level (base key), not the expanded set, so they survive toggles.
     const onResizeGroup = useCallback((id: string, size: NodeSize) => {
+        const members = (levelRef.current?.children ?? []).map((child) => ({ id: child.id, parentId: child.group_id }));
         saveGroupSizes(baseKey, {
             ...loadGroupSizes(baseKey),
-            [id]: { width: Math.round(size.width), height: Math.round(size.height) },
+            [id]: { width: Math.round(size.width), height: Math.round(size.height), sig: memberSignature(id, members) },
         });
     }, [baseKey]);
 
@@ -553,8 +559,14 @@ export default function FlowCanvas({
                     loadLayoutSig(cacheKey),
                     sig,
                 );
-                if (toggled) {
-                    // Group toggle: keep every placed node where it is, place only what was revealed,
+                // Data-driven membership change (a proposal was accepted, nodes grouped or moved): the
+                // server drops the saved layout on structure edits, so what is on screen is the only
+                // record of the architect's arrangement. Keep it and place only what is new.
+                const lastApplied = appliedRef.current;
+                const membershipChanged =
+                    !toggled && !usable && !!lastApplied && lastApplied.base === baseKey && nodesRef.current.length > 0;
+                if (toggled || membershipChanged) {
+                    // Keep every placed node where it is, place only what was revealed or changed,
                     // grow groups only when needed, and leave the viewport alone.
                     const prev = nodesRef.current;
                     const seeded = seedPositions(
@@ -571,7 +583,9 @@ export default function FlowCanvas({
                         const width = item.style?.width;
                         const height = item.style?.height;
                         if (item.type === "container" && typeof width === "number" && typeof height === "number") {
-                            floor[item.id] = { width, height };
+                            // Only a toggle keeps on-screen sizes as a floor; after a membership change
+                            // a group must be free to shrink to its remaining members.
+                            if (toggled) floor[item.id] = { width, height };
                             oldSizes[item.id] = { width, height };
                         } else {
                             const w = item.measured?.width ?? item.width;

@@ -221,3 +221,65 @@ describe("seedPositions with external stubs", () => {
         expect(out.a).toEqual({ x: 0, y: 0 });
     });
 });
+
+describe("seedPositions on membership change", () => {
+    const sizes = { a: { width: 220, height: 96 }, b: { width: 220, height: 96 }, c: { width: 220, height: 96 } };
+
+    it("keeps hand-arranged top-level nodes and places a new node beside them", () => {
+        const placed = [
+            { id: "a", position: { x: 500, y: 40 } },
+            { id: "b", position: { x: 30, y: 700 } },
+        ];
+        const out = seedPositions([{ id: "a" }, { id: "b" }, { id: "c" }], placed, sizes);
+        expect(out.a).toEqual({ x: 500, y: 40 });
+        expect(out.b).toEqual({ x: 30, y: 700 });
+        expect(out.c.x).toBeGreaterThan(500);
+    });
+
+    it("places a new group around members that were on screen, which do not move", () => {
+        const placed = [
+            { id: "a", position: { x: 500, y: 300 } },
+            { id: "b", position: { x: 800, y: 340 } },
+            { id: "c", position: { x: 0, y: 0 } },
+        ];
+        const nodes = [{ id: "g" }, { id: "a", parentId: "g" }, { id: "b", parentId: "g" }, { id: "c" }];
+        const out = seedPositions(nodes, placed, sizes);
+        expect(out.c).toEqual({ x: 0, y: 0 });
+        expect(out.g).toEqual({ x: 500 - containerPadding.left, y: 300 - containerPadding.top });
+        // Absolute position of each member is unchanged.
+        expect(out.a.x + out.g.x).toBe(500);
+        expect(out.a.y + out.g.y).toBe(300);
+        expect(out.b.x + out.g.x).toBe(800);
+        expect(out.b.y + out.g.y).toBe(340);
+    });
+
+    it("places a node moved into an existing group fresh, inside the group", () => {
+        const placed = [
+            { id: "g", position: { x: 100, y: 100 } },
+            { id: "a", position: { x: 900, y: 900 } },
+        ];
+        const out = seedPositions([{ id: "g" }, { id: "a", parentId: "g" }], placed, sizes);
+        expect(out.g).toEqual({ x: 100, y: 100 });
+        expect(out.a).toEqual({ x: containerPadding.left, y: containerPadding.top });
+    });
+
+    it("places a node that left its group beside the top-level nodes, not on the old group", () => {
+        const placed = [
+            { id: "g", position: { x: 100, y: 100 } },
+            { id: "a", parentId: "g", position: { x: 30, y: 60 } },
+        ];
+        const out = seedPositions([{ id: "g" }, { id: "a" }], placed, sizes);
+        expect(out.g).toEqual({ x: 100, y: 100 });
+        expect(out.a.x).toBeGreaterThan(100 + 220);
+    });
+});
+
+describe("group shrink after members leave", () => {
+    it("computes a smaller size from the remaining members", () => {
+        const sizes = { a: { width: 220, height: 96 }, b: { width: 220, height: 96 } };
+        const nodes2 = [{ id: "g" }, { id: "a", parentId: "g" }, { id: "b", parentId: "g" }];
+        const two = computeGroupSizes(nodes2, { g: { x: 0, y: 0 }, a: { x: 16, y: 48 }, b: { x: 16, y: 400 } }, sizes);
+        const one = computeGroupSizes(nodes2.slice(0, 2), { g: { x: 0, y: 0 }, a: { x: 16, y: 48 } }, sizes);
+        expect(one.g.height).toBeLessThan(two.g.height);
+    });
+});

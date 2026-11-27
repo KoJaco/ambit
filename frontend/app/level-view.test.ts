@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
     canExpandChild,
     groupTints,
+    memberSignature,
     sanitizeGroupSizes,
+    usableGroupSizes,
     expandedGroups,
     expandedKey,
     layoutSignature,
@@ -274,5 +276,28 @@ describe("groupTints", () => {
             { id: "d", group_id: "missing" },
         ]);
         expect(tints).toEqual({ a: 1, b: 2, c: 2, d: 1 });
+    });
+});
+
+describe("group size signatures", () => {
+    const nodes = [{ id: "g" }, { id: "b", parentId: "g" }, { id: "a", parentId: "g" }, { id: "x" }];
+
+    it("signs a container by its sorted direct members", () => {
+        expect(memberSignature("g", nodes)).toBe("a\0b");
+        expect(memberSignature("x", nodes)).toBe("");
+    });
+
+    it("keeps a resize only while membership is unchanged", () => {
+        const stored = { g: { width: 500, height: 400, sig: "a\0b" } };
+        expect(usableGroupSizes(stored, nodes)).toEqual({ g: { width: 500, height: 400 } });
+        expect(usableGroupSizes(stored, nodes.filter((n) => n.id !== "b"))).toEqual({});
+    });
+
+    it("keeps legacy entries without a signature and round-trips sig through sanitize", () => {
+        expect(usableGroupSizes({ g: { width: 500, height: 400 } }, nodes)).toEqual({ g: { width: 500, height: 400 } });
+        expect(sanitizeGroupSizes({ g: { width: 5, height: 6, sig: "a" }, h: { width: 5, height: 6, sig: 3 } })).toEqual({
+            g: { width: 5, height: 6, sig: "a" },
+            h: { width: 5, height: 6 },
+        });
     });
 });
