@@ -1567,6 +1567,8 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 			Label:    deref(op.Label),
 			Kind:     deref(op.Kind),
 			Contract: op.Contract,
+
+			AllowEndpointChange: true,
 		}
 		if _, err := idx.setRelationshipLocked(in); err != nil {
 			return err

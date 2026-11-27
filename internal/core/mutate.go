@@ -317,7 +317,8 @@ func (idx *Index) Delete(id NodeID) error {
 }
 
 // SetRelationship creates when ID is empty and no edge has the same from, to and label;
-// otherwise it updates that edge (endpoints, label, kind) in place.
+// otherwise it updates that edge's label, kind and contract in place. With an ID,
+// endpoints are never changed here (only the staged set_relationship path opts in).
 func (idx *Index) SetRelationship(in SetRelationshipInput) (Relationship, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
@@ -466,8 +467,10 @@ func (idx *Index) setRelationshipLocked(in SetRelationshipInput) (Relationship, 
 		rel, i := idx.relByID(in.ID)
 		if rel != nil {
 			updated := *rel
-			updated.From = from
-			updated.To = to
+			if in.AllowEndpointChange {
+				updated.From = from
+				updated.To = to
+			}
 			updated.Label = label
 			updated.Kind = kind
 			if in.Contract != nil {

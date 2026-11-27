@@ -23,6 +23,9 @@ type SetRelationshipInput struct {
 	// Contract: nil leaves an existing edge's contract unchanged; a non-nil empty
 	// contract clears it. A new edge stores it as given.
 	Contract *EdgeContract
+	// AllowEndpointChange lets an update by ID move From/To. Only the staged
+	// set_relationship path sets it; the direct API never does.
+	AllowEndpointChange bool
 }
 
 func (idx *Index) relationshipTaken(id string) bool {

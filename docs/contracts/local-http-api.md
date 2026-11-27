@@ -108,8 +108,13 @@ hard refresh.
   relationships among them, crossings, endpoint `context`, and warnings. Unknown id or an
   empty interior is 404.
 
-- `PUT /relationships` — create when `id` is omitted (returns the new id), or update
-  `label` and `kind` when `id` is set. `from` and `to` are required on create. Optional
+- `PUT /relationships` — upsert. With `id` omitted, an existing edge with the same `from`,
+  `to` and `label` is updated in place (an omitted `kind` keeps its kind); otherwise a new
+  edge is created (returns the id). Because the match includes the label, distinct
+  unlabelled `A -> B` edges are merged into one. With `id` set, only `label`, `kind` and
+  `contract` are updated; `from`/`to` are never changed through this endpoint (endpoint
+  moves happen only via a staged `set_relationship` with `relationship_id`).
+  `from` and `to` are required on create. Optional
   `contract` `{format?, ref?, text?}`: omitted leaves an existing edge's contract unchanged,
   `{}` clears it. Relationship reads (level `relationships`, relationship-level
   `relationship`/`relationships`, and this response) expose `contract` when set and omit it
