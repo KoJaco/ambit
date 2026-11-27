@@ -243,6 +243,8 @@ file and its `~<hash>` variants so the client recomputes. A field edit does not.
 - **List proposals** — pending proposals with their operations and per-operation staleness
   computed against current state. Staleness is computed server-side at read time, not stored
   in the manifest, because the node can change after the manifest is written.
+  Each proposal also carries `change_set` and `depends_on_proposal` when set (the list, the diff
+  and the state responses); a `rename_node` operation has `new_id` implied by its `proposed.id`.
 - **Get a proposal diff** — for each operation, the current state and the proposed state,
   ready to render. A `set_relationship` row's `relationship` carries `contract_cleared: true`
   (omitted otherwise) when the staged contract is explicitly empty and clears the edge's

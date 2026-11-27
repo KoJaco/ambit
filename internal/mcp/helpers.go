@@ -21,6 +21,7 @@ func stagedMessage(source, id, detail string) string {
 
 func (e *toolEnv) stage(ctx context.Context, in core.StageInput) (*sdkmcp.CallToolResult, stageResponse, error) {
 	_ = ctx
+	in.Origin = e.originID()
 	id, err := e.idx.Stage(in)
 	if err != nil {
 		return nil, stageResponse{}, err

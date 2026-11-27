@@ -410,6 +410,9 @@ export type ProposalSummary = {
     created_at?: string;
     source?: string;
     summary?: string;
+    // Groups related proposals (set by the staging agent); not yet used for grouping in the UI.
+    change_set?: string;
+    depends_on_proposal?: string;
     unreadable: boolean;
     error?: string;
     operations?: OpSummary[];
@@ -480,6 +483,8 @@ export type ProposalDiff = {
     created_at: string;
     source: string;
     summary?: string;
+    change_set?: string;
+    depends_on_proposal?: string;
     operations: OpDiff[];
 };
 

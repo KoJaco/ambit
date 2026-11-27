@@ -56,7 +56,7 @@ is.
 
 ### Authoring tools (staged)
 
-All seven write to `.arch/.proposals/<proposal-id>/` and return the proposal ID. **None of
+All of the authoring tools write to `.arch/.proposals/<proposal-id>/` and return the proposal ID. **None of
 them modify the canonical model.** Every one of them must say so in its returned message, so
 an agent does not report to its user that a change has been made when it has only been
 proposed.
@@ -137,8 +137,53 @@ Propose changes to an existing node. Any subset of mutable fields: `name`, `type
 `renderer`, and `schema` are not settable via MCP.
 
 `depends_on` and `contract` are pointers in effect: omitted means unchanged, a present value
-replaces, and `[]` / `{}` clears. `id` is immutable and cannot be updated. `status` is not settable here — use
-`update_node_status`.
+replaces, and `[]` / `{}` clears. `status` is not settable here (the error names
+`update_node_status`); an `id` field is refused with an error that names `new_id` and
+`rename_node`; a `relationship_id` that does not exist is refused with an error that names
+`set_relationship`. A `parent_id` change and a `depends_on` change in one proposal are
+checked against the tree as it is after the whole proposal, whichever order they are written in.
+
+`new_id` renames the node: it stages an `update_node` for the other fields in the call (when
+there are any) followed by a `rename_node`, as in `rename_node` below.
+
+#### `rename_node(node_id, new_id)`
+
+Propose changing a node id. Accepting rewrites the id in the node file names (`.json` and
+`.md`), `parent_id` and `depends_on` of other nodes, relationship endpoints, the active
+assignment (`local.json`), cached layouts (the node's own level moves to the new key; hashed
+variants are dropped; edge attachments of a layout that held the node are dropped) and the
+spec file. `implementation` globs and prose are left unchanged. Rejected at staging with
+`ErrExists` when `new_id` is taken, is a relationship id, or is reserved by a pending
+`create_node` or `rename_node` of another proposal; `ErrBadOperation` when it is not a slug (max 64 characters) or
+equals the current id. Inside one proposal every other operation refers to the node by its
+**current** id: renames are ordered last. Other pending proposals that name the old id go
+stale (node missing). A failed accept restores every touched file.
+
+#### `withdraw_proposal(proposal_id)`
+
+Withdraw a pending proposal. Only the MCP session that staged it may do so (each session has
+a random origin id stored in the manifest, never shown in the UI); proposals staged from the
+UI or by another session are refused with `ErrBadOperation`. The proposal stays queryable as
+`withdrawn`. The architect can always delete any proposal in the UI.
+
+#### Proposal fields on every staging tool
+
+`seed_model`, `create_node`, `update_node`, `rename_node`, `delete_node`, `set_relationship`,
+`delete_relationship` and `set_constraints` also accept:
+
+- `change_set` (slug, max 64): groups related proposals. Stored in the manifest and returned
+  as `change_set` by `list_proposals`, `GET /proposals`, `GET /proposals/{id}`, `get_proposal`
+  and the proposal state. Display and accept/reject grouping in the UI is backend-ready; the
+  UI does not group yet.
+- `supersedes` (proposal id): a pending proposal staged by the same session (same origin;
+  the staging tools may differ). After the new proposal stages successfully the old one is
+  withdrawn, and its pending `create_node` ids are free for the new one to reuse. A failed
+  staging leaves the old proposal in place.
+- `depends_on_proposal` (proposal id): the new proposal is validated against the model as it
+  will be once that pending proposal is accepted (its creates, updates, deletes, renames and
+  edges are visible; base hashes match its staged files). It is stored as
+  `depends_on_proposal` and accepting any of its operations is refused (`ErrStale`) while the
+  named proposal is still pending. It cannot equal `supersedes`.
 
 #### `delete_node(node_id)`
 
@@ -155,8 +200,11 @@ the edge (relationship interior); the endpoint nodes are kept.
 #### `set_relationship(from, to, label?, kind?, relationship_id?, contract?)`
 
 Propose creating or modifying a cross-cutting relationship. Directed. `kind` is one of
-`sync`, `async`, `data`. Omit `relationship_id` to create a new edge (stage 05 stable ids).
-Provide `relationship_id` to update label/kind on an existing edge.
+`sync`, `async`, `data`. Omit `relationship_id` to upsert: an existing edge (on disk or
+earlier in the same proposal) with the same `from`, `to` and `label` is updated in place
+(an omitted `kind` keeps its kind), otherwise a new edge is created, so seeding the same
+edge twice yields one edge. Provide `relationship_id` to update an existing edge, including
+changing its `from`/`to` endpoints. `seed_model` relationships accept `relationship_id` too.
 
 Optional `contract` is `{format?: "openapi"|"jsonschema"|"text", ref?: string, text?: string}`:
 what is on the wire, stored as opaque text. Omitted leaves an existing edge's contract
@@ -268,7 +316,7 @@ matching what it declares. Read-only. The server
 `instructions` are fixed when the session starts (the SDK reads them at `initialize`), so
 after a method change `get_started` is the live source.
 
-#### `check_model(include_drift?, all_rules?)`
+#### `check_model(include_drift?, all_rules?, verbose_globs?)`
 
 Lints the model against the active method's rules (same implementation as `ambit
 check-model` and `GET /check-model`). Returns `{ok, method, stage?, findings[], counts:
@@ -279,7 +327,9 @@ check-model` and `GET /check-model`). Returns `{ok, method, stage?, findings[], 
 "advisory"|"enforced", node_id?, relationship_id?, message}`. `ok` is false only when an
 enforced finding exists; it never blocks a mutation. `include_drift` defaults to the
 method's `check.include_drift` when omitted; an explicit `false` turns drift off even when
-the method enables it; `all_rules` runs every rule as advisory. Read-only.
+the method enables it; `all_rules` runs every rule as advisory. In `drift`, `unmatched_globs`
+is replaced by `unmatched_globs_count` unless `verbose_globs` is true (see `check_drift`).
+Read-only.
 
 #### `list_proposals()`
 
@@ -291,13 +341,15 @@ unreadable flag).
 Returns `icons`: the closed icon registry as `{id, label}` rows, label being a one-line
 description. Same list as `GET /icons`. Use these ids for the `icon` field.
 
-#### `check_drift(node_id?, worktree?)`
+#### `check_drift(node_id?, worktree?, verbose_globs?)`
 
 Compares model globs with the files git can see: tracked files plus untracked files that
 are not gitignored (same implementation as `ambit drift`). Returns
 `unowned_files` (files no node's `implementation` matches; `.arch/` and files matching the
-built-in or `drift_ignore` globs are excluded), `unmatched_globs` (`{node, field, glob}`
-for `implementation`/`scope` globs matching no file), `overlaps` (`{path, owners}` for
+built-in or `drift_ignore` globs are excluded), `unmatched_globs_count` (number of
+`implementation`/`scope` globs matching no file; the list itself, `unmatched_globs`
+`{node, field, glob}`, is only returned when `verbose_globs` is true, because a design-stage
+model has no files yet and the list is long), `overlaps` (`{path, owners}` for
 files owned by two or more nodes of which at least two are not in an ancestor/descendant
 relationship) and `ignored_files` (count skipped by ignore globs). `node_id` limits the
 report to that node's globs and overlaps (unowned files are not reported). `worktree` reads
@@ -349,7 +401,9 @@ is `pending`, `accepted`, `rejected`, `partial` (some accepted, some rejected) o
 `withdrawn` (deleted). Finished proposals are kept as records under
 `.arch/.proposals/.resolved/` (the 100 most recently resolved), so the answer survives accept and reject.
 `wait_for_proposal` blocks until the proposal is no longer pending or `timeout_s` passes
-(default 60, at most 300) and returns the same state plus `timed_out`. Staging tools point to
+(default 60, at most 300) and returns the same state plus `state` (same as `status`) and
+`timed_out`. On timeout it returns `{state: "pending", timed_out: true, hint: "still pending,
+call again"}`; that is not an error, the architect has not decided yet. Staging tools point to
 it, so an agent need not ask the architect to reply "accepted".
 
 Operations within one `seed_model` call may reference each other in `parent_id` and
@@ -358,7 +412,7 @@ staging. A real cycle is still rejected.
 
 ## Invariants (Must Always Hold)
 
-1. **No authoring tool modifies the canonical model.** All seven write only to
+1. **No authoring tool modifies the canonical model.** They write only to
    `.arch/.proposals/`.
 2. **Every staged tool's response states that the change is proposed, not applied.**
 3. **Only `update_node_status` writes canonically.** Any future tool that writes directly

@@ -87,6 +87,17 @@ data or control moves** at that drill-down level.
 - A container the canvas shows as a **summary** card is a placeholder. Flesh it out into
   child nodes (each with its own implementation globs and spec) before building from it.
 
+### Editing an existing model
+
+- An edge is identified by `(from, to, label)` when no `relationship_id` is given:
+  `set_relationship` / `seed_model` on an existing triple updates that edge instead of adding a
+  duplicate. Pass `relationship_id` to change an edge's endpoints, label or kind.
+- A node id changes only through `rename_node` (or `new_id` on `update_node`), which rewrites
+  `parent_id`, `depends_on`, relationship endpoints, the assignment and cached layouts; it is
+  rejected when the new id is taken or reserved. Other fields never change an id.
+- A `parent_id` move and a `depends_on` change in one proposal are validated against the tree
+  as it is after the whole proposal.
+
 ### Common patterns
 
 - **Thin entry, fat module:** e.g. CLI/MCP entry node → `hosts` → tool or server module
@@ -137,7 +148,7 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
 
 #### Required fields
 
-- `id` — the node's stable identifier, matching its filename. Immutable after creation.
+- `id` — the node's stable identifier, matching its filename. Immutable except through the `rename_node` operation, which rewrites every reference.
   Lowercase slug: `[a-z0-9]+(-[a-z0-9]+)*`. Derived from `name` at creation, with a numeric
   suffix on collision (`orders-service-2`).
 - `name` — human-readable display name. Mutable; renaming never changes `id`.
