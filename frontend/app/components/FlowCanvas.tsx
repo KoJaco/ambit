@@ -57,6 +57,7 @@ import {
     canExpandChild,
     expandedGroups,
     groupTints,
+    keepsSizeFloor,
     layoutSignature,
     layoutUsable,
     memberSignature,
@@ -422,6 +423,9 @@ export default function FlowCanvas({
 
     const levelRef = useRef<Level | null>(null);
     levelRef.current = level;
+    // The level the canvas shows: the relationship interior when open, else the node level.
+    const activeLevelRef = useRef<Level | RelationshipLevel | null>(null);
+    activeLevelRef.current = relLevel ?? level;
     const onToggleMode = useCallback(
         (id: string) => {
             const next = toggleMode(viewModesRef.current, levelRef.current?.children ?? [], id);
@@ -436,7 +440,7 @@ export default function FlowCanvas({
     const cacheKeyRef = useRef("");
     // Group sizes are keyed by the level (base key), not the expanded set, so they survive toggles.
     const onResizeGroup = useCallback((id: string, size: NodeSize) => {
-        const members = (levelRef.current?.children ?? []).map((child) => ({ id: child.id, parentId: child.group_id }));
+        const members = (activeLevelRef.current?.children ?? []).map((child) => ({ id: child.id, parentId: child.group_id }));
         saveGroupSizes(baseKey, {
             ...loadGroupSizes(baseKey),
             [id]: { width: Math.round(size.width), height: Math.round(size.height), sig: memberSignature(id, members) },
@@ -516,7 +520,7 @@ export default function FlowCanvas({
     const cacheKey = layoutCacheKey({ nodeId, relationshipId, expanded: expandedIds });
     cacheKeyRef.current = cacheKey;
     // Base and full key of the layout last applied; a change of only the full key is a group toggle.
-    const appliedRef = useRef<{ base: string; key: string } | null>(null);
+    const appliedRef = useRef<{ base: string; key: string; sig?: string } | null>(null);
     // Set while a toggle's layout is still in flight, so toggling straight back (same key as the
     // one on screen) still takes the keep-positions path instead of refitting the viewport.
     const toggleIntentRef = useRef(false);
@@ -582,6 +586,7 @@ export default function FlowCanvas({
                         usable ? stored : {},
                     );
                     const floor: Record<string, NodeSize> = {};
+                    const keepFloor = keepsSizeFloor(toggled, lastApplied?.sig, sig);
                     // Sizes kept nodes had on screen: the floor for containers, and the baseline
                     // growth is measured against when pushing siblings clear.
                     const oldSizes: Record<string, NodeSize> = {};
@@ -591,7 +596,7 @@ export default function FlowCanvas({
                         if (item.type === "container" && typeof width === "number" && typeof height === "number") {
                             // Only a toggle keeps on-screen sizes as a floor; after a membership change
                             // a group must be free to shrink to its remaining members.
-                            if (toggled) floor[item.id] = { width, height };
+                            if (keepFloor) floor[item.id] = { width, height };
                             oldSizes[item.id] = { width, height };
                         } else {
                             const w = item.measured?.width ?? item.width;
@@ -612,7 +617,7 @@ export default function FlowCanvas({
                     }
                     // Auto-grown sizes are deliberately not persisted: only the architect's own
                     // resizes (onResizeGroup) are a permanent floor, so groups shrink on a relayout.
-                    appliedRef.current = { base: baseKey, key: cacheKey };
+                    appliedRef.current = { base: baseKey, key: cacheKey, sig };
                     toggleIntentRef.current = false;
                     setNodes(buildArchNodes(activeLevel, placed, containers, onToggleMode, onUngroup, onResizeGroup));
                     await putLayout(cacheKey, {
@@ -624,7 +629,7 @@ export default function FlowCanvas({
                     return;
                 }
                 if (usable) {
-                    appliedRef.current = { base: baseKey, key: cacheKey };
+                    appliedRef.current = { base: baseKey, key: cacheKey, sig };
                     toggleIntentRef.current = false;
                     setNodes(buildArchNodes(activeLevel, stored, containerSizing(compound, stored, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                     setFitToken((v) => v + 1);
@@ -634,7 +639,7 @@ export default function FlowCanvas({
                     ? (await layoutCompound(compound, edges, sizes)).positions
                     : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
-                appliedRef.current = { base: baseKey, key: cacheKey };
+                appliedRef.current = { base: baseKey, key: cacheKey, sig };
                 toggleIntentRef.current = false;
                 setNodes(buildArchNodes(activeLevel, laid, containerSizing(compound, laid, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                 setFitToken((v) => v + 1);

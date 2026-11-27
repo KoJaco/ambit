@@ -256,3 +256,9 @@ export function summaryText(childCount: number, typeMix?: { type: string; count:
     const rest = mix.length - shown.length;
     return `${childCount} · ${shown.join(", ")}${rest > 0 ? ` +${rest}` : ""}`;
 }
+
+// Whether on-screen container sizes stay as a floor for a relayout. Only a pure group toggle keeps
+// them; when membership changed too (a node moved between groups), groups must be free to shrink.
+export function keepsSizeFloor(toggled: boolean, lastSig: string | undefined, currentSig: string): boolean {
+    return toggled && (lastSig === undefined || lastSig === currentSig);
+}

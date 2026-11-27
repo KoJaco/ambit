@@ -7,6 +7,7 @@ import {
     usableGroupSizes,
     expandedGroups,
     expandedKey,
+    keepsSizeFloor,
     layoutSignature,
     layoutUsable,
     overBudgetHint,
@@ -299,5 +300,20 @@ describe("group size signatures", () => {
             g: { width: 5, height: 6, sig: "a" },
             h: { width: 5, height: 6 },
         });
+    });
+});
+
+describe("keepsSizeFloor", () => {
+    const before = layoutSignature([{ id: "a", group_id: "g" }, { id: "b", group_id: "g" }]);
+    const after = layoutSignature([{ id: "a", group_id: "h" }, { id: "b", group_id: "g" }]);
+
+    it("keeps on-screen sizes only for a pure toggle", () => {
+        expect(keepsSizeFloor(true, before, before)).toBe(true);
+        expect(keepsSizeFloor(true, undefined, before)).toBe(true);
+    });
+
+    it("lets groups shrink when membership changed alongside the toggle or without one", () => {
+        expect(keepsSizeFloor(true, before, after)).toBe(false);
+        expect(keepsSizeFloor(false, before, before)).toBe(false);
     });
 });
