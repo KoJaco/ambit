@@ -163,7 +163,8 @@ same snapshot under the new id.
 the same `from`, `to` and `label` (on disk, or staged earlier in the same proposal) and
 records that edge's id; otherwise a new id is allocated. The manifest therefore always
 carries a `relationship_id` for a set_relationship. With a `relationship_id` the edge's
-endpoints, label and kind are replaced.
+endpoints, label and kind are replaced (distinct unlabelled `A -> B` edges merge under
+upsert).
 
 #### Operation order
 
@@ -171,8 +172,11 @@ Operations are stored, and applied by accept-all, in this order: `create_node` o
 parent-first and dependency-first; `update_node` ops that change `parent_id` or
 `relationship_id` come before the other `update_node` ops (within the slots the update ops
 occupy); everything else keeps its written position; `rename_node` ops are moved to the end.
-Because hierarchy moves land first, a dependency cycle check always sees the final tree, so a
-reparent and a `depends_on` in one proposal succeed in any written order. After all
+Operations are permuted only within contiguous runs of `update_node`, never across a
+delete, create or edge operation. Each operation is still cycle-checked individually as it is
+staged, so a reparent and a `depends_on` written next to each other succeed in any order,
+but changes that are only valid in one particular order (such as swaps) can be rejected and
+should be split into separate proposals. After all
 operations are staged, every node whose `parent_id` or `depends_on` changed is validated once
 more against the final scratch state. Renames being last means that within a proposal every
 other operation names a node by its current id.
@@ -186,7 +190,13 @@ removed; its pending `create_node` ids are not reserved while the new proposal i
 pending operations (creates and updates from its staged files, deletes, renames and
 relationship edges), so the new operations validate against the model as it will be after it,
 and their base hashes use its staged node bytes (so they are fresh once it is accepted and
-stale before). `WithdrawProposal` (MCP `withdraw_proposal`) removes a pending proposal for
+stale before). Accepting a dependent is refused (`ErrStale`) while the predecessor is
+pending and after it was withdrawn, superseded or rejected. Not modelled for the
+predecessor: `delete_relationship`, `set_constraints` and multi-level chains. Accepting a
+`rename_node` one operation at a time is refused while earlier operations of the same
+proposal are still pending. A withdrawn or superseded proposal that was partly accepted keeps
+its outcome: state info reports `accepted_ops`. If removing a superseded proposal fails
+after the new one is staged, staging succeeds and returns a `warning`. `WithdrawProposal` (MCP `withdraw_proposal`) removes a pending proposal for
 its own origin.
 
 #### Caller-supplied node ids

@@ -44,6 +44,8 @@ type Index struct {
 
 	// staging is set only while stageLocked runs.
 	staging *stagingCtx
+	// stageWarning carries a non-fatal staging warning out of stageLocked.
+	stageWarning string
 
 	userMethods  map[string]*Method
 	activeMethod *Method

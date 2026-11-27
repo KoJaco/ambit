@@ -201,7 +201,9 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   dependency on a pure container means its descendants), so `x -> container` with a child
   that depends on `x` is rejected like any cycle. Drives the derived build order
   ([decision 0012](../decisions/0012-greenfield-node-model.md)); advisory, never blocks a
-  status change.
+  status change. Within one proposal each operation is cycle-checked as it is staged; a
+  move plus a `depends_on` change works in any written order, but swaps only valid in one
+  order should be split into separate proposals.
 - `contract` — optional object `{ "payloads": string, "invariants": string[], "errors":
   string[], "owns_data": string[] }`; every key optional, empty keys omitted. `payloads` is
   at most 8000 characters; each list has at most 32 items of at most 300 characters. Large

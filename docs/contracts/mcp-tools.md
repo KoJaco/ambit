@@ -140,8 +140,12 @@ Propose changes to an existing node. Any subset of mutable fields: `name`, `type
 replaces, and `[]` / `{}` clears. `status` is not settable here (the error names
 `update_node_status`); an `id` field is refused with an error that names `new_id` and
 `rename_node`; a `relationship_id` that does not exist is refused with an error that names
-`set_relationship`. A `parent_id` change and a `depends_on` change in one proposal are
-checked against the tree as it is after the whole proposal, whichever order they are written in.
+`set_relationship`. Every staged operation is still cycle-checked on its own as it is
+staged. Within a contiguous run of `update_node` operations, those that move a node
+(`parent_id`) are ordered first, so a move plus a `depends_on` change in one proposal works
+whichever order they are written in. A set of changes that is only valid when applied in one
+particular order (for example swapping two nodes' parents or dependencies) can fail the
+per-operation checks; split it into separate proposals, each valid on its own.
 
 `new_id` renames the node: it stages an `update_node` for the other fields in the call (when
 there are any) followed by a `rename_node`, as in `rename_node` below.
@@ -183,7 +187,10 @@ UI or by another session are refused with `ErrBadOperation`. The proposal stays 
   will be once that pending proposal is accepted (its creates, updates, deletes, renames and
   edges are visible; base hashes match its staged files). It is stored as
   `depends_on_proposal` and accepting any of its operations is refused (`ErrStale`) while the
-  named proposal is still pending. It cannot equal `supersedes`.
+  named proposal is still pending, and also when it was withdrawn, superseded or fully
+  rejected (re-stage against the current model). Not modelled for the predecessor:
+  `delete_relationship`, `set_constraints` and multi-level chains (a predecessor that itself
+  depends on another pending proposal). It cannot equal `supersedes`.
 
 #### `delete_node(node_id)`
 
@@ -203,8 +210,10 @@ Propose creating or modifying a cross-cutting relationship. Directed. `kind` is 
 `sync`, `async`, `data`. Omit `relationship_id` to upsert: an existing edge (on disk or
 earlier in the same proposal) with the same `from`, `to` and `label` is updated in place
 (an omitted `kind` keeps its kind), otherwise a new edge is created, so seeding the same
-edge twice yields one edge. Provide `relationship_id` to update an existing edge, including
-changing its `from`/`to` endpoints. `seed_model` relationships accept `relationship_id` too.
+edge twice yields one edge; note that distinct unlabelled `A -> B` edges therefore merge
+into one. Provide `relationship_id` to update an existing edge, including changing its
+`from`/`to` endpoints (staged path only; the direct HTTP `PUT /relationships` never moves
+endpoints). `seed_model` relationships accept `relationship_id` too.
 
 Optional `contract` is `{format?: "openapi"|"jsonschema"|"text", ref?: string, text?: string}`:
 what is on the wire, stored as opaque text. Omitted leaves an existing edge's contract

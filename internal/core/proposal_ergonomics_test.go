@@ -513,3 +513,173 @@ func TestOrderOpsMovesFirstOnlyWithinARun(t *testing.T) {
 		}
 	}
 }
+
+func TestRenameRollsBackLocalJSONAndLayouts(t *testing.T) {
+	for _, step := range []string{"local", "layouts"} {
+		t.Run(step, func(t *testing.T) {
+			idx, dir := newModel(t)
+			mustCreate(t, idx, CreateInput{ID: "a", Name: "A", Type: "boundary"})
+			mustCreate(t, idx, CreateInput{ID: "b", Name: "B", Type: "service", ParentID: "a"})
+			if err := idx.SetAssignment("a", time.Time{}); err != nil {
+				t.Fatal(err)
+			}
+			if err := idx.PutLayout("a", Layout{Positions: []Position{{ID: "b", X: 1, Y: 2}}}); err != nil {
+				t.Fatal(err)
+			}
+			localBefore := mustRead(t, filepath.Join(dir, ".arch", "local.json"))
+			pid, err := idx.Stage(StageInput{Source: OpRenameNode, Ops: []StageOp{{Op: OpRenameNode, NodeID: "a", NewID: "alpha"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			applyHook = func(s string) error {
+				if s == step {
+					return errors.New("boom")
+				}
+				return nil
+			}
+			defer func() { applyHook = nil }()
+			if err := idx.AcceptOperation(pid, 0, false); err == nil {
+				t.Fatal("expected failure")
+			}
+			applyHook = nil
+			if string(mustRead(t, filepath.Join(dir, ".arch", "local.json"))) != string(localBefore) {
+				t.Fatal("local.json not restored")
+			}
+			got := reopen(t, dir)
+			if got.Nodes["a"] == nil || got.Nodes["alpha"] != nil || got.Assignment == nil || got.Assignment.NodeID != "a" {
+				t.Fatalf("not restored: %v %+v", got.Order, got.Assignment)
+			}
+			if l, _ := got.Layout("a"); len(l.Positions) != 1 {
+				t.Fatalf("layout not restored: %+v", l)
+			}
+		})
+	}
+}
+
+func TestRenameHandlesHashedLayoutVariants(t *testing.T) {
+	idx, dir := newModel(t)
+	mustCreate(t, idx, CreateInput{ID: "a", Name: "A", Type: "boundary"})
+	mustCreate(t, idx, CreateInput{ID: "b", Name: "B", Type: "service"})
+	ld := filepath.Join(dir, ".arch", ".cache", "layout")
+	if err := os.MkdirAll(ld, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(ld, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("a~abc123.json", `{"positions":[{"id":"x","x":1,"y":1}]}`)
+	write("root~abc123.json", `{"positions":[{"id":"a","x":1,"y":1},{"id":"b","x":2,"y":2}]}`)
+	pid, err := idx.Stage(StageInput{Source: OpRenameNode, Ops: []StageOp{{Op: OpRenameNode, NodeID: "a", NewID: "alpha"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptAllOK(t, idx, pid)
+	if _, err := os.Stat(filepath.Join(ld, "a~abc123.json")); !os.IsNotExist(err) {
+		t.Fatal("hashed variant of the old key must be dropped")
+	}
+	data := mustRead(t, filepath.Join(ld, "root~abc123.json"))
+	if !strings.Contains(string(data), `"alpha"`) || strings.Contains(string(data), `"id":"a"`) {
+		t.Fatalf("hashed root variant not rewritten: %s", data)
+	}
+}
+
+func TestAcceptRenameRefusedWhileEarlierOpsPending(t *testing.T) {
+	idx, _ := newModel(t)
+	mustCreate(t, idx, CreateInput{ID: "a", Name: "A", Type: "service"})
+	mustCreate(t, idx, CreateInput{ID: "b", Name: "B", Type: "service"})
+	spec := "x"
+	pid, err := idx.Stage(StageInput{Source: SourceSeedModel, Ops: []StageOp{
+		{Op: OpRenameNode, NodeID: "a", NewID: "alpha"},
+		{Op: OpUpdateNode, NodeID: "b", Update: UpdateInput{Spec: &spec}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Ops are ordered: update first (index 0), rename last (index 1).
+	err = idx.AcceptOperation(pid, 1, false)
+	if err == nil || !strings.Contains(err.Error(), "earlier operation") {
+		t.Fatalf("rename accepted early: %v", err)
+	}
+	if err := idx.AcceptOperation(pid, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.AcceptOperation(pid, 1, false); err != nil {
+		t.Fatalf("rename after earlier ops: %v", err)
+	}
+}
+
+func TestAcceptDependentRefusedAfterPredecessorWithdrawn(t *testing.T) {
+	idx, _ := newModel(t)
+	first, err := idx.Stage(StageInput{Source: SourceSeedModel, Origin: "mcp-1", Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{ID: "svc", Name: "Svc", Type: "service"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dep, err := idx.Stage(StageInput{Source: SourceSeedModel, DependsOnProposal: first, Ops: []StageOp{
+		{Op: OpCreateNode, Create: CreateInput{ID: "child", Name: "Child", Type: "service", ParentID: "svc"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.WithdrawProposal(first, "mcp-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.AcceptOperation(dep, 0, false); !errors.Is(err, ErrStale) || !strings.Contains(err.Error(), "withdrawn") {
+		t.Fatalf("accept op: %v", err)
+	}
+	res, err := idx.AcceptAll(dep)
+	if !errors.Is(err, ErrStale) {
+		t.Fatalf("accept all: %+v %v", res, err)
+	}
+}
+
+func TestSupersedeKeepsAcceptedOpCount(t *testing.T) {
+	idx, _ := newModel(t)
+	mustCreate(t, idx, CreateInput{ID: "a", Name: "A", Type: "service"})
+	s1, s2 := "one", "two"
+	first, err := idx.Stage(StageInput{Source: SourceSeedModel, Origin: "mcp-1", Ops: []StageOp{
+		{Op: OpUpdateNode, NodeID: "a", Update: UpdateInput{Spec: &s1}},
+		{Op: OpCreateNode, Create: CreateInput{ID: "n", Name: "N", Type: "service"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.AcceptOperation(first, 0, false); err != nil {
+		t.Fatal(err)
+	}
+	_, w, err := idx.StageWithWarning(StageInput{Source: OpUpdateNode, Origin: "mcp-1", Supersedes: first, Ops: []StageOp{
+		{Op: OpUpdateNode, NodeID: "a", Update: UpdateInput{Spec: &s2}},
+	}})
+	if err != nil || w != "" {
+		t.Fatalf("stage: %q %v", w, err)
+	}
+	st, err := idx.ProposalState(first)
+	if err != nil || st.Status != ProposalWithdrawn || st.AcceptedOps != 1 {
+		t.Fatalf("state %+v %v", st, err)
+	}
+}
+
+func TestSupersedeRemovalFailureIsAWarning(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores permissions")
+	}
+	idx, dir := newModel(t)
+	mustCreate(t, idx, CreateInput{ID: "a", Name: "A", Type: "service"})
+	s2 := "two"
+	first := stageSpecEdit(t, idx, "a", "one", StageInput{Origin: "mcp-1"})
+	// A read-only superseded directory makes RemoveAll fail while staging a sibling still works.
+	fdir := filepath.Join(dir, ".arch", ".proposals", first)
+	if err := os.Chmod(fdir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(fdir, 0o755)
+	id, w, err := idx.StageWithWarning(StageInput{Source: OpUpdateNode, Origin: "mcp-1", Supersedes: first, Ops: []StageOp{
+		{Op: OpUpdateNode, NodeID: "a", Update: UpdateInput{Spec: &s2}},
+	}})
+	if err != nil || id == "" || !strings.Contains(w, "could not withdraw") {
+		t.Fatalf("want success with warning: id=%q warning=%q err=%v", id, w, err)
+	}
+}

@@ -93,7 +93,13 @@ func (idx *Index) applyRename(op operation) error {
 			return fail(err)
 		}
 	}
+	if err := failApply("local"); err != nil {
+		return fail(err)
+	}
 	if err := idx.renameLayouts(old, nw); err != nil {
+		return fail(err)
+	}
+	if err := failApply("layouts"); err != nil {
 		return fail(err)
 	}
 	return idx.reload()

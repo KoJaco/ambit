@@ -35,14 +35,27 @@ type OpState struct {
 
 // ProposalStateInfo answers "what happened to proposal X": still pending, or how it ended.
 type ProposalStateInfo struct {
-	ID         string    `json:"proposal_id"`
-	Status     string    `json:"status"`
-	Source     string    `json:"source,omitempty"`
-	Summary    string    `json:"summary,omitempty"`
-	ChangeSet  string    `json:"change_set,omitempty"`
-	CreatedAt  string    `json:"created_at,omitempty"`
-	ResolvedAt string    `json:"resolved_at,omitempty"`
-	Operations []OpState `json:"operations"`
+	ID         string `json:"proposal_id"`
+	Status     string `json:"status"`
+	Source     string `json:"source,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	ChangeSet  string `json:"change_set,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	ResolvedAt string `json:"resolved_at,omitempty"`
+	// AcceptedOps counts operations that were applied; it survives withdrawal or
+	// supersession of a partially accepted proposal.
+	AcceptedOps int       `json:"accepted_ops,omitempty"`
+	Operations  []OpState `json:"operations"`
+}
+
+func countAccepted(ops []operation) int {
+	n := 0
+	for _, op := range ops {
+		if op.Status == opStatusAccepted {
+			n++
+		}
+	}
+	return n
 }
 
 type resolvedMeta struct {
@@ -178,7 +191,7 @@ func (idx *Index) proposalStateLocked(id string) (ProposalStateInfo, error) {
 		if err == nil {
 			return ProposalStateInfo{
 				ID: m.ProposalID, Status: ProposalPending, Source: m.Source, Summary: m.Summary, ChangeSet: m.ChangeSet,
-				CreatedAt: m.CreatedAt, Operations: opStates(idx, m.Operations, true),
+				CreatedAt: m.CreatedAt, AcceptedOps: countAccepted(m.Operations), Operations: opStates(idx, m.Operations, true),
 			}, nil
 		}
 		// Another process may be finishing this proposal right now: its directory is
@@ -204,7 +217,7 @@ func (idx *Index) resolvedStateLocked(id string) (ProposalStateInfo, error) {
 	}
 	info := ProposalStateInfo{
 		ID: m.ProposalID, Status: outcomeOf(m.Operations), Source: m.Source, Summary: m.Summary, ChangeSet: m.ChangeSet,
-		CreatedAt: m.CreatedAt, Operations: opStates(idx, m.Operations, false),
+		CreatedAt: m.CreatedAt, AcceptedOps: countAccepted(m.Operations), Operations: opStates(idx, m.Operations, false),
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "resolved.json")); err == nil {
 		var meta resolvedMeta

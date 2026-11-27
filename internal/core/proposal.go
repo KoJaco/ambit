@@ -279,9 +279,20 @@ func contentHash(jsonBytes, mdBytes []byte) string {
 
 // Stage writes a proposal and returns its id. It does not modify .arch/nodes/.
 func (idx *Index) Stage(in StageInput) (string, error) {
+	id, _, err := idx.StageWithWarning(in)
+	return id, err
+}
+
+// StageWithWarning is Stage that also returns a non-fatal warning (the proposal was staged,
+// but e.g. the superseded one could not be removed).
+func (idx *Index) StageWithWarning(in StageInput) (string, string, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	return idx.stageLocked(in)
+	idx.stageWarning = ""
+	id, err := idx.stageLocked(in)
+	w := idx.stageWarning
+	idx.stageWarning = ""
+	return id, w, err
 }
 
 // stagingCtx is state that only exists while stageLocked runs (idx.mu is held).
@@ -403,7 +414,8 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 	if superseded != nil {
 		idx.archiveResolved(*superseded, ProposalWithdrawn)
 		if err := os.RemoveAll(idx.mustProposalPath(superseded.ProposalID)); err != nil {
-			return id, fmt.Errorf("staged %s but could not withdraw superseded %s: %w", id, superseded.ProposalID, err)
+			// The new proposal is staged; report success with a warning, not an error.
+			idx.stageWarning = fmt.Sprintf("staged %s but could not withdraw superseded %s: %v; withdraw it manually", id, superseded.ProposalID, err)
 		}
 	}
 	return id, nil
@@ -478,10 +490,16 @@ func (idx *Index) dependsOnPending(m manifest) error {
 	if err != nil {
 		return nil
 	}
-	if _, err := os.Stat(dir); err != nil {
-		return nil
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("%w: proposal %s depends on %s, which is still pending; accept or reject that one first", ErrStale, m.ProposalID, m.DependsOnProposal)
 	}
-	return fmt.Errorf("%w: proposal %s depends on %s, which is still pending; accept or reject that one first", ErrStale, m.ProposalID, m.DependsOnProposal)
+	// No longer pending: refuse when it was withdrawn (or superseded) or fully rejected,
+	// because the model it was validated against will never exist.
+	if info, err := idx.resolvedStateLocked(m.DependsOnProposal); err == nil &&
+		(info.Status == ProposalWithdrawn || info.Status == ProposalRejected) {
+		return fmt.Errorf("%w: proposal %s depends on %s, which was %s; re-stage this proposal against the current model", ErrStale, m.ProposalID, m.DependsOnProposal, info.Status)
+	}
+	return nil
 }
 
 // validateFinalState checks the hierarchy and dependency graph of every node a proposal
@@ -1110,6 +1128,13 @@ func (idx *Index) AcceptOperation(id string, index int, confirmStale bool) error
 	}
 	if err := idx.dependsOnPending(m); err != nil {
 		return err
+	}
+	if op.Op == OpRenameNode {
+		for i := 0; i < index; i++ {
+			if m.Operations[i].Status == opStatusPending {
+				return fmt.Errorf("%w: rename_node %s -> %s cannot be accepted while earlier operation %d (%s) is still pending; resolve it first or use accept_all", ErrStale, op.NodeID, op.NewID, i, m.Operations[i].Op)
+			}
+		}
 	}
 	if err := idx.rejectIfStale(m.Operations, op, confirmStale); err != nil {
 		return err
