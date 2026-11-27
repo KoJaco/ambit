@@ -364,9 +364,10 @@ func (idx *Index) Restage(id string, indexes []int) (string, error) {
 }
 
 // orderOps returns the operations in staging (and so accept) order. Creates are ordered by
-// orderCreates. Among the update_node operations (which keep their slots), those that move
-// a node in the hierarchy come first, so every depends_on cycle check runs against the
-// final tree whichever order the operations were written in. Renames move to the end, so
+// orderCreates. Within each contiguous run of update_node operations, those that move a
+// node in the hierarchy come first, so a move and a depends_on change written next to each
+// other are checked against the final tree whichever order they were written in. Updates
+// never move across a delete, create or edge operation. Renames move to the end, so
 // every other operation of a proposal refers to a node by its current id. Everything
 // else keeps its position.
 func orderOps(ops []StageOp) []StageOp {
@@ -380,26 +381,28 @@ func orderOps(ops []StageOp) []StageOp {
 		}
 		kept = append(kept, op)
 	}
-	var slots []int
-	var moves, others []StageOp
-	for i, op := range kept {
-		if op.Op != OpUpdateNode {
+	out := append([]StageOp(nil), kept...)
+	// Permute only within contiguous runs of update_node, so an update never passes a
+	// delete, create or edge operation.
+	for start := 0; start < len(out); {
+		if out[start].Op != OpUpdateNode {
+			start++
 			continue
 		}
-		slots = append(slots, i)
-		if op.Update.Parent != nil || op.Update.Relationship != nil {
-			moves = append(moves, op)
-		} else {
-			others = append(others, op)
+		end := start
+		for end < len(out) && out[end].Op == OpUpdateNode {
+			end++
 		}
-	}
-	out := append([]StageOp(nil), kept...)
-	for k, pos := range slots {
-		if k < len(moves) {
-			out[pos] = moves[k]
-		} else {
-			out[pos] = others[k-len(moves)]
+		var moves, others []StageOp
+		for _, op := range out[start:end] {
+			if op.Update.Parent != nil || op.Update.Relationship != nil {
+				moves = append(moves, op)
+			} else {
+				others = append(others, op)
+			}
 		}
+		copy(out[start:end], append(moves, others...))
+		start = end
 	}
 	return append(out, renames...)
 }

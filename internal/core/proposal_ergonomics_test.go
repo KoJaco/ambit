@@ -293,7 +293,7 @@ func TestReparentAndDependsOnInOneProposalUseFinalTree(t *testing.T) {
 	}
 }
 
-func TestOrderOpsKeepsSlotsAndMovesRenamesLast(t *testing.T) {
+func TestOrderOpsKeepsUpdatesInsideTheirRunsAndMovesRenamesLast(t *testing.T) {
 	p := NodeID("x")
 	ops := []StageOp{
 		{Op: OpUpdateNode, NodeID: "a", Update: UpdateInput{Spec: new(string)}},
@@ -302,7 +302,10 @@ func TestOrderOpsKeepsSlotsAndMovesRenamesLast(t *testing.T) {
 		{Op: OpUpdateNode, NodeID: "b", Update: UpdateInput{Parent: &p}},
 	}
 	got := orderOps(ops)
-	want := []string{"b", "d", "a", "r"}
+	want := []string{"a", "d", "b", "r"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v", got)
+	}
 	for i, op := range got {
 		if string(op.NodeID) != want[i] {
 			t.Fatalf("position %d: %s, want %s (%v)", i, op.NodeID, want[i], got)
@@ -487,5 +490,26 @@ func TestRenameNodeNewIDInListAndDiff(t *testing.T) {
 	d, err := idx.ProposalDiff(pid)
 	if err != nil || d.Operations[0].NewID != "alpha" {
 		t.Fatalf("diff %+v err %v", d, err)
+	}
+}
+
+func TestOrderOpsMovesFirstOnlyWithinARun(t *testing.T) {
+	p := NodeID("x")
+	spec := new(string)
+	ops := []StageOp{
+		{Op: OpUpdateNode, NodeID: "a", Update: UpdateInput{Spec: spec}},
+		{Op: OpUpdateNode, NodeID: "m1", Update: UpdateInput{Parent: &p}},
+		{Op: OpDeleteNode, NodeID: "d"},
+		{Op: OpUpdateNode, NodeID: "b", Update: UpdateInput{Spec: spec}},
+		{Op: OpUpdateNode, NodeID: "m2", Update: UpdateInput{Parent: &p}},
+		{Op: OpSetRelationship, From: "q", To: "r"},
+		{Op: OpUpdateNode, NodeID: "c", Update: UpdateInput{Spec: spec}},
+	}
+	got := orderOps(ops)
+	want := []string{"m1", "a", "d", "m2", "b", "", "c"}
+	for i, op := range got {
+		if string(op.NodeID) != want[i] {
+			t.Fatalf("position %d: %q, want %q", i, op.NodeID, want[i])
+		}
 	}
 }
