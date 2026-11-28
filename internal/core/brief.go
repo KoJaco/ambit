@@ -16,7 +16,7 @@ const BriefClosing = "When you are done, call check_done with your node_id (add 
 // SubagentGuidance is the delegation rule that ends every brief and is repeated in the MCP
 // tool docs: a subagent that implements a node gets the read-only tools only, and the parent
 // agent writes documentation deliverables itself.
-const SubagentGuidance = "If you delegate to subagents, give implementers only the read-only tools (every get_ and check_ tool, plus run_verify and list_icons); keep staging, model-editing and status tools, and write documentation deliverables yourself in the parent."
+const SubagentGuidance = "If you delegate to subagents, give implementers only the read-only tools (every get_ and check_ tool except check_dependents, plus list_icons; run_verify and check_dependents execute shell commands, so keep those in the parent); keep staging, model-editing and status tools, and write documentation deliverables yourself in the parent."
 
 // closingFor is BriefClosing adjusted to the method's completion policy for node n.
 func closingFor(m *Method, n *Node) string {
@@ -140,7 +140,11 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	if len(n.Verify) > 0 {
 		b.WriteString("\nVerify your work with these commands before you finish:\n")
 		for _, c := range n.Verify {
-			fmt.Fprintf(&b, "  - %s\n", c)
+			if env := referencedEnv(c); len(env) > 0 {
+				fmt.Fprintf(&b, "  - %s  (needs environment: %s)\n", c, strings.Join(env, ", "))
+			} else {
+				fmt.Fprintf(&b, "  - %s\n", c)
+			}
 		}
 	}
 	idx.writeBuildPlan(&b, n)

@@ -110,3 +110,21 @@ func TestPureContainerWithExternalChildDoesNotBlock(t *testing.T) {
 		t.Fatalf("web still blocked by external child: %+v", web)
 	}
 }
+
+func TestBriefListsVerifyEnvPrerequisitesAndGuidance(t *testing.T) {
+	idx, _ := planRepo(t)
+	mkFull(t, idx, CreateInput{ID: "db", Verify: []string{"go test ./...", "psql \"$DATABASE_URL\" -c 'select 1'", "echo ${HOME:-x}"}})
+	text, err := idx.Brief("db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "- psql \"$DATABASE_URL\" -c 'select 1'  (needs environment: DATABASE_URL)") {
+		t.Fatalf("env prerequisite missing:\n%s", text)
+	}
+	if strings.Contains(text, "- go test ./...  (needs") {
+		t.Fatal("no env expected for plain command")
+	}
+	if !strings.Contains(text, "except check_dependents") || strings.Contains(text, "plus run_verify") {
+		t.Fatal("subagent guidance not updated")
+	}
+}

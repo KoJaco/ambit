@@ -495,7 +495,9 @@ commands can have side effects, so clients must not auto-approve it.
 
 Direct. Runs `run_verify` for each direct dependent of the node (nodes whose `depends_on` names
 it, and nodes it `gates`), to see whether finishing this node broke them. At most 16 are run
-per call; dependents without verify commands, and any beyond the cap, are listed in `skipped`.
+per call, within 15 minutes in total; dependents without verify commands, any beyond the cap,
+and any not run before the time budget ran out (which also makes `pass` false) are listed in
+`skipped`.
 Returns `{node_id, pass, dependents:[{node_id, report}], skipped:[{node_id, reason}],
 warnings}`. Same environment, timeout and trust rules as `run_verify`.
 
@@ -514,7 +516,8 @@ Give a subagent that implements a node the read-only tools: `get_context`, `chec
 `list_icons`, `get_started`, `check_model`, `check_deliverables` and `check_contract_sync`.
 All of them carry the MCP `readOnlyHint` annotation. `run_verify` and `check_dependents`
 execute shell commands, so they do not carry it (they are annotated `destructiveHint` and
-`openWorldHint`) and clients should not auto-approve them. Keep the staging tools, `update_node_status` and `wait_for_proposal`-driven
+`openWorldHint`), clients should not auto-approve them, and implementers do not get them: the
+architect (parent) runs them. Keep `run_verify`, `check_dependents`, the staging tools, `update_node_status` and `wait_for_proposal`-driven
 decisions in the parent agent, and have the parent write documentation deliverables itself
 rather than delegating them. The brief ends with this rule.
 
