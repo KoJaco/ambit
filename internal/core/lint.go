@@ -459,7 +459,7 @@ var sharedManifestNames = map[string]bool{
 // owns them. Unowned manifests are not flagged: they are tooling files covered by
 // drift_ignore. It needs git to list files and is silent when git cannot list them.
 func lintSharedManifest(idx *Index, _ LintSetting, emit func(LintFinding)) {
-	files, err := ProjectFiles(idx.Dir)
+	files, err := ProjectFiles(idx.filesRoot())
 	if err != nil {
 		return
 	}

@@ -20,7 +20,10 @@ import (
 type Index struct {
 	mu sync.Mutex
 
-	Dir           string
+	Dir string
+	// filesDir, when set, is the repo root file listings (lint) read from instead of Dir.
+	// The auto-accept trial uses it: its scratch copy holds only .arch.
+	filesDir      string
 	SchemaVersion int
 	Nodes         map[NodeID]*Node
 	Order         []NodeID
@@ -100,6 +103,13 @@ func Open(dir string) (*Index, error) {
 	idx.warnAssignment()
 	idx.warnParts()
 	return idx, nil
+}
+
+func (idx *Index) filesRoot() string {
+	if idx.filesDir != "" {
+		return idx.filesDir
+	}
+	return idx.Dir
 }
 
 func (idx *Index) arch() string { return filepath.Join(idx.Dir, ".arch") }

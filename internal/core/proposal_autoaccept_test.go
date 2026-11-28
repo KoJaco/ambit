@@ -15,6 +15,7 @@ import (
 func autoFixture(t *testing.T) (*Index, string) {
 	t.Helper()
 	idx, dir := newModel(t)
+	gitInitRepo(t, dir)
 	mk := func(in CreateInput) NodeID {
 		t.Helper()
 		id, err := idx.Create(in)
@@ -124,7 +125,7 @@ func TestAutoAcceptWritesAuditAndDigest(t *testing.T) {
 	deps := []NodeID{"dep"}
 	pid, err := idx.Stage(StageInput{Source: OpUpdateNode, Origin: "mcp-secret-origin", Ops: []StageOp{
 		{Op: OpUpdateNode, NodeID: "svc", Update: UpdateInput{Spec: strp("# svc v2\n"), DependsOn: &deps}},
-		{Op: OpCreateNode, Create: CreateInput{ID: "worker", Name: "Worker", Type: "module", ParentID: "platform", Spec: "# w\n", Implementation: []string{"src/worker/**"}}},
+		{Op: OpCreateNode, Create: CreateInput{ID: "worker", Name: "Worker", Type: "module", ParentID: "platform", Spec: "# w\n", Implementation: []string{"src/worker/*.go"}}},
 	}})
 	if err != nil {
 		t.Fatal(err)

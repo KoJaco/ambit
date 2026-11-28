@@ -137,6 +137,8 @@ type PolicyOp struct {
 	Fields   []string
 	Current  *Node
 	Proposed *Node
+	// BodyHash fingerprints the staged bytes Proposed was decoded from.
+	BodyHash string
 
 	// Edge fields for set_relationship.
 	From, To   NodeID
@@ -144,6 +146,8 @@ type PolicyOp struct {
 	Label      string
 	Kind       string
 	CurrentRel *Relationship
+	// Contract is the staged edge contract: nil means unchanged, an empty one clears it.
+	Contract *EdgeContract
 
 	// Stale and StaleReason are set by the caller from the proposal machinery.
 	Stale       bool
@@ -153,13 +157,80 @@ type PolicyOp struct {
 // PolicyModel is the model state before the operations apply.
 type PolicyModel struct {
 	Nodes map[NodeID]*Node
+	// Files is the repo's file list (tracked plus untracked, not ignored). Scope additions
+	// are judged against it. FilesErr is set when the list could not be read; scope
+	// additions then always need a human.
+	Files    []string
+	FilesErr string
 }
 
-// fields an update may carry and still be auto-accepted, with the rule that allows them.
-// Everything else needs a human; sensitiveFields names the ones the decision calls out.
+// sensitiveFields names the node fields (JSON keys) that always need a human, on an
+// update and on a create alike. It is the single list classifyUpdate and classifyCreate
+// share. Every other field an update changes needs a human too unless a rule allows it.
 var sensitiveFields = map[string]bool{
 	"stage": true, "risk": true, "review": true, "human_gates": true, "shared": true,
 	"protected": true, "verify": true, "gates": true, "external": true,
+}
+
+// nodeKeyValues flattens a node to its JSON keys (including unknown keys) plus "spec" and
+// "type", as canonical strings, so two nodes can be diffed field by field.
+func nodeKeyValues(n *Node) map[string]string {
+	out := map[string]string{"spec": n.Spec}
+	raw, err := encodeNode(n)
+	if err != nil {
+		out["<encode-error>"] = err.Error()
+		return out
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		out["<encode-error>"] = err.Error()
+		return out
+	}
+	for k, v := range obj {
+		var buf strings.Builder
+		var tmp any
+		if json.Unmarshal(v, &tmp) == nil {
+			if b, err := marshalNoEscape(tmp); err == nil {
+				buf.Write(b)
+			}
+		}
+		if buf.Len() == 0 {
+			buf.WriteString(string(v))
+		}
+		out[k] = buf.String()
+	}
+	return out
+}
+
+// changedFields lists the keys whose value differs between cur and next, sorted. It is
+// computed from the node bodies, never from what the operation declares.
+func changedFields(cur, next *Node) []string {
+	a, b := nodeKeyValues(cur), nodeKeyValues(next)
+	var out []string
+	for k, v := range a {
+		if w, ok := b[k]; !ok || w != v {
+			out = append(out, k)
+		}
+	}
+	for k := range b {
+		if _, ok := a[k]; !ok {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// presentSensitiveFields lists the sensitive keys a node body sets (non-empty).
+func presentSensitiveFields(n *Node) []string {
+	var out []string
+	for k := range nodeKeyValues(n) {
+		if sensitiveFields[k] {
+			out = append(out, k)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // ClassifyOps classifies every operation. The result is in operation order and has one
@@ -310,7 +381,9 @@ func (c *classifier) classifyUpdate(op PolicyOp, summary string) PolicyVerdict {
 		return blocked(op, BlockProtected, fmt.Sprintf("node %s is protected", cur.ID), summary)
 	}
 	var rules []string
-	for _, f := range op.Fields {
+	// The declared op.Fields are not trusted: accept applies the whole staged body, so the
+	// changed fields come from diffing the node on disk against it.
+	for _, f := range changedFields(cur, next) {
 		switch f {
 		case "spec", "contract":
 			rules = append(rules, RuleSpecText)
@@ -321,9 +394,9 @@ func (c *classifier) classifyUpdate(op PolicyOp, summary string) PolicyVerdict {
 			}
 			rules = append(rules, depRules...)
 		case "implementation", "scope":
-			reason := c.checkScope(f, cur, next, cur.Deliverables)
+			rule, reason := c.checkScope(f, cur, next, cur.Deliverables)
 			if reason != "" {
-				return blocked(op, BlockNotAuto, reason, summary)
+				return blocked(op, rule, reason, summary)
 			}
 			rules = append(rules, RuleScopeDeliverable)
 		default:
@@ -334,7 +407,7 @@ func (c *classifier) classifyUpdate(op PolicyOp, summary string) PolicyVerdict {
 		}
 	}
 	if len(rules) == 0 {
-		return blocked(op, BlockNotAuto, "update carries no fields the policy recognises", summary)
+		return blocked(op, BlockNotAuto, "update changes no field the policy recognises", summary)
 	}
 	return allowed(op, rules, summary)
 }
@@ -368,6 +441,11 @@ func (c *classifier) checkDeps(cur, next *Node) ([]string, string) {
 			return []string{BlockProtected}, fmt.Sprintf("dependency %s is a protected node", d)
 		}
 	}
+	for _, d := range added {
+		if isExternalNode(c.node(d)) {
+			return []string{BlockExternal}, fmt.Sprintf("dependency %s is external", d)
+		}
+	}
 	var rules []string
 	if len(removed) > 0 {
 		rules = append(rules, RuleDependencyLoosen)
@@ -386,17 +464,27 @@ func (c *classifier) checkDeps(cur, next *Node) ([]string, string) {
 	return rules, ""
 }
 
-// checkScope returns a reason when an implementation or scope change is not a pure
-// addition of globs that match deliverables. Added globs may not overlap a protected node.
-func (c *classifier) checkScope(field string, cur, next *Node, deliverables []string) string {
+// checkScope classifies an implementation or scope change. It returns a blocking rule and
+// reason, or "" when the change is a pure addition of safe globs (see checkGlobAdditions).
+func (c *classifier) checkScope(field string, cur, next *Node, deliverables []string) (string, string) {
 	oldGlobs, newGlobs := cur.Implementation, next.Implementation
 	if field == "scope" {
 		oldGlobs, newGlobs = cur.Scope, next.Scope
 	}
-	return c.checkGlobAdditions(field, cur.ID, oldGlobs, newGlobs, deliverables, true)
+	owned := append(append([]string{}, cur.Implementation...), cur.Scope...)
+	return c.checkGlobAdditions(field, cur.ID, oldGlobs, newGlobs, deliverables, owned, true)
 }
 
-func (c *classifier) checkGlobAdditions(field string, self NodeID, oldGlobs, newGlobs, deliverables []string, needDeliverable bool) string {
+// checkGlobAdditions allows only added globs that are narrow and safe:
+//   - no recursive "**" wildcard;
+//   - (needDeliverable) the glob matches at least one declared deliverable;
+//   - every existing repo file the glob matches is a declared deliverable or is already
+//     owned by this node (matched by owned globs), so the change claims no one else's files;
+//   - the glob does not overlap a protected node's globs, judged against the real files and
+//     glob against glob.
+//
+// It returns the blocking rule id and a reason, or "" "" when the additions are safe.
+func (c *classifier) checkGlobAdditions(field string, self NodeID, oldGlobs, newGlobs, deliverables, owned []string, needDeliverable bool) (string, string) {
 	have := map[string]bool{}
 	for _, g := range oldGlobs {
 		have[g] = true
@@ -407,12 +495,18 @@ func (c *classifier) checkGlobAdditions(field string, self NodeID, oldGlobs, new
 	}
 	for g := range have {
 		if !want[g] {
-			return fmt.Sprintf("%s: removing glob %q is not covered by the policy", field, g)
+			return BlockNotAuto, fmt.Sprintf("%s: removing glob %q is not covered by the policy", field, g)
 		}
 	}
 	for _, g := range newGlobs {
 		if have[g] {
 			continue
+		}
+		if other := c.protectedOverlap(self, g); other != "" {
+			return BlockProtected, fmt.Sprintf("%s: glob %q overlaps protected node %s", field, g, other)
+		}
+		if strings.Contains(g, "**") {
+			return BlockNotAuto, fmt.Sprintf("%s: glob %q is recursive (**); only narrow globs are covered", field, g)
 		}
 		if needDeliverable {
 			ok := false
@@ -423,17 +517,42 @@ func (c *classifier) checkGlobAdditions(field string, self NodeID, oldGlobs, new
 				}
 			}
 			if !ok {
-				return fmt.Sprintf("%s: glob %q matches none of the node's deliverables", field, g)
+				return BlockNotAuto, fmt.Sprintf("%s: glob %q matches none of the node's deliverables", field, g)
 			}
 		}
-		if other := c.protectedOverlap(self, g); other != "" {
-			return fmt.Sprintf("%s: glob %q overlaps protected node %s", field, g, other)
+		if c.model.FilesErr != "" {
+			return BlockNotAuto, fmt.Sprintf("%s: the repo file list is unavailable (%s)", field, c.model.FilesErr)
+		}
+		for _, f := range c.model.Files {
+			if m, err := doublestar.Match(toSlash(g), f); err != nil || !m {
+				continue
+			}
+			if matchesAny(deliverables, f) || matchesAny(owned, f) {
+				continue
+			}
+			return BlockNotAuto, fmt.Sprintf("%s: glob %q matches existing file %s, which is neither a deliverable nor already owned by this node", field, g, f)
 		}
 	}
-	return ""
+	return "", ""
+}
+
+// matchesAny reports whether path equals or matches any of the patterns.
+func matchesAny(patterns []string, path string) bool {
+	for _, p := range patterns {
+		p = toSlash(p)
+		if p == path {
+			return true
+		}
+		if m, err := doublestar.Match(p, path); err == nil && m {
+			return true
+		}
+	}
+	return false
 }
 
 // protectedOverlap returns a protected node (other than self) whose globs overlap glob.
+// Overlap is judged three ways: glob against glob by segments, by sample paths, and by
+// the real repo files (a file both globs match).
 func (c *classifier) protectedOverlap(self NodeID, glob string) NodeID {
 	ids := make([]NodeID, 0, len(c.model.Nodes))
 	for id := range c.model.Nodes {
@@ -450,13 +569,22 @@ func (c *classifier) protectedOverlap(self NodeID, glob string) NodeID {
 			if globsOverlap(glob, gs, pg) {
 				return id
 			}
+			for _, f := range c.model.Files {
+				m1, e1 := doublestar.Match(toSlash(glob), f)
+				m2, e2 := doublestar.Match(toSlash(pg), f)
+				if e1 == nil && e2 == nil && m1 && m2 {
+					return id
+				}
+			}
 		}
 	}
 	return ""
 }
 
-// globsOverlap is a conservative overlap test between two globs using a sample path of
-// each: they overlap when either sample matches the other glob.
+// globsOverlap reports whether two globs might match a common path. It errs on the side
+// of reporting an overlap: equal globs, a sample path of either matching the other, or a
+// segment-wise comparison (globsSegmentsOverlap) that treats any wildcard-against-wildcard
+// segment and anything after "**" as overlapping.
 func globsOverlap(a, aSample, b string) bool {
 	if a == b {
 		return true
@@ -471,7 +599,47 @@ func globsOverlap(a, aSample, b string) bool {
 			return true
 		}
 	}
-	return false
+	return globsSegmentsOverlap(strings.Split(toSlash(a), "/"), strings.Split(toSlash(b), "/"))
+}
+
+func hasGlobMeta(s string) bool { return strings.ContainsAny(s, "*?[{") }
+
+func onlyDoubleStars(segs []string) bool {
+	for _, s := range segs {
+		if s != "**" {
+			return false
+		}
+	}
+	return true
+}
+
+func globsSegmentsOverlap(a, b []string) bool {
+	for {
+		if len(a) == 0 || len(b) == 0 {
+			return onlyDoubleStars(a) && onlyDoubleStars(b)
+		}
+		if a[0] == "**" || b[0] == "**" {
+			return true
+		}
+		x, y := a[0], b[0]
+		switch {
+		case !hasGlobMeta(x) && !hasGlobMeta(y):
+			if x != y {
+				return false
+			}
+		case hasGlobMeta(x) && hasGlobMeta(y):
+			// both wildcards: assume they can match the same name
+		case hasGlobMeta(x):
+			if m, err := doublestar.Match(x, y); err != nil || !m {
+				return false
+			}
+		default:
+			if m, err := doublestar.Match(y, x); err != nil || !m {
+				return false
+			}
+		}
+		a, b = a[1:], b[1:]
+	}
 }
 
 func (c *classifier) classifyCreate(op PolicyOp, summary string) PolicyVerdict {
@@ -482,17 +650,10 @@ func (c *classifier) classifyCreate(op PolicyOp, summary string) PolicyVerdict {
 	if isExternalNode(n) {
 		return blocked(op, BlockExternal, "new external nodes always need a human", summary)
 	}
-	switch {
-	case n.Protected:
-		return blocked(op, BlockSensitive, "a new protected node always needs a human", summary)
-	case n.Shared:
-		return blocked(op, BlockSensitive, "a new shared-manifest owner always needs a human", summary)
-	case len(n.HumanGates) > 0:
-		return blocked(op, BlockSensitive, "a new node with human gates always needs a human", summary)
-	case n.Risk != "" || n.Review != "":
-		return blocked(op, BlockSensitive, "setting risk or review on a new node always needs a human", summary)
-	case len(n.Gates) > 0:
-		return blocked(op, BlockSensitive, "a new node that gates other nodes always needs a human", summary)
+	// The same sensitive-field list as classifyUpdate: any of these set on a new node
+	// needs a human.
+	if f := presentSensitiveFields(n); len(f) > 0 {
+		return blocked(op, BlockSensitive, fmt.Sprintf("a new node that sets %s always needs a human", strings.Join(f, ", ")), summary)
 	}
 	switch n.Status {
 	case "", StatusDraft, StatusSpecified:
@@ -508,6 +669,9 @@ func (c *classifier) classifyCreate(op PolicyOp, summary string) PolicyVerdict {
 	}
 	if parent.Protected {
 		return blocked(op, BlockProtected, fmt.Sprintf("parent %s is protected", parent.ID), summary)
+	}
+	if isExternalNode(parent) {
+		return blocked(op, BlockExternal, fmt.Sprintf("parent %s is external", parent.ID), summary)
 	}
 	for _, d := range n.DependsOn {
 		t := c.node(d)
@@ -528,8 +692,8 @@ func (c *classifier) classifyCreate(op PolicyOp, summary string) PolicyVerdict {
 		name  string
 		globs []string
 	}{{"implementation", n.Implementation}, {"scope", n.Scope}} {
-		if reason := c.checkGlobAdditions(f.name, n.ID, nil, f.globs, nil, false); reason != "" {
-			return blocked(op, BlockProtected, reason, summary)
+		if rule, reason := c.checkGlobAdditions(f.name, n.ID, nil, f.globs, n.Deliverables, nil, false); reason != "" {
+			return blocked(op, rule, reason, summary)
 		}
 	}
 	c.created[n.ID] = true
@@ -592,7 +756,18 @@ func summarizeOp(op PolicyOp) string {
 		if op.CurrentRel != nil {
 			state = "update"
 		}
-		return fmt.Sprintf("%s edge %s -> %s label=%q kind=%q", state, op.From, op.To, op.Label, op.Kind)
+		text := fmt.Sprintf("%s edge %s -> %s label=%q kind=%q", state, op.From, op.To, op.Label, op.Kind)
+		switch {
+		case op.Contract == nil:
+		case op.Contract.IsEmpty():
+			text += "; contract cleared"
+		default:
+			text += "; contract set"
+			if op.CurrentRel != nil && op.CurrentRel.Contract != nil && !op.CurrentRel.Contract.IsEmpty() {
+				text = strings.TrimSuffix(text, "set") + "changed"
+			}
+		}
+		return text
 	case OpRenameNode:
 		return fmt.Sprintf("rename %s -> %s", op.NodeID, op.NewID)
 	}

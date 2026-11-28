@@ -371,18 +371,29 @@ server has no such tool. Accepts a pending proposal under the project's auto-acc
   effective stage is `build`; config is re-read from disk on each call.
 - Refuses a proposal staged by the same MCP session (every session has a random origin; a
   proposal staged from the UI has none and any architect session may accept it).
-- Classifies every pending operation. Auto-eligible: `update_node` touching only `spec` and
-  `contract`; `depends_on` changes that remove dependencies or add acyclic ones; `implementation`
-  and `scope` additions that match the node's own `deliverables`; `create_node` under an existing
-  non-external container with no external or protected dependencies and no overlap with a
-  protected node's globs; `set_relationship` between existing nodes, not protected or external,
-  with the same kind as an existing edge (a new edge may be `sync` or have no kind). Never
-  auto-eligible: anything touching a protected node, new `external` nodes, `stage`, `risk`,
-  `review`, `human_gates`, `shared`, `protected` and similar fields, deletes, renames, constraint
-  and part changes, stale operations.
+- Refuses a restaged proposal (one re-created by undo); a human must accept it.
+- Classifies every pending operation from the staged node bodies, not from the declared
+  `fields`: the changed fields are the diff between the node on disk and the staged body
+  (unknown keys included), and only the fields below are allowed. Each staged body is hashed
+  when classified and re-checked right before it is applied; a body that changed in between
+  refuses the accept. Auto-eligible: `update_node` changing only `spec` and `contract`;
+  `depends_on` changes that remove dependencies or add acyclic ones (never an external or
+  protected node); `implementation` and `scope` additions of narrow globs (no `**`) that match
+  one of the node's own `deliverables`, whose every existing repo file is a deliverable or
+  already owned by the node, and that overlap no protected node's globs (judged by glob
+  against glob and against the real files); `create_node` under an existing non-protected,
+  non-external container with no external or protected dependencies, none of the sensitive
+  fields set (`stage`, `risk`, `review`, `human_gates`, `shared`, `protected`, `verify`,
+  `gates`, `external`), and implementation globs under the same rule as additions;
+  `set_relationship` between existing nodes, not protected or external, with the same kind as
+  an existing edge (a new edge may be `sync` or have no kind). Never auto-eligible: anything
+  touching a protected node, new `external` nodes, the sensitive fields, deletes, renames,
+  constraint and part changes, stale operations.
 - The proposal is applied to a scratch copy first; it is blocked when it does not apply cleanly or
-  adds an enforced lint finding the live model does not already have. Constraints are free
-  text and are not machine-evaluated: `set_constraints` is always human.
+  adds an enforced lint finding the live model does not already have. The scratch copy holds
+  only `.arch`, so repo-file lint rules (such as `shared-manifest`) list files from the real
+  repo. Constraints are free text and are not machine-evaluated: `set_constraints` is always
+  human.
 - Returns `{accepted, proposal_id, ops: [{index, op, node, rule, auto, reason?, diff_summary}],
   blocking?: [...], applied?: [index], message}`. When any operation is blocking nothing is
   applied and `blocking` lists those operations with reasons. On success the existing accept-all

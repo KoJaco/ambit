@@ -244,6 +244,8 @@ type manifest struct {
 	Summary         string `json:"summary,omitempty"`
 	ChangeSet       string `json:"change_set,omitempty"`
 	Origin          string `json:"origin,omitempty"`
+	// Restaged marks a proposal re-created by undo. Auto-accept refuses it.
+	Restaged bool `json:"restaged,omitempty"`
 	// DependsOnProposal is a proposal this one was staged against; see StageInput.
 	DependsOnProposal string      `json:"depends_on_proposal,omitempty"`
 	Operations        []operation `json:"operations"`
@@ -1219,6 +1221,12 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 }
 
 func (idx *Index) acceptAllLocked(id string) (AcceptAllResult, error) {
+	return idx.acceptAllVerified(id, nil)
+}
+
+// acceptAllVerified is acceptAllLocked with an optional check run on each operation just
+// before it applies. An error from verify fails that operation and rolls the accept back.
+func (idx *Index) acceptAllVerified(id string, verify func(i int, op operation) error) (AcceptAllResult, error) {
 	result := AcceptAllResult{Applied: []int{}, Skipped: []SkippedOp{}, Failed: []FailedOp{}}
 	m, err := idx.loadReadable(id)
 	if err != nil {
@@ -1250,7 +1258,13 @@ func (idx *Index) acceptAllLocked(id string) (AcceptAllResult, error) {
 			})
 			continue
 		}
-		opErr := idx.applyOp(id, op)
+		var opErr error
+		if verify != nil {
+			opErr = verify(i, op)
+		}
+		if opErr == nil {
+			opErr = idx.applyOp(id, op)
+		}
 		if opErr == nil {
 			opErr = idx.finishOp(&m, i, opStatusAccepted)
 		}

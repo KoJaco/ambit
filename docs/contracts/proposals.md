@@ -255,7 +255,10 @@ only the 100 most recently resolved are kept. The record is gitignored with the 
 lets `get_proposal` and `GET /proposals/{id}/state` answer after the fact, and lets
 `POST /proposals/restage` rebuild accepted operations as a new pending proposal (the UI
 does this when the architect undoes an accepted proposal). Nothing in v1 expires an
-abandoned proposal with operations still `pending`.
+abandoned proposal with operations still `pending`. A restaged proposal keeps the original
+`origin` and carries `restaged: true` in its manifest; architect auto-accept
+([decision 0017](../decisions/0017-architect-auto-accept.md)) always refuses it, so a human
+re-accepts an undone change.
 
 ### Staleness
 

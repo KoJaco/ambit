@@ -219,13 +219,14 @@ func (idx *Index) policyOpsLocked(m manifest) []PolicyOp {
 			if op.Op == OpCreateNode {
 				po.Current = nil
 			}
-			po.Proposed = idx.readProposedNode(m.ProposalID, op.NodeID)
+			po.Proposed, po.BodyHash = idx.readProposedNodeHashed(m.ProposalID, op.NodeID)
 		case OpDeleteNode, OpRenameNode:
 			po.Current = idx.Nodes[NodeID(op.NodeID)]
 		case OpSetRelationship:
 			po.From, po.To = NodeID(op.From), NodeID(op.To)
 			po.RelID = op.RelID
 			po.Label, po.Kind = deref(op.Label), deref(op.Kind)
+			po.Contract = op.Contract
 			if rel, _ := idx.relByID(RelID(op.RelID)); rel != nil {
 				po.CurrentRel = rel
 			}
@@ -237,24 +238,51 @@ func (idx *Index) policyOpsLocked(m manifest) []PolicyOp {
 
 // readProposedNode decodes the staged body of a create or update, or nil when unreadable.
 func (idx *Index) readProposedNode(proposalID, nodeID string) *Node {
-	if !slugPattern.MatchString(nodeID) {
-		return nil
-	}
-	jsonBytes, mdBytes, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", nodeID))
-	if err != nil {
-		return nil
-	}
-	n, err := decodeNode(jsonBytes)
-	if err != nil {
-		return nil
-	}
-	n.Spec = string(mdBytes)
+	n, _ := idx.readProposedNodeHashed(proposalID, nodeID)
 	return n
 }
 
-func (idx *Index) policyModelLocked() PolicyModel {
-	return PolicyModel{Nodes: idx.Nodes}
+// stagedBodyHash fingerprints the staged .json and .md bytes of a node.
+func stagedBodyHash(jsonBytes, mdBytes []byte) string {
+	h := sha256.New()
+	fmt.Fprintf(h, "%d\x00", len(jsonBytes))
+	h.Write(jsonBytes)
+	h.Write(mdBytes)
+	return hex.EncodeToString(h.Sum(nil))
 }
+
+// readProposedNodeHashed is readProposedNode that also returns the hash of the bytes it
+// decoded, so the policy can check the body is unchanged when it is applied.
+func (idx *Index) readProposedNodeHashed(proposalID, nodeID string) (*Node, string) {
+	if !slugPattern.MatchString(nodeID) {
+		return nil, ""
+	}
+	jsonBytes, mdBytes, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", nodeID))
+	if err != nil {
+		return nil, ""
+	}
+	n, err := decodeNode(jsonBytes)
+	if err != nil {
+		return nil, ""
+	}
+	n.Spec = string(mdBytes)
+	return n, stagedBodyHash(jsonBytes, mdBytes)
+}
+
+func (idx *Index) policyModelLocked() PolicyModel {
+	m := PolicyModel{Nodes: idx.Nodes}
+	files, err := ProjectFiles(idx.filesRoot())
+	if err != nil {
+		m.FilesErr = err.Error()
+	} else {
+		m.Files = files
+	}
+	return m
+}
+
+// afterClassifyHook, when set by a test, runs after auto-accept classified and trialled a
+// proposal and before it applies it.
+var afterClassifyHook func(proposalID string)
 
 // AcceptAllAs is AcceptAll that also appends an audit entry (actor human) for the
 // operations it applied. The audit write is best effort for a human accept.
@@ -324,6 +352,9 @@ func (idx *Index) AutoAcceptProposal(id, acceptedBy string) (AutoAcceptResult, e
 	if m.Origin != "" && m.Origin == acceptedBy {
 		return res, fmt.Errorf("%w: this session staged proposal %s and cannot accept it; a different architect session or a human must", ErrPolicyRefused, id)
 	}
+	if m.Restaged {
+		return res, fmt.Errorf("%w: proposal %s was restaged after an undo and needs a human to accept it", ErrPolicyRefused, id)
+	}
 	if err := idx.dependsOnPending(m); err != nil {
 		return res, err
 	}
@@ -345,7 +376,24 @@ func (idx *Index) AutoAcceptProposal(id, acceptedBy string) (AutoAcceptResult, e
 	if err := idx.checkAuditWritable(); err != nil {
 		return res, fmt.Errorf("%w: audit log is not writable: %v", ErrPolicyRefused, err)
 	}
-	applied, err := idx.acceptAllLocked(id)
+	if afterClassifyHook != nil {
+		afterClassifyHook(id)
+	}
+	// Apply only staged bodies that still hash to what was classified.
+	hashes := map[int]string{}
+	for _, po := range ops {
+		hashes[po.Index] = po.BodyHash
+	}
+	applied, err := idx.acceptAllVerified(id, func(i int, op operation) error {
+		if op.Op != OpCreateNode && op.Op != OpUpdateNode {
+			return nil
+		}
+		_, h := idx.readProposedNodeHashed(id, op.NodeID)
+		if h == "" || h != hashes[i] {
+			return fmt.Errorf("%w: staged body of %s %s changed after it was classified; a human must review it", ErrStale, op.Op, op.NodeID)
+		}
+		return nil
+	})
 	if err != nil {
 		return res, err
 	}
@@ -353,7 +401,7 @@ func (idx *Index) AutoAcceptProposal(id, acceptedBy string) (AutoAcceptResult, e
 		// The scratch trial said this applies cleanly, so reaching here means the model
 		// changed underneath us. Failures were rolled back; skipped ops stay pending.
 		res.Applied = applied.Applied
-		res.Blocking = []PolicyVerdict{{Index: -1, Op: "proposal", Node: id, Rule: BlockTrial, Reason: fmt.Sprintf("accept did not apply every operation (skipped %d, failed %d)", len(applied.Skipped), len(applied.Failed)), Summary: "accept-all result"}}
+		res.Blocking = []PolicyVerdict{{Index: -1, Op: "proposal", Node: id, Rule: BlockTrial, Reason: acceptShortfallReason(applied), Summary: "accept-all result"}}
 		if len(applied.Applied) > 0 {
 			idx.auditAutoLocked(id, m.Origin, acceptedBy, res.Ops, applied.Applied)
 		}
@@ -364,6 +412,14 @@ func (idx *Index) AutoAcceptProposal(id, acceptedBy string) (AutoAcceptResult, e
 		return res, fmt.Errorf("proposal %s was accepted but the audit entry could not be written: %w", id, err)
 	}
 	return res, nil
+}
+
+func acceptShortfallReason(applied AcceptAllResult) string {
+	r := fmt.Sprintf("accept did not apply every operation (skipped %d, failed %d)", len(applied.Skipped), len(applied.Failed))
+	if len(applied.Failed) > 0 {
+		r += ": " + applied.Failed[0].Error
+	}
+	return r
 }
 
 func (idx *Index) auditAutoLocked(id, origin, acceptedBy string, verdicts []PolicyVerdict, applied []int) error {
@@ -400,6 +456,9 @@ func (idx *Index) trialLocked(id string) (*PolicyVerdict, error) {
 	if err != nil {
 		return nil, err
 	}
+	// The scratch copy holds only .arch, so repo-file lint rules (shared manifests) list
+	// files from the real repo.
+	trial.filesDir = idx.filesRoot()
 	block := func(rule, reason string) *PolicyVerdict {
 		return &PolicyVerdict{Index: -1, Op: "proposal", Node: id, Rule: rule, Reason: reason, Summary: "trial apply on a scratch copy"}
 	}
