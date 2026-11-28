@@ -32,7 +32,7 @@ func TestMCPListsToolsOverStdio(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Tools) != 22 {
+	if len(res.Tools) != 26 {
 		t.Fatalf("tools %d", len(res.Tools))
 	}
 }

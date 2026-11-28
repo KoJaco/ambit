@@ -283,6 +283,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"set_constraints": true, "get_build_order": true, "get_started": true, "check_model": true,
 		"get_proposal": true, "wait_for_proposal": true, "check_done": true,
 		"rename_node": true, "withdraw_proposal": true,
+		"check_deliverables": true, "run_verify": true, "check_dependents": true, "check_contract_sync": true,
 	}
 	for _, tool := range res.Tools {
 		delete(want, tool.Name)
@@ -290,8 +291,8 @@ func TestMCPServerListsTools(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing tools %v (got %d)", want, len(res.Tools))
 	}
-	if len(res.Tools) != 22 {
-		t.Fatalf("got %d tools, want 22", len(res.Tools))
+	if len(res.Tools) != 26 {
+		t.Fatalf("got %d tools, want 26", len(res.Tools))
 	}
 }
 
