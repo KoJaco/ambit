@@ -3,7 +3,7 @@ import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import { relationshipDrillId } from "../api";
 import { AggregatedPill } from "./flow/aggregated-members";
-import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, edgeTitle, useEdgeGeometry } from "./flow/edge-shared";
+import { edgeLabelStyle, edgePillClass, edgePillDrillableClass, edgeTitle, useEdgeGeometry, EdgeHalo } from "./flow/edge-shared";
 
 export function ArchEdge(props: EdgeProps) {
     const { id, markerEnd } = props;
@@ -24,6 +24,7 @@ export function ArchEdge(props: EdgeProps) {
 
     return (
         <>
+            <EdgeHalo path={edgePath} />
             <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} interactionWidth={24} />
             {label ? (
                 <EdgeLabelRenderer>

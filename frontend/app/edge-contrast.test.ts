@@ -45,3 +45,23 @@ describe("edge stroke contrast (non-text UI, WCAG 1.4.11 needs 3:1)", () => {
         });
     }
 });
+
+describe("selected and focused edge cue (not colour alone)", () => {
+    it("thickens the stroke to at least 3px on selection and focus-visible", () => {
+        for (const selector of [
+            ".react-flow__edge.selected .react-flow__edge-path,\n.react-flow__edge:focus-visible .react-flow__edge-path",
+        ]) {
+            expect(css).toContain(selector);
+            const width = block(selector).match(/stroke-width:\s*([\d.]+)/);
+            expect(Number(width?.[1])).toBeGreaterThanOrEqual(3);
+        }
+    });
+
+    it("shows a dashed halo that never takes pointer events", () => {
+        const halo = block(".react-flow__edge .edge-halo");
+        expect(halo).toMatch(/stroke-dasharray:\s*\d/);
+        expect(halo).toContain("pointer-events: none");
+        expect(css).toContain(".react-flow__edge:focus-visible .edge-halo");
+        expect(css).toContain(".react-flow__edge.selected .edge-halo");
+    });
+});

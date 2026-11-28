@@ -1,6 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { KindGlyphIcon } from "./kind-glyph";
-import { edgeLabelStyle, edgeTitle, useEdgeGeometry, edgePillClass } from "./edge-shared";
+import { edgeLabelStyle, edgeTitle, useEdgeGeometry, edgePillClass, EdgeHalo } from "./edge-shared";
 
 // Compact single-line pill: glyph + label. The from -> to detail lives in the tooltip and the panel.
 export function DataEdge(props: EdgeProps) {
@@ -11,6 +11,7 @@ export function DataEdge(props: EdgeProps) {
     const toName = data?.toName || rel?.to || "";
     return (
         <>
+            <EdgeHalo path={edgePath} />
             <BaseEdge id={props.id} path={edgePath} markerEnd={props.markerEnd} interactionWidth={24} />
             <EdgeLabelRenderer>
                 <div

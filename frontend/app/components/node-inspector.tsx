@@ -33,7 +33,7 @@ import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
 import { CollapsibleSection } from "./collapsible-section";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { nodeSettingsSummary } from "../node-settings";
-import { INSPECTOR_CLOSE_REQUEST_EVENT, inspectorCloseAction, isInspectorDirty, setInspectorDirty } from "../right-rail-state";
+import { INSPECTOR_CLOSE_REQUEST_EVENT, inspectorCloseAction, isInspectorDirty, restoreInspectorFocus, setInspectorDirty } from "../right-rail-state";
 import {
     collectNodes,
     contractSummary,
@@ -128,10 +128,17 @@ export default function NodeInspector({
         else if (action === "confirm") setConfirmClose(true);
         else keepEditing();
     };
-    const keepEditing = () => {
-        setConfirmClose(false);
-        window.requestAnimationFrame(() => headerRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close inspector"]')?.focus());
-    };
+    const keepEditing = () => setConfirmClose(false);
+    // Runs after the prompt has left the DOM, so focus is read once it has really been dropped.
+    const wasConfirming = useRef(false);
+    useEffect(() => {
+        const before = wasConfirming.current;
+        wasConfirming.current = confirmClose;
+        const lost = !document.activeElement || document.activeElement === document.body;
+        if (restoreInspectorFocus(before, confirmClose, lost)) {
+            headerRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close inspector"]')?.focus();
+        }
+    }, [confirmClose]);
     const requestCloseRef = useRef(requestClose);
     requestCloseRef.current = requestClose;
     useEffect(() => {

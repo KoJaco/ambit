@@ -91,6 +91,12 @@ export function inspectorCloseAction(input: {
     return input.dirty ? "confirm" : "close";
 }
 
+// After the "Discard changes?" prompt is dismissed the focused button is gone, so focus goes back
+// to the inspector's close button unless the user already moved it somewhere real.
+export function restoreInspectorFocus(wasConfirming: boolean, confirming: boolean, focusLost: boolean): boolean {
+    return wasConfirming && !confirming && focusLost;
+}
+
 // Window event the canvas fires when Escape would close a dirty inspector, so the inspector can ask.
 export const INSPECTOR_CLOSE_REQUEST_EVENT = "ambit:inspector-close-request";
 

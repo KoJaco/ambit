@@ -24,3 +24,12 @@ export function nextTab(current: SidebarTab, key: string, tabs: SidebarTab[]): S
 export function showEnablePartsAction(tab: SidebarTab, scope: "whole" | "partial" | null): boolean {
     return tab === "nodes" && scope === "whole";
 }
+
+/**
+ * Where focus goes when the scope changes. Leaving partial scope removes the Parts tab and the
+ * "Switch to whole model" button, so focus that was on them (now on the page body) moves to the
+ * New node button. Focus that is already somewhere real stays put.
+ */
+export function focusAfterScopeSwitch(wasPartial: boolean, isPartial: boolean, focusLost: boolean): "new-node" | null {
+    return wasPartial && !isPartial && focusLost ? "new-node" : null;
+}

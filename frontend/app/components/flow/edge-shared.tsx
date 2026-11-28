@@ -4,6 +4,12 @@ import { routeEdges, type EdgeRoute, type Rect } from "../../edge-routing";
 import { estimatePillSize, layoutEdgeLabels } from "../../label-layout";
 import type { Relationship } from "../../api";
 
+// Selection and keyboard focus cue that does not rely on colour: a dashed halo around the edge
+// (shown by app.css on `.selected` and `:focus-visible`), next to the thicker stroke.
+export function EdgeHalo({ path }: { path: string }) {
+    return <path d={path} className="edge-halo" fill="none" aria-hidden />;
+}
+
 export type FlowEdgeData = {
     drillable?: boolean;
     rel?: Relationship;

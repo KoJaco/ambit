@@ -358,6 +358,26 @@ body {
     stroke: var(--edge) !important;
     fill: var(--edge) !important;
 }
+/* Selected or keyboard-focused edge: a thicker stroke (3.5px) and a dashed halo, so the state
+   is not carried by colour alone (WCAG 1.4.1, 2.4.7, 2.4.13). The halo path never takes pointer events. */
+.react-flow__edge .edge-halo {
+    display: none;
+    stroke: var(--primary);
+    stroke-width: 11px;
+    stroke-opacity: 0.55;
+    stroke-dasharray: 2 7;
+    stroke-linecap: round;
+    pointer-events: none;
+}
+.react-flow__edge.selected .edge-halo,
+.react-flow__edge:focus-visible .edge-halo {
+    display: inline;
+}
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus-visible .react-flow__edge-path {
+    stroke: var(--primary);
+    stroke-width: 3.5;
+}
 /* No variable exists for handle size or visibility, so raise specificity. */
 .react-flow .react-flow__handle {
     width: 8px;

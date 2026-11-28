@@ -12,7 +12,7 @@ import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-
 import { PartsPanel } from "./parts-panel";
 import { partSelection } from "../part-selection";
 import { filterRoots } from "../parts-scope";
-import { nextTab, showEnablePartsAction, type SidebarTab } from "../sidebar-tabs";
+import { focusAfterScopeSwitch, nextTab, showEnablePartsAction, type SidebarTab } from "../sidebar-tabs";
 import { Tooltip } from "./tooltip";
 import styles from "./Sidebar.module.css";
 
@@ -73,6 +73,20 @@ export function Sidebar({
     useEffect(() => {
         if (!partial && tab === "parts") setTab("nodes");
     }, [partial, tab]);
+
+    // Leaving partial scope removes the Parts tab and the button that was just pressed; keep focus
+    // on something real instead of dropping it to the page.
+    const wasPartial = useRef(partial);
+    useEffect(() => {
+        const before = wasPartial.current;
+        wasPartial.current = partial;
+        if (!before || partial) return;
+        const timer = window.setTimeout(() => {
+            const lost = !document.activeElement || document.activeElement === document.body;
+            if (focusAfterScopeSwitch(before, partial, lost) === "new-node") newButtonRef.current?.focus();
+        }, 0);
+        return () => window.clearTimeout(timer);
+    }, [partial]);
 
     function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
         const next = nextTab(tab, event.key, partial ? ["nodes", "parts"] : ["nodes"]);

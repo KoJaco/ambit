@@ -2,7 +2,7 @@ import { type KeyboardEvent, type MouseEvent } from "react";
 import { BaseEdge, EdgeLabelRenderer, type EdgeProps } from "@xyflow/react";
 import { useNavigate } from "react-router";
 import clsx from "clsx";
-import { edgeLabelStyle, edgeTitle, useEdgeGeometry, edgePillClass, edgePillDrillableClass } from "./edge-shared";
+import { edgeLabelStyle, edgeTitle, useEdgeGeometry, edgePillClass, edgePillDrillableClass, EdgeHalo } from "./edge-shared";
 
 export function ButtonEdge(props: EdgeProps) {
     const navigate = useNavigate();
@@ -19,6 +19,7 @@ export function ButtonEdge(props: EdgeProps) {
 
     return (
         <>
+            <EdgeHalo path={edgePath} />
             <BaseEdge id={props.id} path={edgePath} markerEnd={props.markerEnd} interactionWidth={24} />
             <EdgeLabelRenderer>
                 <button

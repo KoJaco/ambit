@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextTab, showEnablePartsAction } from "./sidebar-tabs";
+import { focusAfterScopeSwitch, nextTab, showEnablePartsAction } from "./sidebar-tabs";
 
 const both = ["nodes", "parts"] as const;
 describe("nextTab", () => {
@@ -21,5 +21,16 @@ describe("showEnablePartsAction", () => {
         expect(showEnablePartsAction("nodes", "partial")).toBe(false);
         expect(showEnablePartsAction("parts", "partial")).toBe(false);
         expect(showEnablePartsAction("nodes", null)).toBe(false);
+    });
+});
+
+describe("focusAfterScopeSwitch", () => {
+    it("moves lost focus to the New node button when leaving partial scope", () => {
+        expect(focusAfterScopeSwitch(true, false, true)).toBe("new-node");
+    });
+    it("leaves focus alone otherwise", () => {
+        expect(focusAfterScopeSwitch(true, false, false)).toBeNull();
+        expect(focusAfterScopeSwitch(false, true, true)).toBeNull();
+        expect(focusAfterScopeSwitch(false, false, true)).toBeNull();
     });
 });
