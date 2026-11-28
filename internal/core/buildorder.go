@@ -60,7 +60,7 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 			order = append(order, id)
 		}
 	}
-	g := depGraph{nodes: idx.Nodes, children: idx.Children}
+	g := newDepGraph(idx.Nodes, idx.Children)
 	buildable := g.buildable
 
 	done := g.doneFn()
@@ -162,6 +162,7 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 type depGraph struct {
 	nodes    map[NodeID]*Node
 	children map[NodeID][]NodeID
+	gaters   map[NodeID][]NodeID
 }
 
 // newDepGraphFromNodes derives children from ParentID, ordered by id.
@@ -181,7 +182,28 @@ func newDepGraphFromNodes(nodes map[NodeID]*Node) depGraph {
 			children[n.ParentID] = append(children[n.ParentID], id)
 		}
 	}
-	return depGraph{nodes: nodes, children: children}
+	return newDepGraph(nodes, children)
+}
+
+// newDepGraph builds the graph and the reverse index of gates: gaters[x] lists the nodes
+// whose gates list names x, so x effectively depends on each of them.
+func newDepGraph(nodes map[NodeID]*Node, children map[NodeID][]NodeID) depGraph {
+	gaters := map[NodeID][]NodeID{}
+	ids := make([]NodeID, 0, len(nodes))
+	for id, n := range nodes {
+		if n != nil && len(n.Gates) > 0 {
+			ids = append(ids, id)
+		}
+	}
+	sortNodeIDs(ids)
+	for _, id := range ids {
+		for _, t := range nodes[id].Gates {
+			if _, ok := nodes[t]; ok && t != id {
+				gaters[t] = append(gaters[t], id)
+			}
+		}
+	}
+	return depGraph{nodes: nodes, children: children, gaters: gaters}
 }
 
 // buildable: a leaf, or a container with implementation globs.
@@ -227,7 +249,7 @@ func (g depGraph) doneFn() func(NodeID) bool {
 	return done
 }
 
-// declared is b's own depends_on plus that of its non-buildable ancestors (existing nodes
+// declared is b's own depends_on and gaters (spikes that gate it) plus that of its non-buildable ancestors (existing nodes
 // only, unordered).
 func (g depGraph) declared(b NodeID) []NodeID {
 	seen := map[NodeID]bool{}
@@ -241,6 +263,7 @@ func (g depGraph) declared(b NodeID) []NodeID {
 		}
 	}
 	add(g.nodes[b].DependsOn)
+	add(g.gaters[b])
 	visited := map[NodeID]bool{b: true}
 	for cur := g.nodes[b].ParentID; cur != ""; {
 		p := g.nodes[cur]
@@ -250,6 +273,7 @@ func (g depGraph) declared(b NodeID) []NodeID {
 		visited[cur] = true
 		if !g.buildable(cur) {
 			add(p.DependsOn)
+			add(g.gaters[cur])
 		}
 		cur = p.ParentID
 	}

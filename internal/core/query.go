@@ -59,8 +59,9 @@ type NodeView struct {
 	Renderer       string
 	Schema         []SchemaColumn
 	// DependsOn and Contract are copies of the node fields (nil when none).
-	DependsOn  []NodeID
-	Contract   *NodeContract
+	DependsOn []NodeID
+	Contract  *NodeContract
+	NodeExtras
 	ChildCount int
 	// GroupID is the parent when this node is shown as a member of an expanded group.
 	GroupID NodeID
@@ -343,5 +344,6 @@ func snapshot(n *Node) NodeView {
 		Schema:         append([]SchemaColumn(nil), n.Schema...),
 		DependsOn:      append([]NodeID(nil), n.DependsOn...),
 		Contract:       normalizeNodeContract(n.Contract),
+		NodeExtras:     cloneExtras(n.NodeExtras),
 	}
 }

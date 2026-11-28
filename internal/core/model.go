@@ -103,7 +103,10 @@ type Node struct {
 	// they were when the status was last set to in_progress or done. Empty means no
 	// baseline was recorded (decision 0014).
 	ContractHash string
-	Unknown      map[string]jsonRaw
+	// NodeExtras holds the optional build-planning fields (external, human_gates,
+	// deliverables, references, shared, milestones, gates).
+	NodeExtras
+	Unknown map[string]jsonRaw
 }
 
 // Relationship is a directed cross-cutting edge. It is not a hierarchy edge.
@@ -170,6 +173,7 @@ type CreateInput struct {
 	Verify         []string
 	DependsOn      []NodeID
 	Contract       *NodeContract
+	NodeExtras
 }
 
 // SchemaColumn is one visual row on a database-schema canvas renderer.
@@ -202,6 +206,7 @@ type UpdateInput struct {
 	DependsOn *[]NodeID
 	// Contract replaces the contract; a non-nil empty contract clears it.
 	Contract *NodeContract
+	NodeExtrasPatch
 }
 
 // IsEmpty reports whether the patch changes nothing.

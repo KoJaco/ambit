@@ -54,6 +54,10 @@ func (idx *Index) applyRename(op operation) error {
 			cp.DependsOn = renamed
 			touched = true
 		}
+		if renamed := renameIDs(cp.Gates, old, nw); !slicesEqualIDsOrdered(renamed, cp.Gates) {
+			cp.Gates = renamed
+			touched = true
+		}
 		if !touched {
 			continue
 		}

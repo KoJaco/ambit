@@ -76,6 +76,15 @@ func validateDependsOnIn(nodes map[NodeID]*Node, self, parent NodeID, deps []Nod
 // pure container means its descendants, so x -> container -> child -> x is a cycle even
 // though the raw depends_on lists are acyclic.
 func expandedCycleCheck(nodes map[NodeID]*Node, self, parent NodeID, deps []NodeID) error {
+	return expandedCycleCheckWith(nodes, self, parent, deps, nil, false)
+}
+
+// expandedCycleCheckGates is expandedCycleCheck with self's gates list replaced too.
+func expandedCycleCheckGates(nodes map[NodeID]*Node, self, parent NodeID, deps, gates []NodeID) error {
+	return expandedCycleCheckWith(nodes, self, parent, deps, gates, true)
+}
+
+func expandedCycleCheckWith(nodes map[NodeID]*Node, self, parent NodeID, deps, gates []NodeID, setGates bool) error {
 	scratch := make(map[NodeID]*Node, len(nodes)+1)
 	for id, n := range nodes {
 		scratch[id] = n
@@ -87,6 +96,9 @@ func expandedCycleCheck(nodes map[NodeID]*Node, self, parent NodeID, deps []Node
 	}
 	sn.ParentID = parent
 	sn.DependsOn = deps
+	if setGates {
+		sn.Gates = gates
+	}
 	scratch[self] = sn
 	g := newDepGraphFromNodes(scratch)
 
@@ -258,6 +270,16 @@ func (idx *Index) linkDependencies() {
 				continue
 			}
 			adj[id] = append(adj[id], d)
+		}
+	}
+	for _, id := range order {
+		for _, t := range idx.Nodes[id].Gates {
+			if _, ok := idx.Nodes[t]; !ok {
+				idx.warn(idx.nodeJSON(id), fmt.Sprintf("node %s gates %q which does not exist", id, t))
+				continue
+			}
+			// t waits for id, so t depends on id.
+			adj[t] = append(adj[t], id)
 		}
 	}
 	for _, comp := range sccCycles(order, adj) {

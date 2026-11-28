@@ -303,6 +303,9 @@ func decodeNode(data []byte) (*Node, error) {
 		}
 		n.Verify = cmds
 	}
+	if err := decodeNodeExtras(obj, n); err != nil {
+		return nil, err
+	}
 	if raw, ok := take(obj, "contract_hash"); ok && !isNull(raw) {
 		h, err := decodeString(raw)
 		if err != nil {
@@ -376,6 +379,9 @@ func encodeNode(n *Node) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if err = encodeNodeExtras(n, put); err != nil {
+		return nil, err
+	}
 	if n.Icon != "" {
 		if err = put("icon", n.Icon); err != nil {
 			return nil, err
@@ -419,7 +425,7 @@ func encodeNode(n *Node) ([]byte, error) {
 	if err = put("status", string(n.Status)); err != nil {
 		return nil, err
 	}
-	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "risk", "review", "verify", "icon", "color", "renderer", "schema", "depends_on", "contract", "contract_hash", "status"}
+	order := []string{"id", "name", "type", "parent_id", "relationship_id", "implementation", "scope", "protected", "risk", "review", "verify", "external", "human_gates", "deliverables", "references", "shared", "milestones", "gates", "icon", "color", "renderer", "schema", "depends_on", "contract", "contract_hash", "status"}
 	return encodeObject(order, vals, n.Unknown)
 }
 

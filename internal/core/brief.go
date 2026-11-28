@@ -291,7 +291,7 @@ func writeOwnContract(b *strings.Builder, n *Node) {
 // writeBuildOrder reports unmet dependencies (advisory, with a stop-and-report line) and
 // the nodes that rely on n.
 func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
-	g := depGraph{nodes: idx.Nodes, children: idx.Children}
+	g := newDepGraph(idx.Nodes, idx.Children)
 	var unmet []NodeID
 	if res, err := idx.buildOrderLocked(""); err == nil {
 		found := false

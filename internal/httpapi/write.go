@@ -36,6 +36,7 @@ func postNode(idx *core.Index) http.HandlerFunc {
 			Schema:         body.Schema,
 			DependsOn:      toNodeIDs(body.DependsOn),
 			Contract:       body.Contract,
+			NodeExtras:     body.NodeExtras,
 		})
 		if err != nil {
 			writeAPIError(w, err)
@@ -68,6 +69,8 @@ func patchNode(idx *core.Index) http.HandlerFunc {
 			Risk:           body.Risk,
 			Review:         body.Review,
 			Verify:         body.Verify,
+
+			NodeExtrasPatch: body.NodeExtrasPatch,
 		}
 		if body.Status != nil {
 			status := core.Status(*body.Status)
@@ -225,6 +228,7 @@ func nodeBody(n core.NodeView, assigned core.NodeID) nodeJSON {
 		DependsOn:      dependsOn(n.DependsOn),
 		Contract:       nodeContractOrNil(n.Contract),
 		Assigned:       assigned != "" && n.ID == assigned,
+		NodeExtras:     n.NodeExtras,
 	}
 }
 
@@ -266,6 +270,7 @@ type createJSON struct {
 	DependsOn      []string            `json:"depends_on"`
 	// Contract is optional; omitted means none.
 	Contract *core.NodeContract `json:"contract"`
+	core.NodeExtras
 }
 
 type patchJSON struct {
@@ -287,6 +292,7 @@ type patchJSON struct {
 	// DependsOn replaces the list when present ([] clears). Contract replaces when present ({} clears).
 	DependsOn *[]string          `json:"depends_on"`
 	Contract  *core.NodeContract `json:"contract"`
+	core.NodeExtrasPatch
 }
 
 func postGroupProposal(idx *core.Index) http.HandlerFunc {

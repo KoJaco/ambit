@@ -452,6 +452,11 @@ func orderCreates(ops []StageOp) []StageOp {
 				out = append(out, k)
 			}
 		}
+		for _, d := range c.Create.Gates {
+			if k, ok := byID[d]; ok {
+				out = append(out, k)
+			}
+		}
 		return out
 	}
 	state := make([]int, len(creates)) // 0 new, 1 visiting, 2 done
