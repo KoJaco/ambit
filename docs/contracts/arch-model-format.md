@@ -346,6 +346,25 @@ Recognised keys (all optional; unknown keys are preserved on write):
   is not HTML-escaped (`List<Order>` stays readable). A running `ambit mcp` reloads when
   `config.json` changes on disk, so rules edited through `ambit start` reach its briefs.
 
+- `scope` — `"whole"` (default; the key is absent) or `"partial"`
+  ([decision 0016](../decisions/0016-partial-model-scope.md)). In a partial-scope project
+  the model describes only its parts. `drift` reports an unowned file only when it matches
+  an `include` glob of some part; other unowned files are counted in `outside_parts` (not in
+  `ignored_files`). Owned-file, overlap and unmatched-glob checks are unchanged. An invalid
+  value warns and means `whole`.
+- `parts` — ordered list `{ "id", "name", "include": [glob], "root_node_ids": [node id] }`.
+  `id` is a unique lowercase slug (at most 64 characters); `name` is at most 120 characters
+  (defaults to the id); `include` has at most 32 doublestar globs of at most 300 characters,
+  each validated; `root_node_ids` has at most 64 slugs and scopes `get_graph` (and the UI) to
+  the part's subtree. At most 24 parts. An invalid or duplicate entry on load is skipped with
+  a warning; a root id naming no node is a warning, not an error. Written by
+  `ambit init --scope partial [--part name=glob,glob]`, `PUT /parts`, or an accepted
+  `set_part`/`delete_part` proposal. Unknown keys inside a part are not preserved.
+- `proposal_policy` — `{ "auto_accept": bool }` (default off; [decision 0017](../decisions/0017-architect-auto-accept.md)).
+  Effective only while the stage is `build`. Written only by `PUT /policy/proposals`; no MCP
+  tool changes it. Anything else in the object is dropped on write; a non-object value warns
+  and means off.
+
 - `method` — id of the active workflow method ([decision 0013](../decisions/0013-workflow-methods.md)).
   Absent means `freeform`. A non-string value, or an id that names no built-in or
   `.arch/methods/` method, is ignored with a warning and the project behaves as `freeform`.

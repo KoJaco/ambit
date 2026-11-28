@@ -237,6 +237,32 @@ are not stage-gated. There is no auth beyond the loopback bind.
   `config.json` did not load and the result was computed under `freeform`, so that
   method's enforced rules were not checked. Never blocks anything.
 
+### Parts, scope and proposal policy
+
+Human-surface writes (no auth beyond the loopback bind). Decisions 0016 and 0017.
+
+- `GET /parts` — `{scope: "whole"|"partial", parts: [{id, name, include: [glob],
+  root_node_ids: [id]}]}`.
+- `PUT /parts` — body `{scope?, part?}` with at least one. `part` adds or replaces the part with
+  that id; `scope` sets `whole` or `partial`. Returns the `GET /parts` shape. `400` for an invalid
+  id, glob, bound (24 parts, 32 globs, 64 roots) or scope. A root id naming no node is accepted
+  (a load warning).
+- `DELETE /parts/{id}` — removes a part; returns the `GET /parts` shape; `400` for an unknown id.
+- `GET /policy/proposals` — `{auto_accept, stage, effective, reason?}`; `effective` is true only
+  when `auto_accept` is on and the stage is `build`.
+- `PUT /policy/proposals` — body `{auto_accept: bool}` (required). Returns the same shape. This is
+  the only way to change the policy; no MCP tool can.
+- `GET /proposals/audit?since=<RFC 3339>&actor=<actor>` — `{entries: [{ts, proposal_id, actor:
+  "architect-agent"|"human", origin_hash?, accepter_hash?, ops: [{index, op, node, rule,
+  diff_summary}]}]}`, oldest first, at most the newest 1000. `rule` is the policy rule for an
+  architect-agent entry and `"human"` for a human accept-all. Per-operation accepts are not
+  logged. The log is `.arch/.proposals/audit.jsonl` (gitignored, append-only); origins appear only as
+  short hashes. `400` for a bad `since`.
+- `GET /proposals/audit/digest?since=&actor=` — `{since?, actor?, proposals, ops, by_rule: [{rule,
+  count}], entries}`; `actor` defaults to `architect-agent`. A mixed rule such as
+  `dependency-add-acyclic,spec-text` counts under each rule.
+- `GET /proposals/{id}` rows for `set_part` carry `current_part` and `proposed_part`.
+
 ### Layout
 
 - `GET /layout/{key}` — cached positions for one level, or `{"positions":[]}` when that

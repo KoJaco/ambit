@@ -96,7 +96,7 @@ proposal's age is obvious at a glance.
 Every operation carries:
 
 - `op` — one of `create_node`, `update_node`, `delete_node`, `rename_node`,
-  `set_relationship`, `delete_relationship`, `set_constraints`.
+  `set_relationship`, `delete_relationship`, `set_constraints`, `set_part`, `delete_part`.
 - `node_id` — the node this operation concerns. For `create_node`, the caller-supplied `id`
   when one was given (a free slug), otherwise the ID `ambit-core` derived from the proposed
   name. For `set_relationship` and `delete_relationship`, the `from` node — relationships
@@ -121,6 +121,14 @@ patch). It carries `constraints` (the validated list; empty clears) and no node:
 empty. Its `base_hash` is the sha256 of the `config.json` bytes, so any concurrent edit to
 the file makes it stale. At most one `set_constraints` may appear in a proposal. Accepting
 applies the list with the same validation as the direct `SetConstraints` call.
+
+`set_part` replaces (or adds) one entry of the `parts` list in `config.json`; it carries `part`
+(`{id, name, include, root_node_ids}`) and `node_id` is the part id. `delete_part` removes the
+entry with that id (`node_id`). Neither has a node file. Their `base_hash` is the sha256 of the
+`scope` and `parts` values in `config.json` only, so an unrelated config change does not make
+them stale, but any other change to the parts does. At most one part operation per proposal.
+Diff rows carry `current_part` and `proposed_part`. Part operations are never auto-accepted
+(decision 0017).
 
 `create_node` and `update_node` carry the node's `depends_on` and `contract` inside the
 staged node file (decision 0012). `update_node` lists `depends_on` and `contract` in

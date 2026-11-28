@@ -352,7 +352,44 @@ returns no `waves`. Optional `scope_node_id` limits it to a subtree (unknown id 
 The tool has no fixed output schema because the compact shape differs. Advisory only: it never
 blocks `update_node_status`. Call it before building.
 
-#### `get_graph(include_contracts?)`
+#### `set_part(id, name?, include?, root_node_ids?, delete?)`
+
+Stages one `set_part` proposal operation (or `delete_part` when `delete: true`, which needs
+only `id`) for a partial-scope model ([decision 0016](../decisions/0016-partial-model-scope.md)).
+Staged like every authoring tool: a human accepts it in the UI, and the accepted operation
+rewrites `config.json` `parts`. The scope itself (`whole` or `partial`) is human-set. One part
+operation per proposal; its base hash covers only the `scope` and `parts` keys, so an unrelated
+config change does not make it stale. Auto-accept never covers it.
+
+#### `accept_proposal(proposal_id)`
+
+Registered **only** when the server was started with `ambit mcp --role architect`; the default
+server has no such tool. Accepts a pending proposal under the project's auto-accept policy
+([decision 0017](../decisions/0017-architect-auto-accept.md)):
+
+- Refuses (tool error) unless `config.json` `proposal_policy.auto_accept` is true and the
+  effective stage is `build`; config is re-read from disk on each call.
+- Refuses a proposal staged by the same MCP session (every session has a random origin; a
+  proposal staged from the UI has none and any architect session may accept it).
+- Classifies every pending operation. Auto-eligible: `update_node` touching only `spec` and
+  `contract`; `depends_on` changes that remove dependencies or add acyclic ones; `implementation`
+  and `scope` additions that match the node's own `deliverables`; `create_node` under an existing
+  non-external container with no external or protected dependencies and no overlap with a
+  protected node's globs; `set_relationship` between existing nodes, not protected or external,
+  with the same kind as an existing edge (a new edge may be `sync` or have no kind). Never
+  auto-eligible: anything touching a protected node, new `external` nodes, `stage`, `risk`,
+  `review`, `human_gates`, `shared`, `protected` and similar fields, deletes, renames, constraint
+  and part changes, stale operations.
+- The proposal is applied to a scratch copy first; it is blocked when it does not apply cleanly or
+  adds an enforced lint finding the live model does not already have. Constraints are free
+  text and are not machine-evaluated: `set_constraints` is always human.
+- Returns `{accepted, proposal_id, ops: [{index, op, node, rule, auto, reason?, diff_summary}],
+  blocking?: [...], applied?: [index], message}`. When any operation is blocking nothing is
+  applied and `blocking` lists those operations with reasons. On success the existing accept-all
+  path runs (snapshot and rollback) and one entry is appended to `.arch/.proposals/audit.jsonl`
+  (`GET /proposals/audit`).
+
+#### `get_graph(include_contracts?, part?)`
 
 Reads the whole model compactly and directly (no staging): `nodes` (id, name, type, parent,
 relationship_id, status, `depends_on` and `has_contract` when set; no specs), `relationships` (id, from, to,
@@ -361,7 +398,9 @@ label, kind, `has_contract` when the edge has one) and
 empty `node_id`). With `include_contracts: true`, each node and relationship that has one also
 carries its full `contract` body. Also `method` (`{id, name}`) and `stage` (`{id, name}`, or `null` for a
 stage-less method). Call it before authoring so ids
-are reused and duplicates avoided.
+are reused and duplicates avoided. `part` (a part id from `config.json`) limits the result to
+that part's `root_node_ids`, everything below them and the edges between them; the response
+repeats it as `part`. An unknown part is an error.
 
 #### `get_started()`
 
@@ -374,7 +413,7 @@ matching what it declares. Read-only. The server
 `instructions` are fixed when the session starts (the SDK reads them at `initialize`), so
 after a method change `get_started` is the live source.
 
-#### `check_model(include_drift?, all_rules?, verbose_globs?)`
+#### `check_model(include_drift?, all_rules?, verbose_globs?, part?)`
 
 Lints the model against the active method's rules (same implementation as `ambit
 check-model` and `GET /check-model`). Returns `{ok, method, stage?, findings[], counts:
@@ -399,7 +438,7 @@ unreadable flag).
 Returns `icons`: the closed icon registry as `{id, label}` rows, label being a one-line
 description. Same list as `GET /icons`. Use these ids for the `icon` field.
 
-#### `check_drift(node_id?, worktree?, verbose_globs?)`
+#### `check_drift(node_id?, worktree?, verbose_globs?, part?)`
 
 Compares model globs with the files git can see: tracked files plus untracked files that
 are not gitignored (same implementation as `ambit drift`). Returns
@@ -409,7 +448,10 @@ built-in or `drift_ignore` globs are excluded), `unmatched_globs_count` (number 
 `{node, field, glob}`, is only returned when `verbose_globs` is true, because a design-stage
 model has no files yet and the list is long), `overlaps` (`{path, owners}` for
 files owned by two or more nodes of which at least two are not in an ancestor/descendant
-relationship) and `ignored_files` (count skipped by ignore globs). `node_id` limits the
+relationship) and `ignored_files` (count skipped by ignore globs). In a partial-scope project
+(`config.json` `scope: "partial"`), unowned files are reported only when they match an `include`
+glob of some part, and `outside_parts` counts the others; `part` restricts the unowned list to
+one part's globs (`check_model` and `check_done` use the same drift). `node_id` limits the
 report to that node's globs and overlaps (unowned files are not reported). `worktree` reads
 files from another checkout of the same repository (a linked git worktree), so an agent
 can verify its own branch; the model still comes from the server's `.arch`. A path from a
@@ -564,6 +606,11 @@ staging. A real cycle is still rejected.
    `check_dependents` execute the committed model's `verify` commands, so they are not annotated
    read-only (`destructiveHint` and `openWorldHint` instead); every other read tool carries the
    MCP `readOnlyHint`.
+3c. **Accepting is human unless the policy says otherwise.** No MCP tool changes
+   `proposal_policy`. `accept_proposal` exists only under `--role architect`, only works with
+   the policy on in the build stage, never accepts the caller's own proposal, and every accept
+   is audited. The check on session identity is a guard rail like the stage gate, not a
+   security boundary: an agent with a shell can edit `config.json`.
 4. **All tools go through `ambit-core`.** No MCP-specific validation or write path exists.
 5. **`get_context` names forbidden paths explicitly.** Omission is not prohibition.
 6. **`check_scope` and `ambit check` share one implementation.** They cannot disagree about
