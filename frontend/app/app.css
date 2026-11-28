@@ -514,3 +514,21 @@ body {
         0 0 0 2px var(--background),
         0 0 0 4px var(--inspect-ring);
 }
+
+/* Horizontally scrolling regions (run plan waves): keep the scrollbar visible and in contrast. */
+.wave-scroll {
+    scrollbar-width: auto;
+    scrollbar-color: var(--muted-foreground) var(--muted);
+}
+.wave-scroll::-webkit-scrollbar {
+    height: 12px;
+}
+.wave-scroll::-webkit-scrollbar-track {
+    background: var(--muted);
+    border-radius: 6px;
+}
+.wave-scroll::-webkit-scrollbar-thumb {
+    background: var(--muted-foreground);
+    border-radius: 6px;
+    border: 2px solid var(--muted);
+}

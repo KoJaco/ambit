@@ -160,9 +160,9 @@ export function RunPlanSheet({
                             <h3 className={headingClass}>Waves</h3>
                             {columns.length === 0 ? <p className="text-sm text-muted-foreground">No buildable nodes.</p> : null}
                             {earlierWavesNote(columns) ? <p className="mb-1 text-xs text-muted-foreground">{earlierWavesNote(columns)}</p> : null}
-                            <div className="flex gap-4 overflow-x-auto rounded-[10px] p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
+                            <div className="wave-scroll flex w-full max-w-full min-w-0 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-[10px] p-2 pb-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
                                 {columns.map((col) => (
-                                    <div key={col.wave} className="w-44 shrink-0">
+                                    <div key={col.wave} className="w-56 min-w-[14rem] shrink-0">
                                         <h4 className="mb-1 text-xs font-medium">
                                             Wave {col.wave + 1}{" "}
                                             <span className="font-normal text-muted-foreground">
@@ -177,6 +177,7 @@ export function RunPlanSheet({
                                     </div>
                                 ))}
                             </div>
+                            {columns.length > 1 ? <p className="mt-1 text-xs text-muted-foreground">Scroll sideways (scrollbar, shift+wheel, or arrow keys) to see later waves.</p> : null}
                             {plan.cycles.length > 0 ? (
                                 <p role="alert" className="mt-2 text-sm text-destructive">
                                     Dependency cycles: {plan.cycles.map((c) => c.map(nameOf).join(" to ")).join("; ")}
