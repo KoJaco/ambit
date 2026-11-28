@@ -268,6 +268,13 @@ func driftLocked(idx *Index, files []string, only NodeID, part string) (DriftRep
 	}
 	sort.Strings(report.Unowned)
 	report.Hint = driftIgnoreHint(len(report.Unowned))
+	if idx.Scope == ScopePartial && len(idx.Parts) == 0 {
+		msg := "partial scope has no parts; add one with set_part"
+		if report.Hint != "" {
+			msg += ". " + report.Hint
+		}
+		report.Hint = msg
+	}
 	return report, nil
 }
 

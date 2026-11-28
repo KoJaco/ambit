@@ -182,6 +182,15 @@ func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io
 			}
 		}
 	}
+	// Validate every --part before anything is written, so a bad value leaves scope untouched.
+	for i, p := range parts {
+		np, perr := core.NormalizePart(p)
+		if perr != nil {
+			fmt.Fprintf(stderr, "ambit init: %v\n", perr)
+			return 1
+		}
+		parts[i] = np
+	}
 	if scope.Scope != "" {
 		if err := idx.SetScope(scope.Scope); err != nil {
 			fmt.Fprintf(stderr, "ambit init: %v\n", err)

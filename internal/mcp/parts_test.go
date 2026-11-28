@@ -205,3 +205,14 @@ func TestSetPartStagesProposalAndGraphPartScopes(t *testing.T) {
 		t.Fatal("unknown part must fail")
 	}
 }
+
+func TestAcceptMessageReportsPartialApply(t *testing.T) {
+	none := acceptMessage(core.AutoAcceptResult{ProposalID: "p1", Blocking: make([]core.PolicyVerdict, 1)})
+	if strings.Contains(none, "already applied") {
+		t.Fatal(none)
+	}
+	some := acceptMessage(core.AutoAcceptResult{ProposalID: "p1", Blocking: make([]core.PolicyVerdict, 1), Applied: []int{0, 1}})
+	if !strings.Contains(some, "2 operation(s) were already applied") {
+		t.Fatal(some)
+	}
+}

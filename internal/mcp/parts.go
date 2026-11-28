@@ -59,10 +59,18 @@ func (e *toolEnv) handleAcceptProposal(_ context.Context, _ *sdkmcp.CallToolRequ
 		return nil, acceptProposalOut{}, err
 	}
 	out := acceptProposalOut{AutoAcceptResult: res}
-	if res.Accepted {
-		out.Message = fmt.Sprintf("Accepted proposal %s (%d operation(s)) under the auto-accept policy; recorded in the audit log.", res.ProposalID, len(res.Applied))
-	} else {
-		out.Message = fmt.Sprintf("Proposal %s was NOT accepted: %d operation(s) need a human decision in the ambit UI.", res.ProposalID, len(res.Blocking))
-	}
+	out.Message = acceptMessage(res)
 	return nil, out, nil
+}
+
+// acceptMessage is the one-line outcome. A refusal after some operations applied says so.
+func acceptMessage(res core.AutoAcceptResult) string {
+	if res.Accepted {
+		return fmt.Sprintf("Accepted proposal %s (%d operation(s)) under the auto-accept policy; recorded in the audit log.", res.ProposalID, len(res.Applied))
+	}
+	msg := fmt.Sprintf("Proposal %s was NOT accepted: %d operation(s) need a human decision in the ambit UI.", res.ProposalID, len(res.Blocking))
+	if n := len(res.Applied); n > 0 {
+		msg += fmt.Sprintf(" WARNING: %d operation(s) were already applied before the refusal (see applied) and are in the audit log; the rest stay pending.", n)
+	}
+	return msg
 }

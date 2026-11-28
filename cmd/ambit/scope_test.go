@@ -171,3 +171,20 @@ func TestMCPRoleFlagRegistersAcceptProposalOverStdio(t *testing.T) {
 		t.Fatal("--role architect must register accept_proposal")
 	}
 }
+
+func TestInitInvalidPartWritesNoScope(t *testing.T) {
+	dir, out, code := initWith(t, "", false, "--scope", "partial", "--part", "x=[bad", "--no-mcp")
+	if code != 1 {
+		t.Fatalf("code %d %s", code, out)
+	}
+	if strings.Contains(out, "scope: partial") {
+		t.Fatalf("scope was reported as written:\n%s", out)
+	}
+	idx, err := core.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Scope == core.ScopePartial {
+		t.Fatal("scope was written although --part is invalid")
+	}
+}

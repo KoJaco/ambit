@@ -65,6 +65,10 @@ func clonePartList(in []Part) []Part {
 // validScope reports whether s is a scope value.
 func validScope(s string) bool { return s == ScopeWhole || s == ScopePartial }
 
+// NormalizePart validates and normalises a part without writing it, for callers that
+// must check input before they change anything else.
+func NormalizePart(p Part) (Part, error) { return normalizePart(p) }
+
 // normalizePart trims and validates one part. Root ids are checked for shape only; a root
 // that does not exist yet is a load warning, not an error, so a part may be staged in the
 // same proposal that creates its roots.
