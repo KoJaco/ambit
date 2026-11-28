@@ -293,7 +293,7 @@ export function Sidebar({
                 </div>
             )}
             {collapsed || tab === "parts" ? null : (
-                <div className="shrink-0 border-t border-border px-3 py-2.5">
+                <div className="shrink-0 border-t border-border bg-muted px-3 py-2.5">
                     <Collapsible open={creating} id={creatorId}>
                         <form
                             className="flex flex-col gap-2 pb-2.5"
@@ -311,14 +311,14 @@ export function Sidebar({
                             <input
                                 ref={nameRef}
                                 aria-label="Name"
-                                className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                className="w-full rounded-[10px] border border-transparent bg-card px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                                 placeholder="Name"
                                 value={name}
                                 onChange={(event) => setName(event.target.value)}
                             />
                             <input
                                 aria-label="Type"
-                                className="w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                className="w-full rounded-[10px] border border-transparent bg-card px-2.5 py-1.5 hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
                                 placeholder="Type"
                                 value={type}
                                 onChange={(event) => setType(event.target.value)}
@@ -363,18 +363,18 @@ export function Sidebar({
                         type="button"
                         aria-expanded={creating}
                         aria-controls={creatorId}
-                        className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                         onClick={() => (creating ? closeCreator() : openCreator())}
                     >
                         <Plus className="size-4" aria-hidden />
                         New node
                     </button>
                     {showEnablePartsAction(tab, scopeInfo?.scope ?? null) ? (
-                        <div className="mt-2.5 border-t border-border pt-2.5">
+                        <div className="mt-1.5">
                             <button
                                 type="button"
                                 disabled={scopeBusy}
-                                className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                                 onClick={() => void enablePartialScope()}
                             >
                                 <LayersIcon className="size-4" aria-hidden />

@@ -309,22 +309,22 @@ export function PartsPanel({
                 {status}
             </p>
         </div>
-        <div className="shrink-0 border-t border-border px-3 py-2.5">
+        <div className="shrink-0 border-t border-border bg-muted px-3 py-2.5">
             <button
                 ref={newRef}
                 type="button"
                 aria-expanded={form !== null}
-                className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                 onClick={() => (form && !form.id ? nameRef.current?.focus() : open({ name: "", includeText: "", rootIds: [] }))}
             >
                 <Plus className="size-4" aria-hidden />
                 New part
             </button>
-            <div className="mt-2.5 border-t border-border pt-2.5">
+            <div className="mt-1.5">
                 <button
                     type="button"
                     disabled={busy}
-                    className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                    className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-background hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
                     onClick={() => void setScope("whole")}
                 >
                     <LayoutGridIcon className="size-4" aria-hidden />
