@@ -390,3 +390,34 @@ func TestNodeMetaKeyOrderOnDisk(t *testing.T) {
 		last = i
 	}
 }
+
+func TestAgentCannotSetDoneWithOpenMilestonesOrHighRisk(t *testing.T) {
+	idx, _ := newModel(t)
+	ms := []Milestone{{ID: "a", Status: MilestoneDone}, {ID: "b"}}
+	id := mk(t, idx, CreateInput{Name: "Svc", Type: "service", Status: StatusInProgress, NodeExtras: NodeExtras{Milestones: ms}})
+	if err := idx.UpdateStatusGated(id, StatusDone); !errors.Is(err, ErrCompletionGate) || !strings.Contains(err.Error(), "b") {
+		t.Fatalf("open milestone: %v", err)
+	}
+	if err := idx.UpdateStatusGated(id, StatusNeedsReview); err != nil {
+		t.Fatalf("needs_review allowed: %v", err)
+	}
+	// Humans are unaffected.
+	d := StatusDone
+	if err := idx.Update(id, UpdateInput{Status: &d}); err != nil {
+		t.Fatal(err)
+	}
+	all := []Milestone{{ID: "a", Status: MilestoneDone}, {ID: "b", Status: MilestoneDone}}
+	if err := idx.Update(id, UpdateInput{NodeExtrasPatch: NodeExtrasPatch{Milestones: &all}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := idx.UpdateStatusGated(id, StatusDone); err != nil {
+		t.Fatalf("all milestones done: %v", err)
+	}
+	hi := mk(t, idx, CreateInput{Name: "Risky", Type: "service", Status: StatusInProgress, Risk: RiskHigh})
+	if err := idx.UpdateStatusGated(hi, StatusDone); !errors.Is(err, ErrCompletionGate) || !strings.Contains(err.Error(), "needs_review") {
+		t.Fatalf("high risk: %v", err)
+	}
+	if err := idx.UpdateStatusGated(hi, StatusNeedsReview); err != nil {
+		t.Fatalf("high risk needs_review: %v", err)
+	}
+}

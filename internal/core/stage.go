@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strings"
 )
 
 // SetMethodResult reports what SetMethod wrote.
@@ -132,6 +133,14 @@ func (idx *Index) completionGateLocked(id NodeID, status Status) error {
 	}
 	if !m.Completion.AgentMayComplete {
 		return fmt.Errorf("%w: method %q does not let agents mark a node %s; report your result to the architect, who sets the status", ErrCompletionGate, m.ID, status)
+	}
+	if status == StatusDone {
+		if open := openMilestones(n); len(open) > 0 {
+			return fmt.Errorf("%w: node %q has milestones not done (%s); set needs_review instead and say what remains", ErrCompletionGate, id, strings.Join(open, ", "))
+		}
+		if n.Risk == RiskHigh {
+			return fmt.Errorf("%w: node %q is risk high; set needs_review instead and the architect will mark it done after review", ErrCompletionGate, id)
+		}
 	}
 	if status == StatusDone && reviewRequiredFor(m, n) {
 		return fmt.Errorf("%w: node %q needs review before it is done; set needs_review instead and the architect will mark it done", ErrCompletionGate, id)

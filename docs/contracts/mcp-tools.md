@@ -432,7 +432,9 @@ gated.
 **Completion policy** (decision 0015). Setting `done` or `needs_review` also asks the method's
 `completion` policy (core `ErrCompletionGate`, HTTP code `completion_gate`). With
 `review_required` an agent may not set `done`; it sets `needs_review` and a human sets `done`.
-With `agent_may_complete: false` an agent may set neither. A node's own `review` field
+With `agent_may_complete: false` an agent may set neither. Whatever the policy, an agent may
+not set `done` on a node that still has milestones not `done`, or whose `risk` is `high`: it
+sets `needs_review` (this is what `check_done` reports as `finish_status`). A node's own `review` field
 (`required` or `none`) overrides `review_required` for that node. Built-in methods leave the
 policy open (agents may complete); a project turns it on with `method_overrides.completion`
 in `config.json` or in a user method. The human UI and HTTP status control are not gated.
