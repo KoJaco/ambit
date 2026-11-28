@@ -31,6 +31,8 @@ func main() {
 		os.Exit(cmdInit(os.Args[2:], os.Stdin, isTerminal(os.Stdin), os.Stdout, os.Stderr))
 	case "method":
 		os.Exit(cmdMethod(".", os.Args[2:], os.Stdout, os.Stderr))
+	case "brief":
+		os.Exit(cmdBrief(".", os.Args[2:], os.Stdout, os.Stderr))
 	case "stage":
 		os.Exit(cmdStage(".", os.Args[2:], os.Stdout, os.Stderr))
 	case "check-model":
@@ -153,5 +155,5 @@ func parseStartArgs(args []string) (string, error) {
 }
 
 func usage(w *os.File) {
-	fmt.Fprintf(w, "usage: ambit init [dir] [--method id] [--npx] [--no-mcp]\n       ambit method list|show [id]|set <id>|export-skill [--target claude|cursor] [--out path|-] [--force]\n       ambit stage [show|set <id>]\n       ambit check-model [--strict] [--drift|--no-drift] [--all]\n       ambit check\n       ambit drift [--strict] [--node id] [--worktree path]\n       ambit config drift-ignore add <glob>\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init (prompts for a workflow method on a terminal; also writes .mcp.json unless --no-mcp). method and stage show or change the workflow method and project stage. check-model lints the model against the method (--strict exits 1 on enforced findings). check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings; --node limits it to one node; --worktree reads files from a git worktree of this repository).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
+	fmt.Fprintf(w, "usage: ambit init [dir] [--method id] [--npx] [--no-mcp]\n       ambit method list|show [id]|set <id>|export-skill [--target claude|cursor] [--out path|-] [--force]\n       ambit stage [show|set <id>]\n       ambit brief export [--node id|--all] [--out dir] [--force]\n       ambit check-model [--strict] [--drift|--no-drift] [--all]\n       ambit check\n       ambit drift [--strict] [--node id] [--worktree path]\n       ambit config drift-ignore add <glob>\n       ambit hook install\n       ambit mcp [dir]\n       ambit start [--addr %s]\n       ambit version\n\nScaffold a .arch model with init (prompts for a workflow method on a terminal; also writes .mcp.json unless --no-mcp). method and stage show or change the workflow method and project stage. brief export writes each node's agent brief to .arch/briefs/<node>.md. check-model lints the model against the method (--strict exits 1 on enforced findings). check reports files outside the assigned scope.\ndrift reports files no node owns, globs matching no files and overlapping ownership (--strict exits 1 on findings; --node limits it to one node; --worktree reads files from a git worktree of this repository).\nmcp serves the MCP tool surface over stdio for coding harnesses.\nstart serves the local HTTP API on a loopback address.\n", httpapi.DefaultAddr)
 }

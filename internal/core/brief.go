@@ -45,6 +45,21 @@ const AuthoringGuidance = "Model high-level first: start with the few top-level 
 	"Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. " +
 	"Call list_icons to pick icon ids and get_graph to see what already exists."
 
+// BriefNodeIDs lists the nodes worth exporting a brief for, in model order: every node an
+// agent can build (a leaf, or a container with implementation globs) that is not external.
+func (idx *Index) BriefNodeIDs() []NodeID {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	g := newDepGraph(idx.Nodes, idx.Children)
+	var out []NodeID
+	for _, id := range idx.Order {
+		if n := idx.Nodes[id]; n != nil && !n.External && g.buildable(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 // Brief returns an imperative task description for an assigned agent working on id.
 func (idx *Index) Brief(id NodeID) (string, error) {
 	idx.mu.Lock()
