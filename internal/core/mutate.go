@@ -322,6 +322,9 @@ func (idx *Index) Delete(id NodeID) error {
 			return err
 		}
 	}
+	if err := idx.dropGatesCleared(removeNodes); err != nil {
+		return err
+	}
 	if err := idx.reload(); err != nil {
 		return err
 	}

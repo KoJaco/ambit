@@ -154,6 +154,15 @@ func dependentsOutsideIn(nodes map[NodeID]*Node, remove map[NodeID]bool) []strin
 				break
 			}
 		}
+		if len(ids) > 0 && ids[len(ids)-1] == id {
+			continue
+		}
+		for _, g := range n.Gates {
+			if remove[g] {
+				ids = append(ids, id)
+				break
+			}
+		}
 	}
 	sortNodeIDs(ids)
 	out := make([]string, len(ids))
@@ -181,7 +190,7 @@ func checkNoDependentsIn(nodes map[NodeID]*Node, remove map[NodeID]bool) error {
 	for i, t := range targets {
 		names[i] = string(t)
 	}
-	return fmt.Errorf("%w: %s is depended on by: %s", ErrHasDependents, strings.Join(names, ", "), strings.Join(deps, ", "))
+	return fmt.Errorf("%w: %s is depended on (depends_on or gates) by: %s", ErrHasDependents, strings.Join(names, ", "), strings.Join(deps, ", "))
 }
 
 // sccCycles returns the strongly connected components of adj that are cycles (more than one

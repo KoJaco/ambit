@@ -1,6 +1,8 @@
 package core
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -8,11 +10,29 @@ import (
 )
 
 // gatesClearedKey is the local.json key holding the human gates this user has cleared, as
-// "<nodeID>#<index>" strings. local.json is gitignored: clearing a gate is a per-user,
+// "<nodeID>#<hash>" strings, where hash covers the gate's kind and note (so reordering or
+// editing human_gates never moves a cleared state onto a different gate; identical gates on
+// one node get a "~n" occurrence suffix). Legacy "<nodeID>#<index>" entries match nothing and
+// are dropped on the next write. local.json is gitignored: clearing a gate is a per-user,
 // human-only act and has no MCP tool.
 const gatesClearedKey = "gates_cleared"
 
-func gateKey(id NodeID, index int) string { return string(id) + "#" + strconv.Itoa(index) }
+// gateKeys returns the cleared-state key of every human gate of n, in order.
+func gateKeys(n *Node) []string {
+	keys := make([]string, len(n.HumanGates))
+	seen := map[string]int{}
+	for i, g := range n.HumanGates {
+		sum := sha256.Sum256([]byte(g.Kind + "\x00" + g.Note))
+		h := hex.EncodeToString(sum[:6])
+		k := string(n.ID) + "#" + h
+		if c := seen[h]; c > 0 {
+			k += "~" + strconv.Itoa(c)
+		}
+		seen[h]++
+		keys[i] = k
+	}
+	return keys
+}
 
 // gatesClearedLocked returns the set of cleared gate keys. Caller holds idx.mu.
 func (idx *Index) gatesClearedLocked() map[string]bool {
@@ -36,8 +56,9 @@ func gateStates(n *Node, cleared map[string]bool) []GateState {
 		return nil
 	}
 	out := make([]GateState, len(n.HumanGates))
+	keys := gateKeys(n)
 	for i, g := range n.HumanGates {
-		out[i] = GateState{Index: i, Kind: g.Kind, Note: g.Note, Cleared: cleared[gateKey(n.ID, i)]}
+		out[i] = GateState{Index: i, Kind: g.Kind, Note: g.Note, Cleared: cleared[keys[i]]}
 	}
 	return out
 }
@@ -55,7 +76,7 @@ func (idx *Index) SetGateCleared(id NodeID, index int, cleared bool) error {
 		return fmt.Errorf("%w: node %s has no human gate %d (it has %d)", ErrBadOperation, id, index, len(n.HumanGates))
 	}
 	set := idx.gatesClearedLocked()
-	key := gateKey(id, index)
+	key := gateKeys(n)[index]
 	if cleared {
 		set[key] = true
 	} else {
@@ -67,8 +88,8 @@ func (idx *Index) SetGateCleared(id NodeID, index int, cleared bool) error {
 		if node == nil {
 			continue
 		}
-		for i := range node.HumanGates {
-			if k := gateKey(nid, i); set[k] {
+		for _, k := range gateKeys(node) {
+			if set[k] {
 				list = append(list, k)
 			}
 		}
@@ -126,4 +147,38 @@ func (idx *Index) renameGatesCleared(old, nw NodeID) bool {
 	}
 	idx.localUnknown[gatesClearedKey] = out
 	return true
+}
+
+// dropGatesCleared removes every cleared entry of the given (deleted) nodes and saves
+// local.json. Caller holds idx.mu.
+func (idx *Index) dropGatesCleared(ids map[NodeID]bool) error {
+	raw, ok := idx.localUnknown[gatesClearedKey]
+	if !ok {
+		return nil
+	}
+	var list []string
+	if json.Unmarshal(raw, &list) != nil {
+		return nil
+	}
+	var keep []string
+	for _, k := range list {
+		i := strings.LastIndex(k, "#")
+		if i >= 0 && ids[NodeID(k[:i])] {
+			continue
+		}
+		keep = append(keep, k)
+	}
+	if len(keep) == len(list) {
+		return nil
+	}
+	if len(keep) == 0 {
+		delete(idx.localUnknown, gatesClearedKey)
+	} else {
+		out, err := rawOf(keep)
+		if err != nil {
+			return err
+		}
+		idx.localUnknown[gatesClearedKey] = out
+	}
+	return idx.saveLocal()
 }

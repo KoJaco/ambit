@@ -248,7 +248,7 @@ func TestBuildOrderExternalsGatesClassesAndParallel(t *testing.T) {
 	}
 	r2 := mustOrder(t, idx, "")
 	eq(t, "web class after clearing", r2.Order[indexOf(r2, "web")].Class, ClassAgentParallel)
-	if !strings.Contains(readFile(t, filepath.Join(dir, ".arch", "local.json")), `"web#0"`) {
+	if !strings.Contains(readFile(t, filepath.Join(dir, ".arch", "local.json")), `"web#`) {
 		t.Fatal("cleared gates not in local.json")
 	}
 	if err := idx.SetGateCleared("web", 5, true); !errors.Is(err, ErrBadOperation) {
