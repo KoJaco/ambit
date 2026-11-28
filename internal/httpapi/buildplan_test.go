@@ -38,9 +38,9 @@ func TestBuildOrderPlanFieldsCompactReadyOnlyAndGates(t *testing.T) {
 		t.Fatalf("after clear %s", raw)
 	}
 	for body, want := range map[string]int{
-		`{"node_id":"a","index":9,"cleared":true}`: http.StatusBadRequest,
+		`{"node_id":"a","index":9,"cleared":true}`:  http.StatusBadRequest,
 		`{"node_id":"zz","index":0,"cleared":true}`: http.StatusNotFound,
-		`{"node_id":"a"}`:                           http.StatusBadRequest,
+		`{"node_id":"a"}`: http.StatusBadRequest,
 	} {
 		var m map[string]any
 		_ = json.Unmarshal([]byte(body), &m)
