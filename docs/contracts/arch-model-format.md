@@ -163,6 +163,33 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   ([decision 0015](../decisions/0015-completion-policy-and-review-metadata.md)). `review`
   overrides the method's `completion.review_required` for the node; `verify` is printed in the
   brief and by `check_done`.
+- Build-planning fields, all optional, trimmed and bounded on write (over-limit values already on
+  disk still load):
+  - `external` (bool) — the node is outside the build (a third-party service, a person). It is
+    left out of the build order and listed under `externals`; it never blocks. Only this flag
+    excludes a node; `type: external` alone does not.
+  - `human_gates` (array of at most 16 `{kind, note?}`) — steps only a person can do. `kind` is
+    one of `decision`, `credential`, `phone`, `deploy_approval`, `install` (lowercased); `note`
+    at most 300 characters. A person clears a gate per user, outside the model (`local.json`
+    `gates_cleared`, `PUT /gates`); a node with an uncleared gate is `needs-human` in the build
+    order.
+  - `deliverables` (at most 32) and `references` (at most 16) — repo-relative paths, each at
+    most 300 characters, cleaned and de-duplicated. Absolute paths, `..` segments, drive letters
+    and `~` are rejected. `check_deliverables` and `check_done` verify deliverables exist and are
+    non-empty; `check_contract_sync` verifies references. A scope glob that names a deliverable
+    is not an unmatched glob while the file does not exist yet.
+  - `shared` (bool) — the node owns shared manifests (`go.mod`, `package.json`, lockfiles); it
+    silences the `shared-manifest` lint for the manifests it owns.
+  - `milestones` (at most 16 `{id, label?, status?}`) — `id` a lowercase slug (letters, digits,
+    `-` or `_`) of at most 64 characters and unique, `label` at most 200 characters, `status`
+    `pending` (default), `in_progress` or `done`. Until all are `done`, `check_done` reports
+    `finish_status: needs_review` with `partial: true`.
+  - `gates` (array of at most 64 node ids, sorted on write) — on a spike, the nodes that wait
+    for it: each listed node effectively depends on the spike (build order, `blocked_by`,
+    waves). Each id must exist, may not be the node itself and may not create a dependency
+    cycle (checked with `depends_on` and pure containers expanded, like `depends_on`). On load a
+    dangling gate id is a warning and a cycle through gates is an error. Renaming a node
+    rewrites the ids in `gates`.
 - `contract_hash` — optional string. A fingerprint of the node's contract plus the
   contracts of every relationship it is an endpoint of, recorded whenever `status` is set to
   `in_progress`, `needs_review` or `done`. When the current fingerprint differs, the `contract-changed` lint
@@ -211,7 +238,7 @@ else is not. See "Invariants" below — this is enforced, not merely documented.
   stored here.
 
 Node file key order on write: `id, name, type, parent_id, relationship_id, implementation,
-scope, protected, risk, review, verify, icon, color, renderer, schema, depends_on, contract, contract_hash, status`, then unknown
+scope, protected, risk, review, verify, external, human_gates, deliverables, references, shared, milestones, gates, icon, color, renderer, schema, depends_on, contract, contract_hash, status`, then unknown
 keys sorted. Over-limit values already on disk still load; new values over a limit are
 rejected on write.
 
@@ -348,6 +375,13 @@ and the project uses `freeform`; it is never a load error. Unknown lint rule ids
 warning. A running `ambit mcp` or `ambit start` reloads when `config.json` or anything in
 `methods/` changes.
 
+The `shared-manifest` lint rule (advisory in `design-first` and `map-existing`, off elsewhere)
+lists the files git can see that are named `go.mod`, `go.sum`, `go.work`, `go.work.sum`,
+`package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `bun.lockb`,
+`Cargo.toml`, `Cargo.lock`, `uv.lock` or `poetry.lock` that no node's `implementation` globs
+match, or that more than one node's match, unless a node with `shared: true` owns the file. It
+is silent when git cannot list files.
+
 `group_max` and `level_budget` are view defaults only (decision 0010). A missing key uses the default. A value that is
 not a positive integer falls back to the default and produces a warning, not a load error.
 The effective values are returned as `view_defaults` on level reads.
@@ -373,6 +407,10 @@ be committed.
   { "assignment": { "node_id": "payments-service", "assigned_at": "2026-09-27T10:00:00Z" } }
   ```
 
+- `gates_cleared` — array of `"<nodeID>#<index>"` strings: the human gates this user has
+  cleared (the index is the gate's position in the node's `human_gates`). Written only by
+  `PUT /gates`; entries for nodes or gates that no longer exist are dropped on the next write
+  and a node rename keeps them attached. Never an MCP-writable key.
 - UI preferences and similar machine-local state. Unknown keys are preserved.
 
 ## Invariants (Must Always Hold)

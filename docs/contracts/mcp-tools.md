@@ -48,7 +48,7 @@ Code expect to launch a local MCP server: a direct command, not a running HTTP s
 The process is **independent of `ambit start`**. MCP works whether or not the UI server is
 running. See [ADR-0003](../adr/0003-runtime-and-distribution.md).
 
-All seventeen tools are thin wrappers over `ambit-core`, sharing the identical validation and
+All twenty-six tools are thin wrappers over `ambit-core`, sharing the identical validation and
 write path as the HTTP API. There is never a second implementation of what a valid mutation
 is.
 
@@ -121,6 +121,14 @@ lowercase slug (letters, digits, single hyphens). A supplied `id` is rejected wh
 slug, when a node already has it, or when a pending proposal reserves it, so agents can name
 a node and reference it later in `parent_id` or edges. Optional `relationship_id` attaches the node to a relationship interior (mutually
 exclusive with `parent_id`).
+
+Optional build-planning fields (all bounded, defined in [`arch-model-format.md`](arch-model-format.md)):
+`external` (bool), `human_gates` (`[{kind, note?}]`, kind `decision|credential|phone|deploy_approval|install`),
+`deliverables` and `references` (repo-relative paths), `shared` (bool), `milestones`
+(`[{id, label?, status?}]`) and `gates` (ids of nodes that wait for this one). They are accepted
+by `create_node`, `update_node` (omitted means unchanged, `[]` clears a list, `false` clears a
+bool) and each `seed_model` node or update. A `gates` id must exist and must not create a
+dependency cycle.
 
 Optional `depends_on` is an array of node ids that must be built first. Set it only for real
 build ordering, never to mirror flow direction (relationships express flow). Ids must exist (or
@@ -262,9 +270,16 @@ rules** (the `config.json` constraints, `must` first, present whenever any exist
 **Interfaces you must honour** (only relationships that carry a contract, marked provider or
 consumer; edges without one are omitted, an explicit refinement recorded in decision 0012;
 no per-interface cut; only a very large safety bound of 60000 characters, decision 0014);
-siblings show their full contract; **your node's contract** (never truncated); **Build order** (unmet
-dependencies, container-aware done rule, dependents relying on you); and a closing line to
-run `check_drift` and `update_node_status` when done, after the `check_scope` instruction.
+siblings show their full contract; **your node's contract** (never truncated); **Build order** (your
+direct dependencies and dependents only, unmet dependencies, container-aware done rule); the
+`check_scope` instruction; **verify commands**; **deliverables, references, milestones, human
+gates (with cleared state) and the nodes you gate**, when the node declares them; the
+**risk and review** line that links risk to how you finish (`risk: high` finishes at
+`needs_review`); and a closing line to run `check_done` and `update_node_status` when done,
+followed by the subagent guidance. `ambit brief export [--node id|--all] [--out dir] [--force]`
+writes the same briefs to `.arch/briefs/<node>.md` (marked as generated; a file without the
+marker is not overwritten unless `--force`; externals and pure containers are skipped by
+`--all`).
 
 **This framing needs real iteration against actual harnesses, not a one-shot template.**
 Build step 9 budgets time for it. Treat the wording as a tuned artifact and record what was
@@ -279,7 +294,10 @@ supplied file list. Callable mid-task, before an agent has gone too far.
 - `files` — list of paths the agent has touched or intends to touch.
 
 Returns, per file: allowed, or a violation naming the node and the rule hit (`protected`, or
-outside `scope`).
+outside `scope`). Protection keeps other nodes out of a protected node's files: the node
+assigned to a protected node may edit that node's own files (the `protected` rule is skipped
+when the protected owner is the assignee), but nothing else, and with no assignment protected
+files stay off-limits.
 
 This costs almost nothing to build — it is the same underlying function reached over MCP
 instead of from a diff — and it converts end-of-task failure into mid-task correction for any
@@ -293,15 +311,40 @@ Staged, replace-all. `constraints` is the full list of project rules, each
 response says the change is proposed and NOT applied. The architect edits constraints
 directly in the UI (`PUT /constraints`); agents never write them directly.
 
-#### `get_build_order(scope_node_id?)`
+#### `get_build_order(scope_node_id?, compact?, ready_only?)`
 
-Direct, read-only. Returns the advisory build order derived from `depends_on`:
-`{scope?, order: [{id, name, status, done, wave, depends_on, blocked_by}], waves: string[][],
-cycles: string[][], unordered: string[]}`. Only buildable nodes (leaves, or containers with
-`implementation` globs) are ordered; `wave` is 1-based and nodes in one wave can be built in
-parallel; `blocked_by` lists unmet dependencies. Optional `scope_node_id` limits it to a
-subtree (unknown id is an error). Advisory only: it never blocks `update_node_status`. Call it
-before building.
+Direct, read-only. Returns the advisory build order derived from `depends_on` and `gates`:
+
+```
+{scope?,
+ order: [{id, name, status, done, wave, class, depends_on, blocked_by,
+          contract_changed?, gates?, gated_by?, human_gates?: [{index, kind, note?, cleared}]}],
+ waves: string[][], cycles: string[][], unordered: string[],
+ externals: [{id, name, status, human_gates?}],
+ ready_now: string[], max_parallel: number, parallel_set: string[]}
+```
+
+Only buildable nodes (leaves, or containers with `implementation` globs) are ordered; `wave`
+is 1-based and nodes in one wave can be built in parallel. `blocked_by` lists unmet
+dependencies, including spikes that gate the node (`gates` makes each listed node depend on the
+spike). Nodes flagged `external` are left out of `order` and `waves`, are listed in
+`externals`, and never block anything.
+
+`class` is `blocked` (an unfinished dependency, or status `blocked`), else `needs-human`
+(at least one human gate is not cleared), else `agent-parallel`. Cleared gates are per user in
+the gitignored `.arch/local.json` (`gates_cleared`, `"<nodeID>#<index>"`); only a person sets
+them (`PUT /gates` in the UI, no MCP tool). `ready_now` lists ordered nodes that are not
+blocked, not done and not external (so it includes `needs-human` nodes; filter by `class` if
+an agent must start alone). `parallel_set` is a greedy packing, in order, of `ready_now` into
+nodes whose `implementation` globs do not overlap, using the same sample-path overlap test as
+the `glob-overlap` lint; `max_parallel` is its size.
+
+`compact: true` reduces each item to `{id, class, wave, done?}` and `externals` to ids (about a
+tenth of the size on a large model); `ready_now`, `max_parallel`, `parallel_set`, `waves`,
+`cycles` and `unordered` stay. `ready_only: true` keeps only the items in `ready_now` and
+returns no `waves`. Optional `scope_node_id` limits it to a subtree (unknown id is an error).
+The tool has no fixed output schema because the compact shape differs. Advisory only: it never
+blocks `update_node_status`. Call it before building.
 
 #### `get_graph(include_contracts?)`
 
@@ -399,9 +442,78 @@ in `config.json` or in a user method. The human UI and HTTP status control are n
 One pass/fail answer to "am I done?" for a node. It takes the files changed on the branch
 (committed, uncommitted and untracked, against `base`, default the merge-base with `main` or
 `master`; `.arch/` is left out), checks them against the node's scope, runs drift limited to
-the node, flags contracts that changed after the node's status was last set, lists the
-node's `verify` commands and reports the status the agent may set next (`completion`). It does
-not run the commands. `pass` means no scope violation and no node drift. Read-only.
+the node, checks the node's declared `deliverables`, flags contracts that changed after the
+node's status was last set, lists the node's `verify` commands and reports the status the
+agent may set next (`completion`). It does not run the commands (see `run_verify`). `pass`
+means no scope violation, no node drift and no missing deliverable. Read-only.
+
+- Pass `base` (a git ref, for example the integration branch your work started from) so a
+  branch that carries other nodes' commits is attributed correctly; the default merge-base
+  with trunk would count their files as yours.
+- A scope or implementation glob that matches no file yet is not reported as unmatched when a
+  declared deliverable names it (the glob equals or matches the deliverable path); the
+  missing deliverable is reported instead. Globs such as `docs/decisions/0003-*.md` match
+  files present, even untracked, in the worktree.
+- `deliverables` (when the node declares any) is the `check_deliverables` report; `milestones`
+  lists the node's milestones.
+- `completion.finish_status` is never plain `done` when the node is not fully finished:
+  milestones not all `done` give `needs_review` with `completion.partial: true` and a
+  `reason`; `risk: high` gives `needs_review` (`reason: risk is high`, the review gate itself
+  is unchanged); otherwise `needs_review` when review is required and `done` when not, or empty
+  when agents may not finish nodes.
+
+#### `check_deliverables(node_id, worktree?)`
+
+Direct, read-only. Reports, for each path in the node's `deliverables`, `ok`, `missing`,
+`empty` (a zero-byte file, or a directory with no non-empty file) or `unsafe` (the path or a
+symlink leaves the checkout; it is never read): `{node_id, pass, declared, items:[{path, status,
+bytes}], problems}`. Pass `worktree` for a git worktree of the repository.
+
+#### `run_verify(node_id, worktree?, timeout_s?)`
+
+Direct. Runs the node's `verify` commands, taken only from the model on disk (never from a
+pending proposal), one at a time with `sh -c` in the checkout (the worktree when given). Each
+command has its own timeout (`timeout_s`, default 120, maximum 600). The environment is minimal:
+a fixed allowlist (`PATH` with `node_modules/.bin` prepended, `HOME`, `USER`, `LANG`, `TMPDIR`,
+Go and XDG cache variables, `CI`, ...) plus the variables the command itself names. Returns
+`{node_id, dir, pass, results:[{command, status, exit_code, duration_ms, reason?, output?,
+output_truncated?}], passed, failed, timed_out, not_runnable, warnings}`. `status` is `passed`,
+`failed`, `timeout` or `not_runnable`: the command is not started when a binary it runs is not
+found (a best-effort scan of the shell text, shell builtins excepted) or when a referenced
+`$VAR` or `${VAR}` is unset (a default such as `${VAR:-x}` or an assignment in the command
+counts as set). `output` is the last 8 KiB of stdout and stderr together. A timed-out command's
+process group is killed. `pass` is true only when every command passed.
+
+Security: these are shell commands from the model, with the user's file access, and nothing
+is sandboxed beyond the environment and the timeout. Accept `verify` commands in a proposal
+only if you would run them yourself. The tool is annotated read-only because it never changes
+the model, not because the commands cannot have side effects.
+
+#### `check_dependents(node_id, worktree?, timeout_s?)`
+
+Direct. Runs `run_verify` for each direct dependent of the node (nodes whose `depends_on` names
+it, and nodes it `gates`), to see whether finishing this node broke them. At most 16 are run
+per call; dependents without verify commands, and any beyond the cap, are listed in `skipped`.
+Returns `{node_id, pass, dependents:[{node_id, report}], skipped:[{node_id, reason}],
+warnings}`. Same environment, timeout and trust rules as `run_verify`.
+
+#### `check_contract_sync(node_id, worktree?)`
+
+Direct, read-only. Compares a node with the docs it points at: every path in `references` and
+the `ref` of every relationship contract touching the node must exist and be non-empty in the
+checkout, and the contract must not have changed since the node was last marked `in_progress`
+or `done`. Returns `{node_id, pass, has_contract, contract_changed, references:[{path, source,
+exists, status}], problems}` where `source` is `references` or `contract`.
+
+#### Subagent guidance
+
+Give a subagent that implements a node only the read-only tools: `get_context`, `check_scope`,
+`check_done`, `check_drift`, `get_build_order`, `get_graph`, `list_proposals`, `get_proposal`,
+`list_icons`, `get_started`, `check_model`, `check_deliverables`, `run_verify`,
+`check_dependents` and `check_contract_sync`. All of them carry the MCP `readOnlyHint`
+annotation. Keep the staging tools, `update_node_status` and `wait_for_proposal`-driven
+decisions in the parent agent, and have the parent write documentation deliverables itself
+rather than delegating them. The brief ends with this rule.
 
 #### `get_proposal(proposal_id)` and `wait_for_proposal(proposal_id, timeout_s?)`
 
@@ -435,6 +547,10 @@ staging. A real cycle is still rejected.
    process is honoured at once, but an agent with a shell could still run `ambit stage set`
    or edit `config.json` directly. It is a guard rail for tool-driven agents, not a security
    boundary.
+3b. **Clearing a human gate is human-only.** `gates_cleared` lives in the gitignored `local.json`
+   and is set through `PUT /gates`; no MCP tool reads it for writing. `run_verify` and
+   `check_dependents` execute the committed model's `verify` commands but change nothing in the
+   model, and every read-only tool carries the MCP `readOnlyHint`.
 4. **All tools go through `ambit-core`.** No MCP-specific validation or write path exists.
 5. **`get_context` names forbidden paths explicitly.** Omission is not prohibition.
 6. **`check_scope` and `ambit check` share one implementation.** They cannot disagree about
