@@ -98,13 +98,7 @@ func RunVerify(ctx context.Context, idx *Index, opts VerifyOptions) (VerifyRepor
 	if n == nil {
 		return rep, fmt.Errorf("%w: %q", ErrNotFound, opts.NodeID)
 	}
-	timeout := time.Duration(DefaultVerifyTimeoutS) * time.Second
-	if opts.TimeoutS > 0 {
-		if opts.TimeoutS > MaxVerifyTimeoutS {
-			opts.TimeoutS = MaxVerifyTimeoutS
-		}
-		timeout = time.Duration(opts.TimeoutS) * time.Second
-	}
+	timeout := verifyTimeout(opts.TimeoutS)
 	if len(cmds) == 0 {
 		rep.Warnings = append(rep.Warnings, "the node has no verify commands")
 	}
@@ -127,6 +121,18 @@ func RunVerify(ctx context.Context, idx *Index, opts VerifyOptions) (VerifyRepor
 	}
 	rep.Pass = rep.Failed == 0 && rep.TimedOut == 0 && rep.NotRunnable == 0
 	return rep, nil
+}
+
+// verifyTimeout is the per-command timeout for a requested number of seconds: the default
+// when unset, never more than MaxVerifyTimeoutS.
+func verifyTimeout(s int) time.Duration {
+	if s <= 0 {
+		return time.Duration(DefaultVerifyTimeoutS) * time.Second
+	}
+	if s > MaxVerifyTimeoutS {
+		s = MaxVerifyTimeoutS
+	}
+	return time.Duration(s) * time.Second
 }
 
 func checkoutDir(root, filesDir string) (string, error) {
@@ -161,11 +167,16 @@ func runOne(ctx context.Context, dir, command string, timeout time.Duration) Ver
 	cmd.WaitDelay = 2 * time.Second
 	start := time.Now()
 	err = cmd.Run()
+	// Always reap the whole group, so a background child (sleep 100 &) never outlives the run.
+	killProcessGroup(cmd)
 	res.DurationMS = int(time.Since(start) / time.Millisecond)
 	res.Output, res.OutputTruncated = out.String()
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
+		res.Status = VerifyPassed
+	case errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil && cmd.ProcessState.ExitCode() == 0:
+		// The shell exited 0 but a grandchild kept the output pipe open; the group is killed.
 		res.Status = VerifyPassed
 	case errors.Is(cctx.Err(), context.DeadlineExceeded):
 		res.Status, res.ExitCode = VerifyTimeout, -1
@@ -407,6 +418,9 @@ func (idx *Index) directDependentsLocked(id NodeID) []NodeID {
 	return out
 }
 
+// dependentsBudget is a var so tests can shorten it.
+var dependentsBudget = 15 * time.Minute
+
 // CheckDependents runs the verify commands of every direct dependent of the node (see
 // RunVerify for what that means). At most MaxDependentsRun dependents are run per call.
 func CheckDependents(ctx context.Context, idx *Index, opts VerifyOptions) (DependentsReport, error) {
@@ -426,7 +440,18 @@ func CheckDependents(ctx context.Context, idx *Index, opts VerifyOptions) (Depen
 		rep.Warnings = append(rep.Warnings, "no node depends directly on this node")
 	}
 	ran := 0
+	deadline := time.Now().Add(dependentsBudget)
+	bctx, bcancel := context.WithDeadline(ctx, deadline)
+	defer bcancel()
+	budgetSkip := DependentSkipped{Reason: fmt.Sprintf("check_dependents time budget (%s) used up; call run_verify for this one", dependentsBudget)}
 	for _, d := range deps {
+		if bctx.Err() != nil && ctx.Err() == nil && hasVerify[d] {
+			sk := budgetSkip
+			sk.NodeID = d
+			rep.Skipped = append(rep.Skipped, sk)
+			rep.Pass = false
+			continue
+		}
 		switch {
 		case !hasVerify[d]:
 			rep.Skipped = append(rep.Skipped, DependentSkipped{NodeID: d, Reason: "no verify commands"})
@@ -438,8 +463,19 @@ func CheckDependents(ctx context.Context, idx *Index, opts VerifyOptions) (Depen
 		ran++
 		o := opts
 		o.NodeID = d
-		vr, err := RunVerify(ctx, idx, o)
+		vr, err := RunVerify(bctx, idx, o)
+		if (err != nil || !vr.Pass) && ctx.Err() == nil && bctx.Err() != nil {
+			// The budget ran out while this dependent was running: its result is unreliable.
+			err = bctx.Err()
+		}
 		if err != nil {
+			if ctx.Err() == nil && bctx.Err() != nil {
+				sk := budgetSkip
+				sk.NodeID = d
+				rep.Skipped = append(rep.Skipped, sk)
+				rep.Pass = false
+				continue
+			}
 			return rep, err
 		}
 		if !vr.Pass {
