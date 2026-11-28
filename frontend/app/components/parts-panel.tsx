@@ -6,8 +6,9 @@ import { partSelection } from "../part-selection";
 import styles from "./Sidebar.module.css";
 import { parseGlobs, partSummary, validatePartForm, type PartForm } from "../parts-scope";
 
+// Visible 1px border (muted-foreground, >=3:1 against the card) and a solid 2px focus ring; the outline is kept.
 const fieldClass =
-    "w-full rounded-[10px] border border-transparent bg-accent px-2.5 py-1.5 text-sm hover:border-border focus:border-primary focus:bg-card focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
+    "w-full rounded-[10px] border border-muted-foreground bg-accent px-2.5 py-1.5 text-sm focus-visible:border-primary focus-visible:bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 const smallButton =
     "inline-flex size-8 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring";
 const pillButton =
@@ -35,6 +36,9 @@ export function PartsPanel({
     const [busy, setBusy] = useState(false);
     const newRef = useRef<HTMLButtonElement>(null);
     const nameRef = useRef<HTMLInputElement>(null);
+    const allRef = useRef<HTMLButtonElement>(null);
+    const deleteRefs = useRef(new Map<string, HTMLButtonElement>());
+    const keepRef = useRef<HTMLButtonElement>(null);
 
     function apply(next: ScopeInfo) {
         onInfo(next);
@@ -84,6 +88,8 @@ export function PartsPanel({
             apply(next);
             setStatus(`Deleted part ${part.name}.`);
             setConfirmId(null);
+            // The deleted row is gone: land on the All row (always present), else the New part button.
+            window.setTimeout(() => (allRef.current ?? newRef.current)?.focus(), 0);
         } catch (err) {
             setError(err instanceof Error ? err.message : "could not delete the part");
         } finally {
@@ -104,6 +110,16 @@ export function PartsPanel({
         }
     }
 
+    function askDelete(part: Part) {
+        setConfirmId(part.id);
+        window.setTimeout(() => keepRef.current?.focus(), 0);
+    }
+
+    function cancelDelete(part: Part) {
+        setConfirmId(null);
+        window.setTimeout(() => deleteRefs.current.get(part.id)?.focus(), 0);
+    }
+
     const selectRow = (part: Part | null) => partSelection.select(part);
 
     return (
@@ -114,6 +130,7 @@ export function PartsPanel({
                 <ul className="flex flex-col gap-1">
                     <li>
                         <button
+                            ref={allRef}
                             type="button"
                             aria-pressed={selectedId === null}
                             onClick={() => selectRow(null)}
@@ -132,6 +149,7 @@ export function PartsPanel({
                                 <button
                                     type="button"
                                     aria-pressed={selected}
+                                    title={part.name}
                                     onClick={() => selectRow(part)}
                                     className={clsx(
                                         "flex min-h-8 min-w-0 flex-1 flex-col rounded-[10px] border bg-card px-2 py-1 text-left hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
@@ -146,7 +164,7 @@ export function PartsPanel({
                                         <button type="button" disabled={busy} className={clsx(pillButton, "px-2 py-1 text-xs text-destructive")} onClick={() => void remove(part)}>
                                             Delete
                                         </button>
-                                        <button type="button" className={clsx(pillButton, "px-2 py-1 text-xs")} onClick={() => setConfirmId(null)}>
+                                        <button ref={keepRef} type="button" className={clsx(pillButton, "px-2 py-1 text-xs")} onClick={() => cancelDelete(part)}>
                                             Keep
                                         </button>
                                     </>
@@ -160,7 +178,16 @@ export function PartsPanel({
                                         >
                                             <Pencil className="size-3.5" aria-hidden />
                                         </button>
-                                        <button type="button" aria-label={`Delete part ${part.name}`} className={smallButton} onClick={() => setConfirmId(part.id)}>
+                                        <button
+                                            type="button"
+                                            ref={(el) => {
+                                                if (el) deleteRefs.current.set(part.id, el);
+                                                else deleteRefs.current.delete(part.id);
+                                            }}
+                                            aria-label={`Delete part ${part.name}`}
+                                            className={smallButton}
+                                            onClick={() => askDelete(part)}
+                                        >
                                             <Trash2 className="size-3.5" aria-hidden />
                                         </button>
                                     </>
