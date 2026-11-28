@@ -413,13 +413,18 @@ func (g depGraph) targets(id NodeID) []NodeID {
 		out = append(out, id)
 	}
 	for _, k := range g.children[id] {
+		if g.nodes[k].External {
+			continue // external subtrees are outside the build
+		}
 		out = append(out, g.targets(k)...)
 	}
 	return out
 }
 
 // doneFn returns the done rule: a node with children is done when all its children are
-// (its own status is ignored), otherwise when its status is done.
+// (its own status is ignored), otherwise when its status is done. External children (and
+// their subtrees) are outside the build and ignored; a container whose children are all
+// external falls back to its own status.
 func (g depGraph) doneFn() func(NodeID) bool {
 	memo := map[NodeID]bool{}
 	var done func(id NodeID) bool
@@ -427,7 +432,12 @@ func (g depGraph) doneFn() func(NodeID) bool {
 		if v, ok := memo[id]; ok {
 			return v
 		}
-		kids := g.children[id]
+		var kids []NodeID
+		for _, k := range g.children[id] {
+			if !g.nodes[k].External {
+				kids = append(kids, k)
+			}
+		}
 		v := g.nodes[id].Status == StatusDone
 		if len(kids) > 0 {
 			v = true

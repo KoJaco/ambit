@@ -91,3 +91,22 @@ func TestDeleteRefusedWhileGatesNamesIt(t *testing.T) {
 		t.Fatalf("reparent: %v", err)
 	}
 }
+
+func TestPureContainerWithExternalChildDoesNotBlock(t *testing.T) {
+	idx, _ := planRepo(t)
+	mkFull(t, idx, CreateInput{ID: "svc"})
+	mkFull(t, idx, CreateInput{ID: "core", ParentID: "svc"})
+	mkFull(t, idx, CreateInput{ID: "stripe", ParentID: "svc", NodeExtras: NodeExtras{External: true}})
+	mkFull(t, idx, CreateInput{ID: "web", DependsOn: []NodeID{"svc"}})
+	r := mustOrder(t, idx, "")
+	eq(t, "blocked while core open", r.Order[indexOf(r, "web")].BlockedBy, []NodeID{"svc"})
+	doneSt := StatusDone
+	if err := idx.Update("core", UpdateInput{Status: &doneSt}); err != nil {
+		t.Fatal(err)
+	}
+	r = mustOrder(t, idx, "")
+	web := r.Order[indexOf(r, "web")]
+	if len(web.BlockedBy) != 0 || web.Class == ClassBlocked {
+		t.Fatalf("web still blocked by external child: %+v", web)
+	}
+}
