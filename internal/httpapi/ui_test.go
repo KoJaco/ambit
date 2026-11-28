@@ -19,7 +19,9 @@ func testUI() fstest.MapFS {
 func do(t *testing.T, h http.Handler, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+	req := httptest.NewRequest(method, path, nil)
+	req.Host = "127.0.0.1:8080"
+	h.ServeHTTP(rec, req)
 	return rec
 }
 

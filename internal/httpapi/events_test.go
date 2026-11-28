@@ -22,7 +22,10 @@ func TestEventsAreOneWayAndNameNodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
-	Handler(idx).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(`{"node_ids":["orders"]}`)))
+	evReq := httptest.NewRequest(http.MethodPost, "/events", strings.NewReader(`{"node_ids":["orders"]}`))
+	evReq.Host = "127.0.0.1:8080"
+	evReq.Header.Set("Content-Type", "application/json")
+	Handler(idx).ServeHTTP(rec, evReq)
 	if rec.Code == http.StatusOK {
 		t.Fatalf("client write was accepted: %d %s", rec.Code, rec.Body.String())
 	}

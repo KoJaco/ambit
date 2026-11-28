@@ -78,7 +78,7 @@ func routes(idx *core.Index, h *hub, opts ...Options) http.Handler {
 	}
 	// Fallback for everything else: UI files, SPA shell, or JSON 404 under API prefixes.
 	mux.HandleFunc("GET /", uiFallback(o.UI))
-	return mux
+	return guardWrites(mux)
 }
 
 // ListenAndServe binds addr after ValidateAddr and serves Handler.
