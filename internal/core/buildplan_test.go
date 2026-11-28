@@ -340,7 +340,7 @@ func TestLintSharedManifest(t *testing.T) {
 	for _, x := range f {
 		text += x.Message + "\n"
 	}
-	if !strings.Contains(text, "go.mod is owned by no node") || !strings.Contains(text, "pnpm-lock.yaml is owned by several nodes") ||
+	if strings.Contains(text, "go.mod") || !strings.Contains(text, "pnpm-lock.yaml is owned by several nodes") ||
 		strings.Contains(text, "web/package.json") || strings.Contains(text, "api/package.json") {
 		t.Fatalf("findings:\n%s", text)
 	}
@@ -349,11 +349,24 @@ func TestLintSharedManifest(t *testing.T) {
 			t.Fatalf("not advisory: %+v", x)
 		}
 	}
-	// A shared owner clears both.
+	// A shared owner clears it.
 	mk(t, idx, CreateInput{ID: "root", Name: "Root", Type: "service", Implementation: []string{"go.mod", "pnpm-lock.yaml"}, NodeExtras: NodeExtras{Shared: true}})
 	f = onlyRule(findingsFor(t, idx, CheckModelOptions{}), RuleSharedManifest)
 	if len(f) != 0 {
 		t.Fatalf("shared owner should clear: %+v", f)
+	}
+}
+
+func TestLintSharedManifestNestedOwnersAreFine(t *testing.T) {
+	idx, dir := lintIdx(t, "advisory", RuleSharedManifest)
+	gitInitRepo(t, dir)
+	writeFile(t, filepath.Join(dir, "go.mod"), "module x\n")
+	writeFile(t, filepath.Join(dir, "go.sum"), "x\n")
+	mk(t, idx, CreateInput{ID: "app", Name: "App", Type: "service", Implementation: []string{"go.mod"}})
+	mk(t, idx, CreateInput{ID: "core", Name: "Core", Type: "service", ParentID: "app", Implementation: []string{"go.mod"}})
+	f := onlyRule(findingsFor(t, idx, CheckModelOptions{}), RuleSharedManifest)
+	if len(f) != 0 {
+		t.Fatalf("nested owners and unowned go.sum must not be flagged: %+v", f)
 	}
 }
 

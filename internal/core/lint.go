@@ -452,10 +452,10 @@ var sharedManifestNames = map[string]bool{
 	"uv.lock": true, "poetry.lock": true,
 }
 
-// lintSharedManifest flags dependency manifests and lockfiles that no node owns, or that
-// more than one node owns, unless a node marked shared owns them. Without an owner every
-// agent edits them at once and merges collide. It needs git to list files and is silent when
-// git cannot list them.
+// lintSharedManifest flags dependency manifests and lockfiles claimed by two or more
+// non-nested nodes (a parent and its own descendant are fine), unless a node marked shared
+// owns them. Unowned manifests are not flagged: they are tooling files covered by
+// drift_ignore. It needs git to list files and is silent when git cannot list them.
 func lintSharedManifest(idx *Index, _ LintSetting, emit func(LintFinding)) {
 	files, err := ProjectFiles(idx.Dir)
 	if err != nil {
@@ -480,9 +480,7 @@ func lintSharedManifest(idx *Index, _ LintSetting, emit func(LintFinding)) {
 			continue
 		}
 		switch {
-		case len(owners) == 0:
-			emit(LintFinding{Message: fmt.Sprintf("%s is owned by no node; give it to one node with shared: true so parallel agents do not collide on it", f)})
-		case len(owners) > 1:
+		case len(owners) > 1 && hasNonNestedPair(idx, owners):
 			ids := make([]string, len(owners))
 			for i, o := range owners {
 				ids[i] = string(o)
