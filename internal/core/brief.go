@@ -45,6 +45,10 @@ const AuthoringGuidance = "Model high-level first: start with the few top-level 
 	"Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. " +
 	"Call list_icons to pick icon ids and get_graph to see what already exists."
 
+// PartialScopeGuidance is added to briefs of a partial-scope project and to the MCP
+// authoring tool descriptions (decision 0016).
+const PartialScopeGuidance = "In a partial-scope project model only the active part and put its files in include."
+
 // BriefNodeIDs lists the nodes worth exporting a brief for, in model order: every node an
 // agent can build (a leaf, or a container with implementation globs) that is not external.
 func (idx *Index) BriefNodeIDs() []NodeID {
@@ -164,6 +168,9 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 
 	fmt.Fprintf(&b, "\nIf you propose changes to the architecture model: %s\n", ShallowModelGuidance)
 	fmt.Fprintf(&b, "%s\n", AuthoringGuidance)
+	if idx.Scope == ScopePartial {
+		fmt.Fprintf(&b, "%s\n", PartialScopeGuidance)
+	}
 
 	if len(n.Spec) > 0 {
 		fmt.Fprintf(&b, "\nSpecification for your node:\n%s\n", strings.TrimSpace(n.Spec))

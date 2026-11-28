@@ -41,6 +41,12 @@ type Index struct {
 	StageID  string
 	// DriftIgnore is the config.json drift_ignore globs, added to DefaultDriftIgnore.
 	DriftIgnore []string
+	// Scope is the config.json "scope" ("whole" or "partial"; "whole" when absent or
+	// invalid) and Parts the valid "parts" entries in file order (decision 0016).
+	Scope string
+	Parts []Part
+	// ProposalPolicy is config.json "proposal_policy" (decision 0017). Human-set only.
+	ProposalPolicy ProposalPolicy
 
 	// staging is set only while stageLocked runs.
 	staging *stagingCtx
@@ -92,6 +98,7 @@ func Open(dir string) (*Index, error) {
 	idx.linkDependencies()
 	idx.linkRelationships()
 	idx.warnAssignment()
+	idx.warnParts()
 	return idx, nil
 }
 
@@ -201,6 +208,16 @@ func (idx *Index) readConfig() error {
 		}
 		idx.DriftIgnore = append(idx.DriftIgnore, g)
 	}
+	idx.Scope = ScopeWhole
+	if s := strings.TrimSpace(idx.configString(obj, configKeyScope)); s != "" {
+		if validScope(s) {
+			idx.Scope = s
+		} else {
+			idx.warn("config.json", fmt.Sprintf("scope %q must be %s or %s; using %s", s, ScopeWhole, ScopePartial, ScopeWhole))
+		}
+	}
+	idx.Parts = idx.parseParts(obj)
+	idx.ProposalPolicy = idx.parseProposalPolicy(obj)
 	idx.loadMethods()
 	return nil
 }
@@ -524,6 +541,9 @@ func (idx *Index) reload() error {
 	idx.MethodID = next.MethodID
 	idx.StageID = next.StageID
 	idx.DriftIgnore = next.DriftIgnore
+	idx.Scope = next.Scope
+	idx.Parts = next.Parts
+	idx.ProposalPolicy = next.ProposalPolicy
 	idx.userMethods = next.userMethods
 	idx.activeMethod = next.activeMethod
 	idx.localUnknown = next.localUnknown

@@ -109,6 +109,8 @@ type CheckModelOptions struct {
 	IncludeDrift *bool
 	// AllRules runs every rule as advisory, ignoring the method's severities.
 	AllRules bool
+	// Part limits drift's unowned files to that part's include globs.
+	Part string
 }
 
 // LintResult is the check_model result. OK is false only when an enforced finding exists.
@@ -208,7 +210,7 @@ func CheckModel(idx *Index, opts CheckModelOptions) (LintResult, error) {
 	res.Counts.Total = len(res.Findings)
 	res.OK = res.Counts.Enforced == 0
 	if wantDrift {
-		d, err := Drift(idx, root)
+		d, err := DriftWith(idx, DriftOptions{Root: root, Part: opts.Part})
 		if err != nil {
 			res.DriftError = err.Error()
 		} else {
