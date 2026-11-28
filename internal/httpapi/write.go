@@ -433,11 +433,49 @@ func constraintBodies(in []core.Constraint) []core.Constraint {
 
 func getBuildOrder(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		res, err := core.BuildOrder(idx, core.NodeID(r.URL.Query().Get("scope")))
+		q := r.URL.Query()
+		res, err := core.BuildOrderView(idx, core.BuildOrderOptions{
+			Scope:     core.NodeID(q.Get("scope")),
+			Compact:   queryBool(q.Get("compact")),
+			ReadyOnly: queryBool(q.Get("ready_only")),
+		})
 		if err != nil {
 			writeAPIError(w, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, res)
+	}
+}
+
+func queryBool(v string) bool {
+	switch v {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
+}
+
+// putGate sets whether the human gate at index of a node is cleared. The state lives in the
+// gitignored local.json, so it is per user; there is deliberately no MCP equivalent.
+func putGate(idx *core.Index) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			NodeID  string `json:"node_id"`
+			Index   *int   `json:"index"`
+			Cleared *bool  `json:"cleared"`
+		}
+		if err := decodeJSON(r, &body); err != nil {
+			writeBadRequest(w, err)
+			return
+		}
+		if body.NodeID == "" || body.Index == nil || body.Cleared == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "node_id, index and cleared are required"})
+			return
+		}
+		if err := idx.SetGateCleared(core.NodeID(body.NodeID), *body.Index, *body.Cleared); err != nil {
+			writeAPIError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"node_id": body.NodeID, "index": *body.Index, "cleared": *body.Cleared})
 	}
 }

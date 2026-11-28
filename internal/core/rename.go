@@ -91,8 +91,15 @@ func (idx *Index) applyRename(op operation) error {
 	if err := failApply("index"); err != nil {
 		return fail(err)
 	}
+	localChanged := false
 	if idx.Assignment != nil && idx.Assignment.NodeID == old {
 		idx.Assignment.NodeID = nw
+		localChanged = true
+	}
+	if idx.renameGatesCleared(old, nw) {
+		localChanged = true
+	}
+	if localChanged {
 		if err := idx.saveLocal(); err != nil {
 			return fail(err)
 		}

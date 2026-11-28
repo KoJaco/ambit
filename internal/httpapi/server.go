@@ -42,6 +42,7 @@ func apiRoutes(idx *core.Index, h *hub) []route {
 		{"GET /constraints", getConstraints(idx)},
 		{"PUT /constraints", putConstraints(idx)},
 		{"GET /build-order", getBuildOrder(idx)},
+		{"PUT /gates", putGate(idx)},
 		{"GET /integrity", getIntegrity(idx)},
 		{"GET /icons", getIcons},
 		{"GET /proposals", getProposals(idx)},
