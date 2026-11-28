@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { OpDiff, ProposalDiff } from "./api";
-import { hierarchySections, proposalRows, summarizeProposal, unresolvedParentIds, unresolvedRowIds } from "./proposal-rows";
+import { acceptAllPlan, hierarchySections, proposalRows, summarizeProposal, unresolvedParentIds, unresolvedRowIds } from "./proposal-rows";
 
 function node(partial: Partial<OpDiff["proposed"]> & { name: string }): NonNullable<OpDiff["proposed"]> {
     return {
@@ -424,6 +424,31 @@ describe("rename rows", () => {
         );
         expect(rows[0].verb).toBe("Rename");
         expect(rows[0].summary).toBe("Rename a → alpha");
-        expect(rows[0].change).toBe("Id a → alpha");
+        // Ids throughout: the title reads "Rename a → alpha" with the verb, never the display name.
+        expect(rows[0].title).toBe("a → alpha");
+        expect(`${rows[0].verb} ${rows[0].title}`).toBe(rows[0].summary);
+        expect(rows[0].change).toBe("Node A");
+    });
+});
+
+describe("acceptAllPlan", () => {
+    const row = (status: string, stale: boolean) => ({ status, stale });
+
+    it("has no warning when nothing pending is stale", () => {
+        expect(acceptAllPlan([row("pending", false), row("accepted", true)])).toEqual({ apply: 1, skip: 0, warning: "" });
+    });
+
+    it("warns that stale operations are skipped and the rest applied", () => {
+        const plan = acceptAllPlan([row("pending", false), row("pending", true), row("pending", true)]);
+        expect(plan.apply).toBe(1);
+        expect(plan.skip).toBe(2);
+        expect(plan.warning).toContain("2 out-of-date changes will be skipped");
+        expect(plan.warning).toContain("The other 1 will be applied");
+    });
+
+    it("says nothing would apply when every pending change is stale", () => {
+        const plan = acceptAllPlan([row("pending", true)]);
+        expect(plan.apply).toBe(0);
+        expect(plan.warning).toContain("would apply nothing");
     });
 });

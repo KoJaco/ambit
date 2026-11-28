@@ -22,6 +22,7 @@ import { history, truncateLabel } from "../history";
 import { ghostKey } from "../ghost-preview";
 import { acceptedEntry } from "../proposal-history";
 import {
+    acceptAllPlan,
     hierarchySections,
     proposalOrigin,
     proposalRows,
@@ -33,7 +34,7 @@ import {
     type RowVerb,
 } from "../proposal-rows";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
-import { proposalAge, proposalTimestamp } from "../proposal-meta";
+import { changeSetLabel, proposalAge, proposalTimestamp } from "../proposal-meta";
 import { usePanelPresence } from "../hooks/use-panel-presence";
 import { ReviewOpActions } from "./review-op-actions";
 
@@ -73,6 +74,8 @@ export function ProposalReview({
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     // Proposals whose per-change accept/reject controls are shown; collapsed by default.
+    // Proposal whose accept-all is waiting on the stale-operations confirmation.
+    const [allPrompt, setAllPrompt] = useState<string | null>(null);
     const [individual, setIndividual] = useState<Record<string, boolean>>({});
     const [loaded, setLoaded] = useState(false);
     // Row that opened the detail view, so Back can return focus to it.
@@ -186,6 +189,16 @@ export function ProposalReview({
                 done.push(row.index);
             }
             recordAcceptance(proposal.proposal_id, label, diff?.operations ?? [], done);
+            await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
+        });
+    }
+
+    async function runAcceptAll(proposal: ProposalSummary, diff: ProposalDiff | undefined) {
+        await run(async () => {
+            const ops = diff?.operations.filter((op) => op.status === "pending") ?? [];
+            const result = await acceptAll(proposal.proposal_id);
+            setSkipped((current) => ({ ...current, [proposal.proposal_id]: result.skipped }));
+            recordAcceptance(proposal.proposal_id, proposal.summary, ops, result.applied);
             await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
         });
     }
@@ -310,6 +323,9 @@ export function ProposalReview({
                             <ChevronLeft className="size-4" aria-hidden />
                             Review
                         </button>
+                        {changeSetLabel(diffs[detail.proposalId]?.change_set) ? (
+                            <ChangeSetChip value={changeSetLabel(diffs[detail.proposalId]?.change_set)} />
+                        ) : null}
                         <span className="ml-auto">
                             <PanelHeaderActions />
                         </span>
@@ -403,7 +419,7 @@ export function ProposalReview({
                                             ) : (
                                                 <div className="flex flex-col gap-1">
                                                     <p className="text-sm font-medium text-foreground">{line.headline}</p>
-                                                    <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                                                    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                                                         <span
                                                             className={clsx(
                                                                 "rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
@@ -413,18 +429,23 @@ export function ProposalReview({
                                                             {origin}
                                                         </span>
                                                         <span>{line.source}</span>
-                                                        <span aria-hidden>·</span>
-                                                        <code className="font-mono text-[11px]" title="Proposal id">
-                                                            {proposal.proposal_id}
-                                                        </code>
-                                                        {proposalAge(proposal.created_at) ? (
-                                                            <>
-                                                                <span aria-hidden>·</span>
-                                                                <time dateTime={proposal.created_at} title={proposalTimestamp(proposal.created_at)}>
-                                                                    {proposalAge(proposal.created_at)}
-                                                                </time>
-                                                            </>
+                                                        {changeSetLabel(proposal.change_set) ? (
+                                                            <ChangeSetChip value={changeSetLabel(proposal.change_set)} />
                                                         ) : null}
+                                                        {/* Id and age wrap together, never leaving a lone separator. */}
+                                                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                                                            <code className="font-mono text-[11px]" title="Proposal id">
+                                                                {proposal.proposal_id}
+                                                            </code>
+                                                            {proposalAge(proposal.created_at) ? (
+                                                                <>
+                                                                    <span aria-hidden>·</span>
+                                                                    <time dateTime={proposal.created_at} title={proposalTimestamp(proposal.created_at)}>
+                                                                        {proposalAge(proposal.created_at)}
+                                                                    </time>
+                                                                </>
+                                                            ) : null}
+                                                        </span>
                                                     </p>
                                                     {line.staleCount > 0 ? (
                                                         <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800 dark:text-amber-300">
@@ -455,20 +476,18 @@ export function ProposalReview({
                                             <div className="flex gap-2">
                                                 <button
                                                     type="button"
+                                                    id={`accept-all-${proposal.proposal_id}`}
                                                     className={primaryButton}
                                                     disabled={busy || pending === 0}
-                                                    onClick={() =>
-                                                        void run(async () => {
-                                                            const ops = diff?.operations.filter((op) => op.status === "pending") ?? [];
-                                                            const result = await acceptAll(proposal.proposal_id);
-                                                            setSkipped((current) => ({
-                                                                ...current,
-                                                                [proposal.proposal_id]: result.skipped,
-                                                            }));
-                                                            recordAcceptance(proposal.proposal_id, proposal.summary, ops, result.applied);
-                                                            await reloadOne(proposal.proposal_id, setSummaries, setDiffs);
-                                                        })
-                                                    }
+                                                    onClick={() => {
+                                                        const plan = acceptAllPlan(rows);
+                                                        // Stale operations are skipped by accept-all: say so before it runs.
+                                                        if (plan.skip > 0) {
+                                                            setAllPrompt(proposal.proposal_id);
+                                                            return;
+                                                        }
+                                                        void runAcceptAll(proposal, diff);
+                                                    }}
                                                 >
                                                     <ListChecks className="size-4" aria-hidden />
                                                     Accept all
@@ -490,6 +509,24 @@ export function ProposalReview({
                                                 </button>
                                             </div>
                                         )}
+                                        {allPrompt === proposal.proposal_id ? (
+                                            <AcceptAllPrompt
+                                                plan={acceptAllPlan(rows)}
+                                                busy={busy}
+                                                onCancel={() => {
+                                                    setAllPrompt(null);
+                                                    document.getElementById(`accept-all-${proposal.proposal_id}`)?.focus();
+                                                }}
+                                                onReviewOne={() => {
+                                                    setAllPrompt(null);
+                                                    setIndividual((current) => ({ ...current, [proposal.proposal_id]: true }));
+                                                }}
+                                                onConfirm={() => {
+                                                    setAllPrompt(null);
+                                                    void runAcceptAll(proposal, diff);
+                                                }}
+                                            />
+                                        ) : null}
                                         {!proposal.unreadable && pending > 0 ? (
                                             <button
                                                 type="button"
@@ -511,7 +548,7 @@ export function ProposalReview({
                                         ) : null}
                                     </header>
                                     {skipped[proposal.proposal_id]?.length ? (
-                                        <p className="px-3 pt-2 text-xs text-amber-700 dark:text-amber-400">
+                                        <p role="status" className="px-3 pt-2 text-xs text-amber-700 dark:text-amber-400">
                                             Skipped{" "}
                                             {skipped[proposal.proposal_id].map((op) => `${op.node_id || op.op} (${op.reason})`).join(", ")}
                                         </p>
@@ -577,6 +614,62 @@ const VERB_STYLE: Record<RowVerb, string> = {
     Rename: "bg-sky-500/15 text-sky-800 dark:text-sky-300",
     Other: "bg-muted text-muted-foreground",
 };
+
+// Related proposals share a change set; it is shown as a labelled chip, not bare text.
+function ChangeSetChip({ value }: { value: string }) {
+    return (
+        <span className="inline-flex max-w-full items-center gap-1 rounded-full border border-border px-1.5 py-0.5 text-[10px] font-medium text-foreground/80" title={`Change set: ${value}`}>
+            <span className="uppercase tracking-wide text-muted-foreground">Change set</span>
+            <span className="truncate font-mono text-[11px]">{value}</span>
+        </span>
+    );
+}
+
+function AcceptAllPrompt({
+    plan,
+    busy,
+    onConfirm,
+    onCancel,
+    onReviewOne,
+}: {
+    plan: ReturnType<typeof acceptAllPlan>;
+    busy: boolean;
+    onConfirm: () => void;
+    onCancel: () => void;
+    onReviewOne: () => void;
+}) {
+    return (
+        <div
+            role="group"
+            aria-label="Confirm accept all"
+            className="flex flex-col gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-2.5 text-xs"
+            onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.stopPropagation();
+                onCancel();
+            }}
+        >
+            <p className="flex items-start gap-1.5 font-medium text-amber-900 dark:text-amber-200">
+                <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                {plan.warning}
+            </p>
+            <div className="flex flex-wrap gap-2">
+                {plan.apply > 0 ? (
+                    <button type="button" autoFocus className={primaryButton} disabled={busy} onClick={onConfirm}>
+                        Accept the other {plan.apply}
+                    </button>
+                ) : (
+                    <button type="button" autoFocus className={primaryButton} onClick={onReviewOne}>
+                        Review individually
+                    </button>
+                )}
+                <button type="button" className={outlineButton} onClick={onCancel}>
+                    Cancel
+                </button>
+            </div>
+        </div>
+    );
+}
 
 function VerbChip({ verb, done }: { verb: RowVerb; done?: boolean }) {
     return (
