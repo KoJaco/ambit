@@ -30,7 +30,7 @@ const order: BuildOrder = {
 };
 
 describe("summaryText", () => {
-    it("reports ready and parallel counts", () => expect(summaryText(order)).toBe("Ready now: 1, up to 2 in parallel"));
+    it("reports ready and parallel counts", () => expect(summaryText(order)).toBe("Ready now: 1, up to 2 agents in parallel"));
     it("handles nothing ready", () => expect(summaryText({ ready_now: [], max_parallel: 0 })).toBe("Ready now: 0"));
 });
 

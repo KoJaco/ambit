@@ -25,7 +25,7 @@ func TestBuildOrderPlanFieldsCompactReadyOnlyAndGates(t *testing.T) {
 	if len(res.Externals) != 1 || res.Externals[0].ID != "ext" || len(res.Externals[0].HumanGates) != 1 {
 		t.Fatalf("externals %s", raw)
 	}
-	if res.Order[0].Class != core.ClassNeedsHuman || res.Order[1].Class != core.ClassBlocked || len(res.ReadyNow) != 1 || res.MaxParallel != 1 {
+	if res.Order[0].Class != core.ClassNeedsHuman || res.Order[1].Class != core.ClassBlocked || len(res.ReadyNow) != 1 || res.MaxParallel != 0 {
 		t.Fatalf("classes %s", raw)
 	}
 

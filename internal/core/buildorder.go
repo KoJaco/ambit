@@ -296,7 +296,14 @@ func (idx *Index) buildOrderLocked(scope NodeID) (BuildOrderResult, error) {
 			res.ReadyNow = append(res.ReadyNow, it.ID)
 		}
 	}
-	res.ParallelSet = packParallel(idx, res.ReadyNow)
+	// Only nodes an agent can start unattended are packed; needs-human nodes stay in ready_now.
+	agentReady := []NodeID{}
+	for _, it := range res.Order {
+		if !it.Done && it.Class == ClassAgentParallel {
+			agentReady = append(agentReady, it.ID)
+		}
+	}
+	res.ParallelSet = packParallel(idx, agentReady)
 	res.MaxParallel = len(res.ParallelSet)
 	return res, nil
 }

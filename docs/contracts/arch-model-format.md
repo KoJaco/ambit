@@ -378,9 +378,10 @@ warning. A running `ambit mcp` or `ambit start` reloads when `config.json` or an
 The `shared-manifest` lint rule (advisory in `design-first` and `map-existing`, off elsewhere)
 lists the files git can see that are named `go.mod`, `go.sum`, `go.work`, `go.work.sum`,
 `package.json`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lock`, `bun.lockb`,
-`Cargo.toml`, `Cargo.lock`, `uv.lock` or `poetry.lock` that no node's `implementation` globs
-match, or that more than one node's match, unless a node with `shared: true` owns the file. It
-is silent when git cannot list files.
+`Cargo.toml`, `Cargo.lock`, `uv.lock` or `poetry.lock` that two or more non-nested nodes'
+`implementation` globs match (a node and its own descendant do not count), unless a node with
+`shared: true` owns the file. Manifests no node owns are not flagged (they are covered by
+`drift_ignore`). It is silent when git cannot list files.
 
 `group_max` and `level_budget` are view defaults only (decision 0010). A missing key uses the default. A value that is
 not a positive integer falls back to the default and produces a warning, not a load error.
@@ -407,8 +408,10 @@ be committed.
   { "assignment": { "node_id": "payments-service", "assigned_at": "2026-09-27T10:00:00Z" } }
   ```
 
-- `gates_cleared` — array of `"<nodeID>#<index>"` strings: the human gates this user has
-  cleared (the index is the gate's position in the node's `human_gates`). Written only by
+- `gates_cleared` — array of `"<nodeID>#<hash of kind and note>"` strings: the human gates this user has
+  cleared, keyed by the gate's content so reordering or editing `human_gates` never moves a
+  cleared state to another gate (identical gates get a `~n` suffix; old `#<index>` entries are
+  ignored). Written only by
   `PUT /gates`; entries for nodes or gates that no longer exist are dropped on the next write
   and a node rename keeps them attached. Never an MCP-writable key.
 - UI preferences and similar machine-local state. Unknown keys are preserved.

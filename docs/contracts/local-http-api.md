@@ -148,7 +148,7 @@ hard refresh.
   "human_gates"?}], "ready_now": [id], "max_parallel": n, "parallel_set": [id]}`. `class` is
   `agent-parallel`, `needs-human` (an uncleared human gate) or `blocked`. Nodes with
   `external: true` are not in `order` or `waves` and never block. `ready_now` is the ordered
-  nodes that are not blocked, done or external; `parallel_set` is a greedy packing of them into
+  nodes that are not blocked, done or external; `parallel_set` is a greedy packing of the `agent-parallel` ones among them into
   non-overlapping `implementation` globs and `max_parallel` its size. With `compact`, each order
   item is `{"id","class","wave","done"?}` and `externals` is an array of ids; with `ready_only`,
   `order` holds only the `ready_now` items and `waves` is `[]`. Advisory, read-only. See
@@ -157,7 +157,7 @@ hard refresh.
 - **Clear a human gate** — `PUT /gates` with `{"node_id","index","cleared"}` (all three
   required; `index` is the position in the node's `human_gates`) marks that gate cleared or not
   for this user. The state is stored under `gates_cleared` in the gitignored `.arch/local.json`
-  (`"<nodeID>#<index>"`, kept across a node rename, pruned when the node or gate goes away) and
+  (`"<nodeID>#<hash of kind and note>"`, kept across a node rename, pruned when the node or gate goes away) and
   shows up as `cleared` in `GET /build-order`. Returns `{"node_id","index","cleared"}`. Unknown
   node is 404, an index out of range is 400. There is deliberately no MCP equivalent.
 

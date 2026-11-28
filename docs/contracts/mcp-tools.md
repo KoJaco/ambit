@@ -299,6 +299,11 @@ assigned to a protected node may edit that node's own files (the `protected` rul
 when the protected owner is the assignee), but nothing else, and with no assignment protected
 files stay off-limits.
 
+**Protection is advisory for MCP callers.** `check_scope` takes `node_id` from the caller, so
+an agent that names the protected node as its own gets the owner exemption: the answer is
+guidance, not enforcement. Protection is authoritative only for `ambit check`, which uses the
+assignment a human set (`ambit assign` or the UI), not a caller-supplied id.
+
 This costs almost nothing to build — it is the same underlying function reached over MCP
 instead of from a diff — and it converts end-of-task failure into mid-task correction for any
 agent that uses it.
@@ -332,10 +337,11 @@ spike). Nodes flagged `external` are left out of `order` and `waves`, are listed
 
 `class` is `blocked` (an unfinished dependency, or status `blocked`), else `needs-human`
 (at least one human gate is not cleared), else `agent-parallel`. Cleared gates are per user in
-the gitignored `.arch/local.json` (`gates_cleared`, `"<nodeID>#<index>"`); only a person sets
+the gitignored `.arch/local.json` (`gates_cleared`, `"<nodeID>#<hash of kind and note>"`); only a person sets
 them (`PUT /gates` in the UI, no MCP tool). `ready_now` lists ordered nodes that are not
 blocked, not done and not external (so it includes `needs-human` nodes; filter by `class` if
-an agent must start alone). `parallel_set` is a greedy packing, in order, of `ready_now` into
+an agent must start alone). `parallel_set` is a greedy packing, in order, of the `agent-parallel` nodes in `ready_now` (not the
+`needs-human` ones) into
 nodes whose `implementation` globs do not overlap, using the same sample-path overlap test as
 the `glob-overlap` lint; `max_parallel` is its size.
 

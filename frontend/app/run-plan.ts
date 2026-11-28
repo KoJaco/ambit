@@ -16,11 +16,12 @@ export const CLASS_LABEL: Record<BuildClass, string> = {
     blocked: "Blocked",
 };
 
-// "Ready now: N, up to M in parallel". Singular/zero cases stay readable.
+// "Ready now: N, up to M agents in parallel". ready_now includes nodes that need you;
+// max_parallel counts only the agent-parallel ones, so M can be smaller than N.
 export function summaryText(order: Pick<BuildOrder, "ready_now" | "max_parallel">): string {
     const n = order.ready_now.length;
     if (n === 0) return "Ready now: 0";
-    return `Ready now: ${n}, up to ${order.max_parallel} in parallel`;
+    return `Ready now: ${n}, up to ${order.max_parallel} agent${order.max_parallel === 1 ? "" : "s"} in parallel`;
 }
 
 export type WaveColumn = { wave: number; items: BuildItem[]; doneCount: number };

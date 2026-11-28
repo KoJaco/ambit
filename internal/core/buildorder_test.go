@@ -232,8 +232,9 @@ func TestBuildOrderExternalsGatesClassesAndParallel(t *testing.T) {
 	eq(t, "web class", items["web"].Class, ClassNeedsHuman)
 	eq(t, "docs class", items["docs"].Class, ClassAgentParallel)
 	eq(t, "ready", r.ReadyNow, []NodeID{"spike", "web", "web-tests", "docs"})
-	// web and web-tests overlap, so one of them is dropped from the parallel set.
-	eq(t, "parallel", r.ParallelSet, []NodeID{"spike", "web", "docs"})
+	// web needs a human, so it is not in the parallel set (ready_now still lists it); the set
+	// packs only agent-parallel nodes.
+	eq(t, "parallel", r.ParallelSet, []NodeID{"spike", "web-tests", "docs"})
 	eq(t, "max_parallel", r.MaxParallel, 3)
 
 	// Clearing a gate is per user, in local.json, and only moves the class when all are clear.

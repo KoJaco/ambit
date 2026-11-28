@@ -104,7 +104,7 @@ func TestBuildOrderToolCompactReadyOnlyAndShape(t *testing.T) {
 		}
 	}
 	full := callTool(t, s, "get_build_order", map[string]any{})
-	if full["max_parallel"].(float64) != 2 || len(full["externals"].([]any)) != 1 || len(full["ready_now"].([]any)) != 2 {
+	if full["max_parallel"].(float64) != 1 || len(full["externals"].([]any)) != 1 || len(full["ready_now"].([]any)) != 2 {
 		t.Fatalf("full %v", full)
 	}
 	item := full["order"].([]any)[2].(map[string]any)
