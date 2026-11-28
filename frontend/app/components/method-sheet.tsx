@@ -97,6 +97,7 @@ export function MethodSheet({
         }
     }
 
+    const switchDisabled = policyBusy || !autoAcceptCanToggle(policy);
     const gates = method ? gatesSummary(method.gates, method.stages) : [];
 
     return (
@@ -234,13 +235,22 @@ export function MethodSheet({
                                         id={`${selectId}-auto-switch`}
                                         aria-checked={policy.auto_accept}
                                         aria-describedby={`${selectId}-auto-desc`}
-                                        disabled={policyBusy || !autoAcceptCanToggle(policy)}
-                                        onClick={() => void toggleAutoAccept(!policy.auto_accept)}
-                                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-border transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50 ${policy.auto_accept ? "bg-primary" : "bg-accent"}`}
+                                        aria-disabled={switchDisabled || undefined}
+                                        onClick={() => {
+                                            if (switchDisabled) return;
+                                            void toggleAutoAccept(!policy.auto_accept);
+                                        }}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                                            switchDisabled
+                                                ? "cursor-not-allowed border-muted-foreground border-dashed bg-card"
+                                                : policy.auto_accept
+                                                  ? "border-border bg-primary"
+                                                  : "border-border bg-accent"
+                                        }`}
                                     >
                                         <span
                                             aria-hidden
-                                            className={`inline-block size-4 rounded-full bg-card shadow transition-transform motion-reduce:transition-none ${policy.auto_accept ? "translate-x-6" : "translate-x-1"}`}
+                                            className={`inline-block size-4 rounded-full shadow transition-transform motion-reduce:transition-none ${switchDisabled ? "bg-muted-foreground" : "bg-card"} ${policy.auto_accept ? "translate-x-6" : "translate-x-1"}`}
                                         />
                                     </button>
                                     <label htmlFor={`${selectId}-auto-switch`} className="text-sm font-medium">

@@ -45,7 +45,7 @@ describe("auto-accept copy", () => {
         expect(autoAcceptCanToggle({ ...base, stage: "build" })).toBe(true);
     });
     it("shows status with reason and a hint outside build", () => {
-        expect(autoAcceptStatus({ ...base, reason: "stage is design" })).toBe("Not active: stage is design");
+        expect(autoAcceptStatus({ ...base, reason: "stage is design" })).toContain("Not active: The current stage is design.");
         expect(autoAcceptStatus({ ...base, stage: "build", effective: true })).toBe("Active");
         expect(autoAcceptHint(base)).toContain("design");
         expect(autoAcceptHint({ ...base, stage: "build" })).toBe("");
