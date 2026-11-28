@@ -134,7 +134,7 @@ export function RunPlanSheet({
                                 <p className="text-sm text-muted-foreground">Nothing is ready to build.</p>
                             ) : (
                                 <>
-                                    <ul className="flex flex-wrap gap-2">
+                                    <ul className="flex flex-wrap gap-2 p-1.5">
                                         {plan.ready_now.map((id) => (
                                             <li
                                                 key={id}
@@ -156,7 +156,7 @@ export function RunPlanSheet({
                         <section aria-label="Waves" className="mt-5">
                             <h3 className={headingClass}>Waves</h3>
                             {columns.length === 0 ? <p className="text-sm text-muted-foreground">No buildable nodes.</p> : null}
-                            <div className="flex gap-3 overflow-x-auto pb-2" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
+                            <div className="flex gap-4 overflow-x-auto p-2" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
                                 {columns.map((col) => (
                                     <div key={col.wave} className="w-44 shrink-0">
                                         <h4 className="mb-1 text-xs font-medium">
@@ -199,7 +199,7 @@ export function RunPlanSheet({
                                     <legend className="mb-1 text-sm font-medium">
                                         {group.label} <span className="font-normal text-muted-foreground">({group.remaining} left)</span>
                                     </legend>
-                                    <ul className="flex flex-col gap-1.5">
+                                    <ul className="flex flex-col gap-1.5 px-1.5 py-1">
                                         {group.rows.map((row) => (
                                             <li key={row.key}>
                                                 <label className="flex min-h-6 cursor-pointer items-start gap-2 text-sm">
@@ -228,7 +228,7 @@ export function RunPlanSheet({
                             ) : (
                                 <>
                                     <p className="mb-1 text-xs text-muted-foreground">Not built here and never blocking. Listed so you know what you depend on.</p>
-                                    <ul className="flex flex-col gap-1 text-sm">
+                                    <ul className="flex flex-col gap-1 px-1.5 py-1 text-sm">
                                         {plan.externals.map((e) => (
                                             <li key={e.id} className="break-words">
                                                 {e.name} <span className="text-xs text-muted-foreground">({e.status}, not buildable)</span>
