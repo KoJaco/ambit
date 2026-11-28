@@ -33,7 +33,7 @@ import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
 import { CollapsibleSection } from "./collapsible-section";
 import { PanelHeaderActions, RightRailPanel } from "./right-rail-panel";
 import { nodeSettingsSummary } from "../node-settings";
-import { setInspectorDirty } from "../right-rail-state";
+import { INSPECTOR_CLOSE_REQUEST_EVENT, inspectorCloseAction, isInspectorDirty, setInspectorDirty } from "../right-rail-state";
 import {
     collectNodes,
     contractSummary,
@@ -117,6 +117,31 @@ export default function NodeInspector({
         setInspectorDirty(dirty);
     }, [node, presentationTouched]);
     useEffect(() => () => setInspectorDirty(false), []);
+
+    // Closing with unsaved edits asks first (inline in the header). Escape keeps editing.
+    const [confirmClose, setConfirmClose] = useState(false);
+    const keepRef = useRef<HTMLButtonElement>(null);
+    const headerRef = useRef<HTMLDivElement>(null);
+    const requestClose = (request: "close" | "escape") => {
+        const action = inspectorCloseAction({ dirty: isInspectorDirty(), confirming: confirmClose, request });
+        if (action === "close") onClose();
+        else if (action === "confirm") setConfirmClose(true);
+        else keepEditing();
+    };
+    const keepEditing = () => {
+        setConfirmClose(false);
+        window.requestAnimationFrame(() => headerRef.current?.querySelector<HTMLButtonElement>('button[aria-label="Close inspector"]')?.focus());
+    };
+    const requestCloseRef = useRef(requestClose);
+    requestCloseRef.current = requestClose;
+    useEffect(() => {
+        const handler = () => requestCloseRef.current("close");
+        window.addEventListener(INSPECTOR_CLOSE_REQUEST_EVENT, handler);
+        return () => window.removeEventListener(INSPECTOR_CLOSE_REQUEST_EVENT, handler);
+    }, []);
+    useEffect(() => {
+        if (confirmClose) keepRef.current?.focus();
+    }, [confirmClose]);
 
     // Advisory build order, and the full node list (containers too) for the dependency picker. Refetched on every
     // model-changed event (refreshKey); the previous order stays until the new one arrives.
@@ -289,7 +314,7 @@ export default function NodeInspector({
     // The header holds the actions outside the scrolling body, so the body's scrollbar never runs
     // behind the theme toggle or the close button.
     const header = (
-        <div className="-mb-4 flex shrink-0 items-center justify-between gap-3">
+        <div ref={headerRef} className="-mb-4 flex shrink-0 items-center justify-between gap-3">
             {!node || !preview ? (
                 <h2 className="font-semibold">Inspector</h2>
             ) : (
@@ -303,13 +328,46 @@ export default function NodeInspector({
                     })()}
                 </span>
             )}
-            <PanelHeaderActions onClose={onClose} closeLabel="Close inspector" />
+            <PanelHeaderActions onClose={() => requestClose("close")} closeLabel="Close inspector" />
         </div>
     );
 
     return (
         <RightRailPanel label="Inspector" className="overflow-hidden" onPointerDown={() => onFocus?.()}>
             {header}
+            {confirmClose ? (
+                <div
+                    role="group"
+                    aria-label="Discard changes?"
+                    className="flex shrink-0 flex-wrap items-center gap-2 rounded-[14px] border border-border bg-accent px-3 py-2"
+                    onKeyDown={(event) => {
+                        if (event.key !== "Escape") return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        requestClose("escape");
+                    }}
+                >
+                    <p className="mr-auto text-sm font-medium">Discard changes?</p>
+                    <button
+                        ref={keepRef}
+                        type="button"
+                        className="rounded-full border border-border bg-card px-3 py-1 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        onClick={keepEditing}
+                    >
+                        Keep editing
+                    </button>
+                    <button
+                        type="button"
+                        className="rounded-full border border-destructive px-3 py-1 text-sm text-destructive hover:bg-card focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                        onClick={() => {
+                            setConfirmClose(false);
+                            onClose();
+                        }}
+                    >
+                        Discard
+                    </button>
+                </div>
+            ) : null}
             {error && errorTarget === "general" ? (
                 <p role="alert" className="shrink-0 text-destructive">
                     {error}

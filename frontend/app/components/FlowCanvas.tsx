@@ -49,7 +49,7 @@ import {
 import type { StructureRequest } from "./structure-panel";
 import { barStore } from "../bottom-bar";
 import { history } from "../history";
-import { isInspectorDirty, paneClickCloses, useRailState } from "../right-rail-state";
+import { INSPECTOR_CLOSE_REQUEST_EVENT, isInspectorDirty, paneClickCloses, useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { buildExternalStubs, isStubActivationKey, stubAriaLabel } from "../external-stubs";
 import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions, type NodeSize, type Point } from "../layout";
@@ -1079,6 +1079,11 @@ export default function FlowCanvas({
     // Cancel on the selection bar also closes an inspector left open on the last clicked node.
     const clearSelectionAndInspector = useCallback(() => {
         clearSelection();
+        // Escape must not drop unsaved inspector edits: ask the inspector to confirm instead.
+        if (isInspectorDirty()) {
+            window.dispatchEvent(new Event(INSPECTOR_CLOSE_REQUEST_EVENT));
+            return;
+        }
         onSelectNode?.(null);
     }, [clearSelection, onSelectNode]);
 

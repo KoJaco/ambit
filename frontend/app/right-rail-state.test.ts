@@ -101,3 +101,19 @@ describe("nextPanelPresence", () => {
         expect(nextPanelPresence({ show: false, lingering: true }, true, false)).toEqual({ show: true, lingering: false });
     });
 });
+
+import { inspectorCloseAction } from "./right-rail-state";
+describe("inspectorCloseAction", () => {
+    it("closes a clean inspector at once", () => {
+        expect(inspectorCloseAction({ dirty: false, confirming: false, request: "close" })).toBe("close");
+        expect(inspectorCloseAction({ dirty: false, confirming: false, request: "escape" })).toBe("close");
+    });
+    it("asks before closing a dirty one", () => {
+        expect(inspectorCloseAction({ dirty: true, confirming: false, request: "close" })).toBe("confirm");
+        expect(inspectorCloseAction({ dirty: true, confirming: false, request: "escape" })).toBe("confirm");
+    });
+    it("keeps editing on Escape while asking, and keeps asking on a repeat close", () => {
+        expect(inspectorCloseAction({ dirty: true, confirming: true, request: "escape" })).toBe("keep");
+        expect(inspectorCloseAction({ dirty: true, confirming: true, request: "close" })).toBe("confirm");
+    });
+});

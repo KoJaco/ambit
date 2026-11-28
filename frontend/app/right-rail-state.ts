@@ -79,6 +79,21 @@ export function isInspectorDirty(): boolean {
     return inspectorDirty;
 }
 
+// What asking to close the inspector does. A dirty inspector asks first; while the question is
+// open, Escape means "keep editing" and a repeated close request leaves the question showing.
+export type InspectorCloseRequest = "close" | "escape";
+export function inspectorCloseAction(input: {
+    dirty: boolean;
+    confirming: boolean;
+    request: InspectorCloseRequest;
+}): "close" | "confirm" | "keep" {
+    if (input.confirming) return input.request === "escape" ? "keep" : "confirm";
+    return input.dirty ? "confirm" : "close";
+}
+
+// Window event the canvas fires when Escape would close a dirty inspector, so the inspector can ask.
+export const INSPECTOR_CLOSE_REQUEST_EVENT = "ambit:inspector-close-request";
+
 // What a click on empty canvas closes: the inspector stays when it holds unsaved edits.
 export function paneClickCloses(inspectorDirty: boolean): { inspector: boolean } {
     return { inspector: !inspectorDirty };
