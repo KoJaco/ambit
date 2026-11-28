@@ -1,6 +1,6 @@
-import { getNode, type Relationship } from "./api";
+import { getNode, getRelationshipLevel, type Relationship } from "./api";
 
-/** `link` is false for grouping containers: shown for context but not navigable. */
+/** Every ancestor is navigable, including grouping containers. */
 export type BreadcrumbCrumb = { id: string; name: string; href: string; link: boolean };
 
 /** Type given to containers created by grouping (core DefaultContainerType). */
@@ -11,28 +11,30 @@ export function isGroupingContainer(node: { type: string }): boolean {
     return node.type.trim().toLowerCase() === groupingContainerType;
 }
 
-/**
- * Maps a root-to-leaf chain to crumbs. Grouping-only containers stay in the chain for context
- * but are not links; the last entry (viewed node or drill source) is always a link.
- */
+/** Maps a root-to-leaf chain to crumbs. Every entry is a link, grouping containers included. */
 export function visibleCrumbs(chain: { id: string; name: string; type: string }[]): BreadcrumbCrumb[] {
-    return chain.map((node, index) => ({
+    return chain.map((node) => ({
         id: node.id,
         name: node.name,
         href: `/node/${node.id}`,
-        link: index === chain.length - 1 || !isGroupingContainer(node),
+        link: true,
     }));
 }
+
+/** Shared across the nodeAncestorChain <-> relationshipPrefixCrumbs recursion so a cycle ends. */
+type Visited = { nodes: Set<string>; rels: Set<string> };
 
 /** Ancestors from root down to startId (inclusive when includeStart). */
 export async function nodeAncestorChain(
     startId: string,
     signal?: AbortSignal,
     includeStart = false,
+    visited: Visited = { nodes: new Set(), rels: new Set() },
 ): Promise<BreadcrumbCrumb[]> {
     const chain: { id: string; name: string; type: string }[] = [];
-    const seen = new Set<string>();
+    const seen = visited.nodes;
     let current: string | undefined = startId;
+    let interiorOf: string | undefined;
     if (!includeStart) {
         const first = await getNode(startId, signal);
         current = first.parent_id || undefined;
@@ -41,11 +43,22 @@ export async function nodeAncestorChain(
         seen.add(current);
         const node = await getNode(current, signal);
         chain.push({ id: node.id, name: node.name, type: node.type });
-        if (node.relationship_id && !node.parent_id) break;
+        if (node.relationship_id && !node.parent_id) interiorOf = node.relationship_id;
         current = node.parent_id || undefined;
     }
     chain.reverse();
-    return visibleCrumbs(chain);
+    const crumbs = visibleCrumbs(chain);
+    if (!interiorOf || visited.rels.has(interiorOf)) return crumbs;
+    visited.rels.add(interiorOf);
+    // The chain starts inside a relationship: continue above it through the edge's endpoints.
+    try {
+        const level = await getRelationshipLevel(interiorOf, signal);
+        const above = await relationshipPrefixCrumbs(level.relationship, undefined, signal, visited);
+        const known = new Set(crumbs.map((c) => c.id));
+        return [...above.filter((c) => !known.has(c.id)), ...crumbs];
+    } catch {
+        return crumbs;
+    }
 }
 
 /**
@@ -55,9 +68,10 @@ export async function relationshipPrefixCrumbs(
     rel: Relationship,
     fromNodeId: string | undefined,
     signal?: AbortSignal,
+    visited: Visited = { nodes: new Set(), rels: new Set() },
 ): Promise<BreadcrumbCrumb[]> {
     if (fromNodeId) {
-        return nodeAncestorChain(fromNodeId, signal, true);
+        return nodeAncestorChain(fromNodeId, signal, true, visited);
     }
     const [fromNode, toNode] = await Promise.all([
         getNode(rel.from, signal),
@@ -67,13 +81,13 @@ export async function relationshipPrefixCrumbs(
         fromNode.parent_id &&
         fromNode.parent_id === toNode.parent_id
     ) {
-        return nodeAncestorChain(fromNode.parent_id, signal, true);
+        return nodeAncestorChain(fromNode.parent_id, signal, true, visited);
     }
     if (fromNode.parent_id) {
-        return nodeAncestorChain(fromNode.parent_id, signal, true);
+        return nodeAncestorChain(fromNode.parent_id, signal, true, visited);
     }
     if (toNode.parent_id) {
-        return nodeAncestorChain(toNode.parent_id, signal, true);
+        return nodeAncestorChain(toNode.parent_id, signal, true, visited);
     }
     return [];
 }

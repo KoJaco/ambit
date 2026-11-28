@@ -36,6 +36,7 @@ import {
     type SchemaColumn,
 } from "../api";
 import {
+    acceptsDrop,
     containerAt,
     drillsOnDoubleClick,
     outsideReparentTarget,
@@ -48,7 +49,7 @@ import {
 import type { StructureRequest } from "./structure-panel";
 import { barStore } from "../bottom-bar";
 import { history } from "../history";
-import { useRailState } from "../right-rail-state";
+import { isInspectorDirty, paneClickCloses, useRailState } from "../right-rail-state";
 import { canvasEdgeType, canvasNodeType, isStackedCard, nodeLayoutSize } from "../canvas-presentation";
 import { buildExternalStubs, isStubActivationKey, stubAriaLabel } from "../external-stubs";
 import { computeGroupSizes, layoutCompound, layoutLevel, maxSizes, pushOverlaps, seedPositions, type NodeSize, type Point } from "../layout";
@@ -56,8 +57,11 @@ import {
     canExpandChild,
     expandedGroups,
     groupTints,
+    keepsSizeFloor,
     layoutSignature,
     layoutUsable,
+    memberSignature,
+    usableGroupSizes,
     fallbackViewDefaults,
     maxLevelFetches,
     overBudgetHint,
@@ -168,12 +172,15 @@ function containerSizing(
     positions: Record<string, Point>,
     sizes: Record<string, NodeSize>,
     baseKey: string,
-    // Sizes groups already had on screen: a toggle may grow a group but never shrinks it.
+    // Sizes groups already had on screen: a toggle may grow a group but never shrinks it. Empty when
+    // membership changed, so a group that lost members shrinks back to fit.
     floor: Record<string, NodeSize> = {},
 ) {
+    // Only the architect's own resizes count, and only while the group still has the members it had then.
+    const resized = usableGroupSizes(loadGroupSizes(baseKey), compound);
     return {
         mins: computeGroupSizes(compound, positions, sizes),
-        applied: computeGroupSizes(compound, positions, sizes, maxSizes(loadGroupSizes(baseKey), floor)),
+        applied: computeGroupSizes(compound, positions, sizes, maxSizes(resized, floor)),
     };
 }
 
@@ -339,6 +346,7 @@ export default function FlowCanvas({
     onRequestRecenterRef,
     onRequestZoomRef,
     onProposalStaged,
+    onPaneClick: onPaneClickHost,
     preview,
 }: {
     nodeId?: string;
@@ -353,6 +361,8 @@ export default function FlowCanvas({
     onRequestZoomRef?: (api: { zoomIn: () => void; zoomOut: () => void }) => void;
     // Called after a structure edit staged a proposal; the host brings the review panel forward.
     onProposalStaged?: () => void;
+    // Called after a click on empty canvas (the canvas has already cleared selection and inspector).
+    onPaneClick?: () => void;
     // Pending proposals drawn as ghosts over this level. Display only: never saved or laid out.
     preview?: CanvasPreview;
 }) {
@@ -373,6 +383,8 @@ export default function FlowCanvas({
     const nodesRef = useRef(nodes);
     nodesRef.current = nodes;
     const dragStart = useRef<{ id: string; position: Point } | null>(null);
+    // Group or summary card the dragged node would land in, ringed while the drag is over it.
+    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
     // View modes are per level (base key), kept out of the model: see layout-cache notes in
     // docs/contracts/local-http-api.md. The layout key additionally carries the expanded-set hash.
@@ -411,6 +423,9 @@ export default function FlowCanvas({
 
     const levelRef = useRef<Level | null>(null);
     levelRef.current = level;
+    // The level the canvas shows: the relationship interior when open, else the node level.
+    const activeLevelRef = useRef<Level | RelationshipLevel | null>(null);
+    activeLevelRef.current = relLevel ?? level;
     const onToggleMode = useCallback(
         (id: string) => {
             const next = toggleMode(viewModesRef.current, levelRef.current?.children ?? [], id);
@@ -425,9 +440,10 @@ export default function FlowCanvas({
     const cacheKeyRef = useRef("");
     // Group sizes are keyed by the level (base key), not the expanded set, so they survive toggles.
     const onResizeGroup = useCallback((id: string, size: NodeSize) => {
+        const members = (activeLevelRef.current?.children ?? []).map((child) => ({ id: child.id, parentId: child.group_id }));
         saveGroupSizes(baseKey, {
             ...loadGroupSizes(baseKey),
-            [id]: { width: Math.round(size.width), height: Math.round(size.height) },
+            [id]: { width: Math.round(size.width), height: Math.round(size.height), sig: memberSignature(id, members) },
         });
     }, [baseKey]);
 
@@ -504,7 +520,7 @@ export default function FlowCanvas({
     const cacheKey = layoutCacheKey({ nodeId, relationshipId, expanded: expandedIds });
     cacheKeyRef.current = cacheKey;
     // Base and full key of the layout last applied; a change of only the full key is a group toggle.
-    const appliedRef = useRef<{ base: string; key: string } | null>(null);
+    const appliedRef = useRef<{ base: string; key: string; sig?: string } | null>(null);
     // Set while a toggle's layout is still in flight, so toggling straight back (same key as the
     // one on screen) still takes the keep-positions path instead of refitting the viewport.
     const toggleIntentRef = useRef(false);
@@ -553,8 +569,14 @@ export default function FlowCanvas({
                     loadLayoutSig(cacheKey),
                     sig,
                 );
-                if (toggled) {
-                    // Group toggle: keep every placed node where it is, place only what was revealed,
+                // Data-driven membership change (a proposal was accepted, nodes grouped or moved): the
+                // server drops the saved layout on structure edits, so what is on screen is the only
+                // record of the architect's arrangement. Keep it and place only what is new.
+                const lastApplied = appliedRef.current;
+                const membershipChanged =
+                    !toggled && !usable && !!lastApplied && lastApplied.base === baseKey && nodesRef.current.length > 0;
+                if (toggled || membershipChanged) {
+                    // Keep every placed node where it is, place only what was revealed or changed,
                     // grow groups only when needed, and leave the viewport alone.
                     const prev = nodesRef.current;
                     const seeded = seedPositions(
@@ -564,6 +586,7 @@ export default function FlowCanvas({
                         usable ? stored : {},
                     );
                     const floor: Record<string, NodeSize> = {};
+                    const keepFloor = keepsSizeFloor(toggled, lastApplied?.sig, sig);
                     // Sizes kept nodes had on screen: the floor for containers, and the baseline
                     // growth is measured against when pushing siblings clear.
                     const oldSizes: Record<string, NodeSize> = {};
@@ -571,7 +594,9 @@ export default function FlowCanvas({
                         const width = item.style?.width;
                         const height = item.style?.height;
                         if (item.type === "container" && typeof width === "number" && typeof height === "number") {
-                            floor[item.id] = { width, height };
+                            // Only a toggle keeps on-screen sizes as a floor; after a membership change
+                            // a group must be free to shrink to its remaining members.
+                            if (keepFloor) floor[item.id] = { width, height };
                             oldSizes[item.id] = { width, height };
                         } else {
                             const w = item.measured?.width ?? item.width;
@@ -592,7 +617,7 @@ export default function FlowCanvas({
                     }
                     // Auto-grown sizes are deliberately not persisted: only the architect's own
                     // resizes (onResizeGroup) are a permanent floor, so groups shrink on a relayout.
-                    appliedRef.current = { base: baseKey, key: cacheKey };
+                    appliedRef.current = { base: baseKey, key: cacheKey, sig };
                     toggleIntentRef.current = false;
                     setNodes(buildArchNodes(activeLevel, placed, containers, onToggleMode, onUngroup, onResizeGroup));
                     await putLayout(cacheKey, {
@@ -604,7 +629,7 @@ export default function FlowCanvas({
                     return;
                 }
                 if (usable) {
-                    appliedRef.current = { base: baseKey, key: cacheKey };
+                    appliedRef.current = { base: baseKey, key: cacheKey, sig };
                     toggleIntentRef.current = false;
                     setNodes(buildArchNodes(activeLevel, stored, containerSizing(compound, stored, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                     setFitToken((v) => v + 1);
@@ -614,7 +639,7 @@ export default function FlowCanvas({
                     ? (await layoutCompound(compound, edges, sizes)).positions
                     : await layoutLevel(ids, edges, sizes);
                 if (cancelled) return;
-                appliedRef.current = { base: baseKey, key: cacheKey };
+                appliedRef.current = { base: baseKey, key: cacheKey, sig };
                 toggleIntentRef.current = false;
                 setNodes(buildArchNodes(activeLevel, laid, containerSizing(compound, laid, sizes, baseKey), onToggleMode, onUngroup, onResizeGroup));
                 setFitToken((v) => v + 1);
@@ -814,11 +839,21 @@ export default function FlowCanvas({
         return [...real, ...fresh];
     }, [nodes, ghost, ghostLayout, highlightKey, preview]);
     const displayNodes = useMemo<ArchNode[]>(() => {
-        if (!inspectedId || !previewNodes.some((item) => item.id === inspectedId && item.type !== "ghost")) return previewNodes;
+        const marked = (id: string) => id === inspectedId || id === dropTargetId;
+        if (!previewNodes.some((item) => item.type !== "ghost" && marked(item.id))) return previewNodes;
         return previewNodes.map((item) =>
-            item.id === inspectedId && item.type !== "ghost" ? { ...item, data: { ...item.data, inspected: true } } : item,
+            item.type !== "ghost" && marked(item.id)
+                ? {
+                      ...item,
+                      data: {
+                          ...item.data,
+                          ...(item.id === inspectedId ? { inspected: true } : {}),
+                          ...(item.id === dropTargetId ? { dropTarget: true } : {}),
+                      },
+                  }
+                : item,
         );
-    }, [previewNodes, inspectedId]);
+    }, [previewNodes, inspectedId, dropTargetId]);
     const displayEdges = useMemo<Edge[]>(() => {
         if (!preview || (ghost.ghostEdges.length === 0 && Object.keys(ghost.edgeMarks).length === 0)) return edges;
         const variantProps = (variant: "new" | "changed" | "removed", label: string, key: string, proposalId: string, index: number, hasContract?: boolean): GhostEdgeData["ghost"] => ({
@@ -927,11 +962,12 @@ export default function FlowCanvas({
         dragStart.current = { id: node.id, position: { ...node.position } };
     };
 
-    // Absolute rects of open containers, from React Flow's measured nodes.
+    // Absolute rects of nodes that accept a drop (open groups and collapsed summary cards), from
+    // React Flow's measured nodes.
     function containerRects(): Rect[] {
         const rects: Rect[] = [];
         for (const item of nodesRef.current) {
-            if (item.type !== "container") continue;
+            if (!acceptsDrop(item)) continue;
             const internal = getInternalNode(item.id);
             if (!internal) continue;
             const origin = internal.internals.positionAbsolute;
@@ -966,7 +1002,15 @@ export default function FlowCanvas({
         return containerAt(screenToFlowPosition(pointer), containerRects(), [node.id]);
     }
 
+    const onNodeDrag: OnNodeDrag<ArchNode> = (event, node) => {
+        const target = dropOutsideTarget(event, node) ?? dropInTarget(event, node);
+        // "" is the level itself (no node to ring), and a node never targets its own parent group.
+        const next = target && target !== node.parentId ? target : null;
+        setDropTargetId((current) => (current === next ? current : next));
+    };
+
     const onNodeDragStop: OnNodeDrag<ArchNode> = (event, node) => {
+        setDropTargetId(null);
         const outside = dropOutsideTarget(event, node) ?? dropInTarget(event, node);
         if (outside !== null) {
             const start = dragStart.current?.id === node.id ? dragStart.current.position : null;
@@ -1033,6 +1077,17 @@ export default function FlowCanvas({
         clearSelection();
         onSelectNode?.(null);
     }, [clearSelection, onSelectNode]);
+
+    // A click on empty canvas closes whatever the right rail shows for this level: the inspector
+    // (node or edge) and, through the host, an open Review panel. Escape still works as before.
+    const onPaneClick = useCallback(() => {
+        clearSelection();
+        if (paneClickCloses(isInspectorDirty()).inspector) {
+            onSelectEdge?.(null);
+            onSelectNode?.(null);
+        }
+        onPaneClickHost?.();
+    }, [clearSelection, onSelectEdge, onSelectNode, onPaneClickHost]);
 
     // The bottom bar (ControlBar) swaps the toolbar for the group/ungroup form or the selection
     // bar. This canvas owns the state and the staging; the bar only renders it.
@@ -1117,6 +1172,8 @@ export default function FlowCanvas({
                 onEdgeClick={onEdgeClick}
                 onEdgeDoubleClick={onEdgeDoubleClick}
                 onNodeDragStart={onNodeDragStart}
+                onNodeDrag={onNodeDrag}
+                onPaneClick={onPaneClick}
                 onNodeDragStop={onNodeDragStop}
                 panOnDrag={tool === "grab"}
                 selectionOnDrag={tool === "pointer"}

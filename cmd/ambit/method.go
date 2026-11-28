@@ -12,33 +12,41 @@ import (
 	"github.com/KoJaco/ambit/internal/core"
 )
 
-// parseInitArgs parses `ambit init [dir] [--method id]` (flag and dir in any order).
-func parseInitArgs(args []string) (dir, method string, err error) {
+// parseInitArgs parses `ambit init [dir] [--method id] [--npx] [--no-mcp]` (flag and dir in any order).
+func parseInitArgs(args []string) (dir, method string, mcp mcpMode, err error) {
 	dir = "."
 	haveDir := false
+	npx, noMCP := false, false
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
 		case a == "--method":
 			if i+1 >= len(args) || args[i+1] == "" {
-				return "", "", fmt.Errorf("--method needs a method id")
+				return "", "", mcpLocal, fmt.Errorf("--method needs a method id")
 			}
 			method = args[i+1]
 			i++
 		case strings.HasPrefix(a, "--method="):
 			method = strings.TrimPrefix(a, "--method=")
 			if method == "" {
-				return "", "", fmt.Errorf("--method needs a method id")
+				return "", "", mcpLocal, fmt.Errorf("--method needs a method id")
 			}
+		case a == "--npx":
+			mcp, npx = mcpNpx, true
+		case a == "--no-mcp":
+			mcp, noMCP = mcpSkip, true
 		case strings.HasPrefix(a, "-"):
-			return "", "", fmt.Errorf("unknown flag %q", a)
+			return "", "", mcpLocal, fmt.Errorf("unknown flag %q", a)
 		case haveDir:
-			return "", "", fmt.Errorf("unexpected argument %q", a)
+			return "", "", mcpLocal, fmt.Errorf("unexpected argument %q", a)
 		default:
 			dir, haveDir = a, true
 		}
 	}
-	return dir, method, nil
+	if npx && noMCP {
+		return "", "", mcpLocal, fmt.Errorf("--npx and --no-mcp cannot be used together")
+	}
+	return dir, method, mcp, nil
 }
 
 // isTerminal reports whether f is a character device (an interactive terminal).
@@ -94,7 +102,7 @@ func stdoutIsTerminal(w io.Writer) bool {
 // created (or still empty). Re-running init never changes an existing method or stage
 // unless --method is given.
 func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io.Writer) int {
-	dir, method, err := parseInitArgs(args)
+	dir, method, mcp, err := parseInitArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "ambit init: %v\n", err)
 		return 1
@@ -158,6 +166,11 @@ func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io
 			fmt.Fprintf(stdout, "stage %q cleared (this method has no stages)\n", res.PreviousStage)
 		case res.Stage != "":
 			fmt.Fprintf(stdout, "stage: %s\n", res.Stage)
+		}
+	}
+	if mcp != mcpSkip {
+		for _, line := range writeMCPConfigs(dir, mcp == mcpNpx) {
+			fmt.Fprintln(stdout, line)
 		}
 	}
 	fmt.Fprintln(stdout, "Run `ambit hook install` to install a pre-commit hook. ambit init does not install one.")

@@ -228,3 +228,34 @@ func TestFormatDriftFooterMentionsIgnored(t *testing.T) {
 		t.Fatalf("%s", out)
 	}
 }
+
+func TestDriftIgnoreHintOnlyWhenManyUnowned(t *testing.T) {
+	few := make([]string, 25)
+	if out := FormatDrift(DriftReport{Unowned: few}); strings.Contains(out, "drift_ignore in .arch/config.json") {
+		t.Fatalf("hint shown for 25 unowned files:\n%s", out)
+	}
+	many := make([]string, 26)
+	if out := FormatDrift(DriftReport{Unowned: many}); !strings.Contains(out, "drift_ignore in .arch/config.json") {
+		t.Fatalf("hint missing for 26 unowned files:\n%s", out)
+	}
+	if driftIgnoreHint(26) == "" || driftIgnoreHint(25) != "" {
+		t.Fatal("threshold")
+	}
+}
+
+func TestAddDriftIgnore(t *testing.T) {
+	idx, _ := newModel(t)
+	changed, err := idx.AddDriftIgnore("vendor/**")
+	if err != nil || !changed {
+		t.Fatalf("%v %v", changed, err)
+	}
+	if changed, err = idx.AddDriftIgnore("vendor/**"); err != nil || changed {
+		t.Fatalf("duplicate: %v %v", changed, err)
+	}
+	if len(idx.DriftIgnore) != 1 || idx.DriftIgnore[0] != "vendor/**" {
+		t.Fatalf("%v", idx.DriftIgnore)
+	}
+	if _, err := idx.AddDriftIgnore("[bad"); err == nil {
+		t.Fatal("invalid glob accepted")
+	}
+}

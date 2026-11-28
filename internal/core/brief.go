@@ -34,6 +34,8 @@ const ShallowModelGuidance = "Prefer shallow models. Use a container node to gro
 const AuthoringGuidance = "Model high-level first: start with the few top-level parts, then drill down only where asked. " +
 	"Treat container nodes as deployment zones (for example browser, edge, API, data) and keep nesting to about three levels. " +
 	"Before drilling down, ask the user how they want the top-level view organised. " +
+	"A container shown as a summary card on the canvas is a placeholder: before building, flesh it out into child nodes so each part has its own scope and spec. " +
+	"Show what enters or leaves a container from outside as type external start/end nodes, with one labelled edge per channel. " +
 	"Do not add an edge that carries no information (every-pair wiring, or what the hierarchy already says). " +
 	"Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. " +
 	"Call list_icons to pick icon ids and get_graph to see what already exists."

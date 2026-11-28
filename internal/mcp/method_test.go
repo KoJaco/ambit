@@ -334,3 +334,19 @@ func TestCheckModelToolMethodWarningAndExplicitDriftFalse(t *testing.T) {
 		t.Fatalf("explicit false ignored: %+v", res)
 	}
 }
+
+func TestDriftIgnoreDiscoverable(t *testing.T) {
+	m, _ := core.BuiltinMethod("map-existing")
+	found := false
+	for _, s := range nextSteps(m, "") {
+		found = found || strings.Contains(s, "drift_ignore")
+	}
+	if !found {
+		t.Fatal("nextSteps does not mention drift_ignore")
+	}
+	for name, d := range map[string]string{"seed_model": seedModelDescription, "check_model": checkModelDescription} {
+		if !strings.Contains(d, "drift_ignore") {
+			t.Errorf("%s description omits drift_ignore", name)
+		}
+	}
+}

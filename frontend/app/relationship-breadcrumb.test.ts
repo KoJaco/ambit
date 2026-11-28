@@ -1,5 +1,22 @@
-import { describe, expect, it } from "vitest";
-import { isGroupingContainer, returnNodeIdAfterDelete, visibleCrumbs } from "./relationship-breadcrumb";
+import { describe, expect, it, vi } from "vitest";
+import { isGroupingContainer, nodeAncestorChain, returnNodeIdAfterDelete, visibleCrumbs } from "./relationship-breadcrumb";
+
+const nodes: Record<string, Record<string, string | undefined>> = {
+    root: { id: "root", name: "Root", type: "app" },
+    zone: { id: "zone", name: "Zone", type: "container", parent_id: "root" },
+    a: { id: "a", name: "A", type: "service", parent_id: "zone" },
+    b: { id: "b", name: "B", type: "service", parent_id: "zone" },
+    x: { id: "x", name: "X", type: "service", relationship_id: "r2" },
+    p: { id: "p", name: "P", type: "service", parent_id: "x" },
+    q: { id: "q", name: "Q", type: "service", parent_id: "x" },
+    mid: { id: "mid", name: "Mid", type: "service", relationship_id: "r1" },
+};
+vi.mock("./api", () => ({
+    getNode: async (id: string) => nodes[id],
+    getRelationshipLevel: async (id: string) => ({
+        relationship: id === "r2" ? { id: "r2", from: "p", to: "q", label: "", kind: "" } : { id: "r1", from: "a", to: "b", label: "", kind: "" },
+    }),
+}));
 
 describe("returnNodeIdAfterDelete", () => {
     it("prefers drill source node", () => {
@@ -24,16 +41,10 @@ describe("returnNodeIdAfterDelete", () => {
 describe("visibleCrumbs", () => {
     const n = (id: string, type: string) => ({ id, name: id, type });
 
-    it("keeps grouping containers in the chain as non-links", () => {
+    it("makes every ancestor a link, grouping containers included", () => {
         const crumbs = visibleCrumbs([n("zone", "container"), n("web", "app"), n("inner", "Container"), n("leaf", "service")]);
         expect(crumbs.map((c) => c.id)).toEqual(["zone", "web", "inner", "leaf"]);
-        expect(crumbs.map((c) => c.link)).toEqual([false, true, false, true]);
-    });
-
-    it("keeps the viewed node as a link even when it is a container", () => {
-        const crumbs = visibleCrumbs([n("web", "app"), n("zone", "container")]);
-        expect(crumbs.map((c) => c.id)).toEqual(["web", "zone"]);
-        expect(crumbs[1].link).toBe(true);
+        expect(crumbs.every((c) => c.link)).toBe(true);
     });
 
     it("builds node hrefs and handles empty chains", () => {
@@ -44,5 +55,22 @@ describe("visibleCrumbs", () => {
     it("detects containers by type", () => {
         expect(isGroupingContainer({ type: " container " })).toBe(true);
         expect(isGroupingContainer({ type: "service" })).toBe(false);
+    });
+});
+
+describe("nodeAncestorChain", () => {
+    it("links every ancestor, including container groups", async () => {
+        const crumbs = await nodeAncestorChain("a", undefined, true);
+        expect(crumbs.map((c) => [c.id, c.link])).toEqual([["root", true], ["zone", true], ["a", true]]);
+    });
+
+    it("continues above a relationship interior node", async () => {
+        const crumbs = await nodeAncestorChain("mid", undefined, true);
+        expect(crumbs.map((c) => c.id)).toEqual(["root", "zone", "mid"]);
+    });
+
+    it("terminates on a cyclic relationship/ancestor fixture", async () => {
+        const crumbs = await nodeAncestorChain("x", undefined, true);
+        expect(crumbs.map((c) => c.id)).toEqual(["x"]);
     });
 });

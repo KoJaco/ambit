@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func TestParseInitArgs(t *testing.T) {
 		{[]string{"--nope"}, "", "", true},
 	}
 	for _, c := range cases {
-		dir, method, err := parseInitArgs(c.args)
+		dir, method, _, err := parseInitArgs(c.args)
 		if (err != nil) != c.bad || dir != c.dir || method != c.method {
 			t.Errorf("%v: %q %q %v", c.args, dir, method, err)
 		}
@@ -368,5 +369,154 @@ func TestExportSkillRefusesToOverwriteForeignFile(t *testing.T) {
 	// A generated file is overwritten without --force.
 	if code := cmdMethod(dir, []string{"export-skill", "--out", target}, &out, &errw); code != 0 {
 		t.Fatal(errw.String())
+	}
+}
+
+func TestParseInitArgsMCPFlags(t *testing.T) {
+	_, _, m, err := parseInitArgs([]string{"--npx"})
+	if err != nil || m != mcpNpx {
+		t.Fatal(m, err)
+	}
+	_, _, m, err = parseInitArgs([]string{"x", "--no-mcp"})
+	if err != nil || m != mcpSkip {
+		t.Fatal(m, err)
+	}
+}
+
+func readJSON(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatalf("%s: %v", data, err)
+	}
+	return doc
+}
+
+func TestInitWritesMCPConfig(t *testing.T) {
+	dir := initDir(t)
+	servers := readJSON(t, filepath.Join(dir, ".mcp.json"))["mcpServers"].(map[string]any)
+	ambit := servers["ambit"].(map[string]any)
+	if ambit["command"] != "ambit" || len(ambit["args"].([]any)) != 1 || ambit["args"].([]any)[0] != "mcp" {
+		t.Fatalf("%v", ambit)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".cursor", "mcp.json")); err == nil {
+		t.Fatal("cursor config written without .cursor/")
+	}
+}
+
+func TestInitMCPNpxAndSkip(t *testing.T) {
+	dir := initDir(t, "--npx")
+	ambit := readJSON(t, filepath.Join(dir, ".mcp.json"))["mcpServers"].(map[string]any)["ambit"].(map[string]any)
+	if ambit["command"] != "npx" || len(ambit["args"].([]any)) != 3 {
+		t.Fatalf("%v", ambit)
+	}
+	dir = initDir(t, "--no-mcp")
+	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); err == nil {
+		t.Fatal(".mcp.json written despite --no-mcp")
+	}
+}
+
+func TestInitMCPMergesAndNeverOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(dir, ".cursor"), 0o755)
+	other := `{"mcpServers":{"other":{"command":"x"}},"extra":1}`
+	_ = os.WriteFile(filepath.Join(dir, ".mcp.json"), []byte(other), 0o644)
+	custom := `{"mcpServers":{"ambit":{"command":"custom"}}}`
+	_ = os.WriteFile(filepath.Join(dir, ".cursor", "mcp.json"), []byte(custom), 0o644)
+	var out, errw bytes.Buffer
+	if code := cmdInit([]string{dir}, strings.NewReader(""), false, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	doc := readJSON(t, filepath.Join(dir, ".mcp.json"))
+	servers := doc["mcpServers"].(map[string]any)
+	if servers["other"] == nil || servers["ambit"] == nil || doc["extra"] == nil {
+		t.Fatalf("%v", doc)
+	}
+	cur := readJSON(t, filepath.Join(dir, ".cursor", "mcp.json"))["mcpServers"].(map[string]any)["ambit"].(map[string]any)
+	if cur["command"] != "custom" {
+		t.Fatalf("existing ambit entry overwritten: %v", cur)
+	}
+	// Invalid JSON is left alone.
+	bad := t.TempDir()
+	_ = os.WriteFile(filepath.Join(bad, ".mcp.json"), []byte("{nope"), 0o644)
+	if code := cmdInit([]string{bad}, strings.NewReader(""), false, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	if data, _ := os.ReadFile(filepath.Join(bad, ".mcp.json")); string(data) != "{nope" {
+		t.Fatalf("%s", data)
+	}
+}
+
+func TestConfigDriftIgnoreAdd(t *testing.T) {
+	dir := initDir(t, "--no-mcp")
+	var out, errw bytes.Buffer
+	if code := cmdConfig(dir, []string{"drift-ignore", "add", "dist/**"}, &out, &errw); code != 0 {
+		t.Fatal(errw.String())
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, ".arch", "config.json"))
+	if !strings.Contains(string(data), "dist/**") {
+		t.Fatalf("%s", data)
+	}
+	if code := cmdConfig(dir, []string{"drift-ignore", "add"}, &out, &errw); code != 1 {
+		t.Fatal("usage error expected")
+	}
+}
+
+func TestParseInitArgsRejectsNpxWithNoMCP(t *testing.T) {
+	for _, args := range [][]string{{"--npx", "--no-mcp"}, {"--no-mcp", "--npx"}} {
+		if _, _, _, err := parseInitArgs(args); err == nil {
+			t.Fatalf("%v accepted", args)
+		}
+	}
+}
+
+func TestMergeMCPConfigPreservesNumbersAndHTML(t *testing.T) {
+	in := `{"big":12345678901234567890,"note":"a<b>&c","mcpServers":{}}`
+	out, changed, err := mergeMCPConfig([]byte(in), false)
+	if err != nil || !changed {
+		t.Fatal(changed, err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "12345678901234567890") || !strings.Contains(s, "a<b>&c") || strings.Contains(s, "\\u003c") {
+		t.Fatalf("%s", s)
+	}
+}
+
+func TestWriteMCPConfigsAtomicKeepsMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".mcp.json")
+	if err := os.WriteFile(path, []byte(`{"extra":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeMCPConfigs(dir, false)
+	st, err := os.Stat(path)
+	if err != nil || st.Mode().Perm() != 0o600 {
+		t.Fatal(st.Mode(), err)
+	}
+	entries, _ := os.ReadDir(dir)
+	if len(entries) != 1 {
+		t.Fatalf("temp file left behind: %v", entries)
+	}
+	if readJSON(t, path)["mcpServers"] == nil {
+		t.Fatal("not merged")
+	}
+}
+
+func TestConfigDriftIgnoreAddRefusesNonArray(t *testing.T) {
+	dir := initDir(t, "--no-mcp")
+	cfg := filepath.Join(dir, ".arch", "config.json")
+	if err := os.WriteFile(cfg, []byte(`{"drift_ignore":"dist/**"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errw bytes.Buffer
+	if code := cmdConfig(dir, []string{"drift-ignore", "add", "x/**"}, &out, &errw); code == 0 {
+		t.Fatal("expected failure")
+	}
+	if data, _ := os.ReadFile(cfg); string(data) != `{"drift_ignore":"dist/**"}` {
+		t.Fatalf("config rewritten: %s", data)
 	}
 }

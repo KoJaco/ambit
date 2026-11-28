@@ -1,9 +1,12 @@
 import clsx from "clsx";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
+import { usePanelPresence } from "../hooks/use-panel-presence";
+import { railStackLayout, useRailState, type RightRailFront } from "../right-rail-state";
+import { panelExitClass } from "./right-rail-panel";
 // Below 1280px the centred control bar would sit under a full-height rail, so the rail stops above it.
 const railClass = "pointer-events-none absolute top-0 right-0 z-50 h-full w-[min(440px,92vw)] max-[1279px]:h-[calc(100%-5rem)]";
 
-export type RightRailFront = "inspector" | "review";
+export type { RightRailFront };
 
 export function RightRailStack({
     front,
@@ -18,59 +21,57 @@ export function RightRailStack({
     inspector: ReactNode | null;
     review: ReactNode | null;
 }) {
-    const hasInspector = inspector != null;
-    const hasReview = review != null;
-    if (!hasInspector && !hasReview) return null;
+    // Keep the last inspector around while it slides out after being closed.
+    const lastInspector = useRef<ReactNode>(null);
+    if (inspector != null) lastInspector.current = inspector;
+    const presence = usePanelPresence(inspector != null);
+    const inspectorContent = inspector ?? (presence.mounted ? lastInspector.current : null);
+    useEffect(() => {
+        if (!presence.mounted) lastInspector.current = null;
+    }, [presence.mounted]);
 
-    const stacked = hasInspector && hasReview;
-    const inspectorFront = !stacked || front === "inspector";
-    const reviewFront = !stacked || front === "review";
+    // Review is always mounted (it keeps proposals loading) but is only a sheet while it renders one.
+    const reviewMounted = useRailState().review > 0;
+    const { stacked, inspectorFront, reviewFront } = railStackLayout({
+        hasInspector: inspectorContent != null,
+        reviewMounted,
+        front,
+    });
 
     // Sheets are flush to the right edge. When two are open the back one peeks out on the left,
-    // inset top and bottom, and a press on it brings it forward.
+    // inset top and bottom, and a press on it brings it forward. Both wrappers stay mounted in a
+    // fixed order, so promoting a sheet or a sheet appearing never remounts the other (and its state).
     function cardClass(isFront: boolean) {
         return clsx(
-            "absolute right-0 w-full transition-transform motion-reduce:transition-none",
+            "absolute right-0 w-full transition-transform empty:hidden motion-reduce:transition-none",
             isFront ? "top-0 z-20 h-full" : "inset-y-4 z-10 h-auto -translate-x-3",
         );
     }
 
-    function wrapBack(content: ReactNode, onPromote: () => void) {
-        return (
-            <div
-                className={clsx(cardClass(false), "pointer-events-auto cursor-pointer")}
-                onPointerDown={() => onPromote()}
-                role="presentation"
-            >
-                {content}
-            </div>
-        );
-    }
-
-    function wrapFront(content: ReactNode) {
-        return <div className={clsx(cardClass(true), "pointer-events-auto")}>{content}</div>;
-    }
-
-    if (!stacked) {
-        const single = hasInspector ? inspector : review;
-        const onFocus = hasInspector ? onFocusInspector : onFocusReview;
-        return (
-            <div className={railClass}>
-                <div className="relative h-full w-full">
-                    <div className="absolute top-0 right-0 z-10 h-full w-full">{single}</div>
-                </div>
-            </div>
-        );
-    }
-
-    const back = inspectorFront ? review : inspector;
-    const frontPanel = inspectorFront ? inspector : review;
-    const onPromoteBack = inspectorFront ? onFocusReview : onFocusInspector;
     return (
         <div className={railClass}>
             <div className="relative h-full w-full">
-                {wrapBack(back, onPromoteBack)}
-                {wrapFront(frontPanel)}
+                <div
+                    className={clsx(
+                        cardClass(inspectorFront),
+                        stacked && "pointer-events-auto",
+                        stacked && !inspectorFront && "cursor-pointer",
+                        presence.exiting && clsx(panelExitClass, "pointer-events-none"),
+                    )}
+                    aria-hidden={presence.exiting || undefined}
+                    inert={presence.exiting || undefined}
+                    onPointerDown={stacked && !inspectorFront ? onFocusInspector : undefined}
+                    role={stacked && !inspectorFront ? "presentation" : undefined}
+                >
+                    {inspectorContent}
+                </div>
+                <div
+                    className={clsx(cardClass(reviewFront), stacked && "pointer-events-auto", stacked && !reviewFront && "cursor-pointer")}
+                    onPointerDown={stacked && !reviewFront ? onFocusReview : undefined}
+                    role={stacked && !reviewFront ? "presentation" : undefined}
+                >
+                    {review}
+                </div>
             </div>
         </div>
     );

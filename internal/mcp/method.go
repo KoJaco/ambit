@@ -100,7 +100,7 @@ func nextSteps(m *core.Method, stage string) []string {
 		steps = append(steps, "check_model is available on demand; this method enforces nothing.")
 	}
 	if m.Check.IncludeDrift {
-		steps = append(steps, "check_model includes check_drift output by default for this method; use it to find unowned files and overlapping globs. Drift reads files git can see (tracked, plus untracked and not gitignored); pass node_id to limit it to one node and worktree to read a git worktree.")
+		steps = append(steps, "check_model includes check_drift output by default for this method; use it to find unowned files and overlapping globs. Drift reads files git can see (tracked, plus untracked and not gitignored); pass node_id to limit it to one node and worktree to read a git worktree. Files no node should own (generated, lockfiles, tooling) are excluded with globs in the drift_ignore array of .arch/config.json (or `ambit config drift-ignore add <glob>`).")
 	}
 	if len(m.Stages) > 0 {
 		steps = append(steps, "The stage is set by a human only; no tool changes it.")
@@ -124,7 +124,7 @@ func (e *toolEnv) handleCheckModel(_ context.Context, _ *sdkmcp.CallToolRequest,
 
 const getStartedDescription = "Start here. Returns the active workflow method ({id, name}), the project stage ({id, name} or null), the method guidance, the method's stages and short next_steps for this method and stage. Read-only: the method and stage are chosen by a human and no tool changes them."
 
-const checkModelDescription = "Lint the model against the active method's rules. Returns {ok, method, stage, findings[], counts, drift?}. Findings carry rule, severity (advisory|enforced), node_id or relationship_id and a message; ok is false only when an enforced finding exists. Optional include_drift (default: the method's setting) adds check_drift output; all_rules runs every rule as advisory. Read-only."
+const checkModelDescription = "Lint the model against the active method's rules. Returns {ok, method, stage, findings[], counts, drift?}. Findings carry rule, severity (advisory|enforced), node_id or relationship_id and a message; ok is false only when an enforced finding exists. Optional include_drift (default: the method's setting) adds check_drift output (with a hint to use drift_ignore when many files are unowned); all_rules runs every rule as advisory. Read-only."
 
 // completionStep states, from the method's completion policy, how an agent finishes.
 func completionStep(m *core.Method) string {

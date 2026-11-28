@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
-import { floatingToggleMode, isEditableElement, reviewEscapeAction, shouldAutoOpenReview } from "./right-rail-state";
+import {
+    floatingToggleMode,
+    frontAfterReviewChange,
+    isEditableElement,
+    nextPanelPresence,
+    paneClickCloses,
+    panelExitMs,
+    railStackLayout,
+    reviewEscapeAction,
+    shouldAutoOpenReview,
+} from "./right-rail-state";
 
 describe("floatingToggleMode", () => {
     it("hides, shifts or leaves the floating toggle", () => {
-        expect(floatingToggleMode({ panels: 0, toggles: 0 })).toBe("normal");
-        expect(floatingToggleMode({ panels: 1, toggles: 0 })).toBe("shifted");
-        expect(floatingToggleMode({ panels: 2, toggles: 1 })).toBe("hidden");
+        expect(floatingToggleMode({ panels: 0, toggles: 0, review: 0 })).toBe("normal");
+        expect(floatingToggleMode({ panels: 1, toggles: 0, review: 0 })).toBe("shifted");
+        expect(floatingToggleMode({ panels: 2, toggles: 1, review: 1 })).toBe("hidden");
     });
 });
 
@@ -41,5 +51,53 @@ describe("reviewEscapeAction", () => {
         expect(reviewEscapeAction({ detailOpen: true, editingFocus: false })).toBe("back");
         expect(reviewEscapeAction({ detailOpen: false, editingFocus: false })).toBe("close");
         expect(reviewEscapeAction({ detailOpen: true, editingFocus: true })).toBe("none");
+    });
+});
+
+describe("railStackLayout", () => {
+    it("does not stack the inspector behind a Review that renders nothing", () => {
+        const l = railStackLayout({ hasInspector: true, reviewMounted: false, front: "review" });
+        expect(l).toEqual({ stacked: false, inspectorFront: true, reviewFront: true });
+    });
+    it("stacks only when both sheets exist and honours the front choice", () => {
+        expect(railStackLayout({ hasInspector: true, reviewMounted: true, front: "review" })).toEqual({
+            stacked: true,
+            inspectorFront: false,
+            reviewFront: true,
+        });
+        expect(railStackLayout({ hasInspector: false, reviewMounted: true, front: "inspector" }).stacked).toBe(false);
+    });
+});
+
+describe("frontAfterReviewChange", () => {
+    it("falls back to the inspector when Review unmounts", () => {
+        expect(frontAfterReviewChange("review", false)).toBe("inspector");
+        expect(frontAfterReviewChange("review", true)).toBe("review");
+    });
+});
+
+describe("panelExitMs", () => {
+    it("skips the exit animation for reduced motion", () => {
+        expect(panelExitMs(true)).toBe(0);
+        expect(panelExitMs(false)).toBeGreaterThan(0);
+    });
+});
+
+describe("paneClickCloses", () => {
+    it("keeps an inspector with unsaved edits open", () => {
+        expect(paneClickCloses(true).inspector).toBe(false);
+        expect(paneClickCloses(false).inspector).toBe(true);
+    });
+});
+
+describe("nextPanelPresence", () => {
+    it("lingers on the render where show turns false", () => {
+        expect(nextPanelPresence({ show: true, lingering: false }, false, false)).toEqual({ show: false, lingering: true });
+    });
+    it("unmounts at once with reduced motion", () => {
+        expect(nextPanelPresence({ show: true, lingering: false }, false, true)).toEqual({ show: false, lingering: false });
+    });
+    it("stops lingering when shown again", () => {
+        expect(nextPanelPresence({ show: false, lingering: true }, true, false)).toEqual({ show: true, lingering: false });
     });
 });

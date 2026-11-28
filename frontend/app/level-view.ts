@@ -31,7 +31,9 @@ export function sanitizeViewModes(value: unknown): ViewModes {
     return out;
 }
 
-export type GroupSize = { width: number; height: number };
+// `sig` is the container's member signature when the size was set (see memberSignature); a stored
+// size whose signature no longer matches belongs to a different set of members and is ignored.
+export type GroupSize = { width: number; height: number; sig?: string };
 export type GroupSizes = Record<string, GroupSize>;
 
 // Largest container tint level (--group, --group-2). Deeper groups reuse the last one.
@@ -52,8 +54,29 @@ export function sanitizeGroupSizes(value: unknown): GroupSizes {
             width > 0 &&
             height > 0
         ) {
-            out[id] = { width: Math.round(width), height: Math.round(height) };
+            const sig = (size as Record<string, unknown>).sig;
+            out[id] = { width: Math.round(width), height: Math.round(height), ...(typeof sig === "string" ? { sig } : {}) };
         }
+    }
+    return out;
+}
+
+// Direct members of a container, as a stable string. A resize only applies while this is unchanged.
+export function memberSignature(id: string, nodes: { id: string; parentId?: string }[]): string {
+    return nodes
+        .filter((node) => node.parentId === id)
+        .map((node) => node.id)
+        .sort()
+        .join("\0");
+}
+
+// Stored resizes that still fit the current membership. Entries saved before signatures existed
+// carry none and are kept (nothing says they are stale).
+export function usableGroupSizes(stored: GroupSizes, nodes: { id: string; parentId?: string }[]): Record<string, { width: number; height: number }> {
+    const out: Record<string, { width: number; height: number }> = {};
+    for (const [id, size] of Object.entries(stored)) {
+        if (size.sig !== undefined && size.sig !== memberSignature(id, nodes)) continue;
+        out[id] = { width: size.width, height: size.height };
     }
     return out;
 }
@@ -232,4 +255,10 @@ export function summaryText(childCount: number, typeMix?: { type: string; count:
     const shown = mix.slice(0, 3).map((entry) => `${entry.count} ${entry.type}`);
     const rest = mix.length - shown.length;
     return `${childCount} · ${shown.join(", ")}${rest > 0 ? ` +${rest}` : ""}`;
+}
+
+// Whether on-screen container sizes stay as a floor for a relayout. Only a pure group toggle keeps
+// them; when membership changed too (a node moved between groups), groups must be free to shrink.
+export function keepsSizeFloor(toggled: boolean, lastSig: string | undefined, currentSig: string): boolean {
+    return toggled && (lastSig === undefined || lastSig === currentSig);
 }

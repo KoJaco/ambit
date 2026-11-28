@@ -194,7 +194,9 @@ const seedGap = 40;
 
 // Positions for a level that changed only because groups opened or closed. Nodes already on screen
 // under the same parent keep their position (top-level absolute, members relative, as React Flow
-// holds them), so nothing the architect arranged moves. Only newly revealed nodes are placed: from
+// holds them), so nothing the architect arranged moves. A container that is new but whose members
+// were on screen is placed around them (and they keep their screen spot), so grouping does not
+// shuffle the canvas. Other new or moved nodes are placed: from
 // `hints` (e.g. a saved layout) when every new sibling has one, else in a grid inside their group
 // (or to the right of the existing top-level nodes). A collapsed group is itself a kept node, so it
 // keeps its slot.
@@ -213,9 +215,77 @@ export function seedPositions(
         const parent = parentOf(node);
         children.set(parent, [...(children.get(parent) ?? []), node]);
         const old = before.get(node.id);
-        if (old && (old.parentId && known.has(old.parentId) ? old.parentId : "") === parent) {
+        // A node whose old parent vanished is not "kept": its stored position is relative to it.
+        if (old && (old.parentId ? (known.has(old.parentId) ? old.parentId : null) : "") === parent) {
             positions[node.id] = { ...old.position };
         }
+    }
+    // Where nodes were on screen in absolute terms (members are stored relative to their parent).
+    const oldAbs = new Map<string, Point>();
+    const oldAbsOf = (id: string, seen = new Set<string>()): Point | undefined => {
+        if (oldAbs.has(id)) return oldAbs.get(id);
+        const item = before.get(id);
+        if (!item || seen.has(id)) return undefined;
+        seen.add(id);
+        let at = { ...item.position };
+        if (item.parentId && before.has(item.parentId)) {
+            const base = oldAbsOf(item.parentId, seen);
+            if (!base) return undefined;
+            at = { x: at.x + base.x, y: at.y + base.y };
+        }
+        oldAbs.set(id, at);
+        return at;
+    };
+    const absAt = (id: string): Point | undefined => {
+        let x = 0;
+        let y = 0;
+        const seen = new Set<string>();
+        for (let at: string = id; at; ) {
+            const point = positions[at];
+            if (!point || seen.has(at)) return undefined;
+            seen.add(at);
+            x += point.x;
+            y += point.y;
+            at = parentOf(nodes.find((node) => node.id === at)!);
+        }
+        return { x, y };
+    };
+    const depth = (node: CompoundNode): number => {
+        let d = 0;
+        for (let at = parentOf(node); at && d <= nodes.length; d += 1) {
+            at = parentOf(nodes.find((n) => n.id === at)!);
+        }
+        return d;
+    };
+    // Top-down so a new container is placed before the members that sit inside it.
+    for (const node of [...nodes].sort((a, b) => depth(a) - depth(b))) {
+        if (positions[node.id]) continue;
+        const parent = parentOf(node);
+        // Only members of a brand-new container keep their screen spot (grouping). A node moved into
+        // or out of an existing group is placed fresh: its old spot is inside the old group's box.
+        // Also when its old parent is gone (ungroup that deletes the container): its stored position
+        // is relative to that parent, so use where it was on screen.
+        const old = before.get(node.id);
+        const orphaned = !!old?.parentId && !known.has(old.parentId);
+        let anchor = (parent && !before.has(parent)) || orphaned ? oldAbsOf(node.id) : undefined;
+        if (!anchor && before.has(node.id)) continue;
+        if (!anchor) {
+            const kidAnchors = (children.get(node.id) ?? []).map((kid) => oldAbsOf(kid.id)).filter((p): p is Point => !!p);
+            if (kidAnchors.length === 0) continue;
+            anchor = {
+                x: Math.min(...kidAnchors.map((p) => p.x)) - containerPadding.left,
+                y: Math.min(...kidAnchors.map((p) => p.y)) - containerPadding.top,
+            };
+        }
+        const base = parent ? absAt(parent) : { x: 0, y: 0 };
+        if (!base) continue;
+        let x = anchor.x - base.x;
+        let y = anchor.y - base.y;
+        if (parent) {
+            x = Math.max(x, containerPadding.left);
+            y = Math.max(y, containerPadding.top);
+        }
+        positions[node.id] = { x, y };
     }
     const done = new Set(Object.keys(positions));
     const sizeOf = (id: string): NodeSize => {
@@ -291,11 +361,17 @@ export function pushOverlaps(
         const parent = node.parentId && known.has(node.parentId) ? node.parentId : "";
         byParent.set(parent, [...(byParent.get(parent) ?? []), node.id]);
     }
+    // A container with no old size is new: it grows from nothing at its spot, pushing non-member
+    // siblings that sit between its members.
+    const hasMembers = new Set<string>();
+    for (const node of nodes) if (node.parentId && known.has(node.parentId)) hasMembers.add(node.parentId);
     const eps = 0.5;
     const sizeOf = (id: string) => newSizes[id] ?? { width: nodeWidth, height: nodeHeight };
     for (const siblings of byParent.values()) {
+        const oldOf = (id: string): NodeSize | undefined =>
+            oldSizes[id] ?? (hasMembers.has(id) ? { width: 0, height: 0 } : undefined);
         const growers = siblings.filter((id) => {
-            const old = oldSizes[id];
+            const old = oldOf(id);
             const now = newSizes[id];
             return !!old && !!now && !!out[id] && (now.width > old.width + eps || now.height > old.height + eps);
         });
@@ -328,7 +404,7 @@ export function pushOverlaps(
             }
         };
         for (const id of growers) {
-            const old = oldSizes[id];
+            const old = oldOf(id)!;
             push({ x: out[id].x, y: out[id].y, ...old }, id, siblings.length);
         }
     }

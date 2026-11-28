@@ -20,6 +20,7 @@ different package, so never run `npx ambit`.
     cd your-app
     ambit init            # scaffolds .arch/ (does not install a git hook); asks for a workflow method on a terminal
     ambit init --method design-first   # or pick one without the prompt
+                          # init also writes .mcp.json (and .cursor/mcp.json if .cursor/ exists); --npx uses `npx -y @kojaco/ambit mcp`, --no-mcp skips it
     ambit start           # serves UI + API on 127.0.0.1:8080
 
 Open http://127.0.0.1:8080. `ambit start` reads `.arch/` from the current directory and

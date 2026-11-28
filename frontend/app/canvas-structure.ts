@@ -1,5 +1,6 @@
 // Pure helpers for canvas structure edits (group, ungroup, reparent). Edits are proposals, so
 // nothing here changes the model; it only decides what to ask the server to stage.
+import { isStackedCard } from "./canvas-presentation";
 
 export type Rect = { id: string; x: number; y: number; width: number; height: number };
 
@@ -22,6 +23,16 @@ export function pointInRect(point: { x: number; y: number }, rect: Rect): boolea
         point.y >= rect.y &&
         point.y <= rect.y + rect.height
     );
+}
+
+// Whether a dragged node can be dropped into this canvas node: an open group, or a collapsed
+// summary card (a group shown as a stacked card).
+export function acceptsDrop(node: {
+    type?: string;
+    data?: { renderer?: string; child_count?: number; expanded?: boolean };
+}): boolean {
+    if (node.type === "container") return true;
+    return isStackedCard(node.data?.renderer, node.data?.child_count, node.data?.expanded);
 }
 
 // The innermost (smallest) rect under the point, ignoring excluded ids. Null when none.

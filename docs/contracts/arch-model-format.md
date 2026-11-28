@@ -81,6 +81,11 @@ data or control moves** at that drill-down level.
 - Prefer **one directed edge per channel** (e.g. harness → agent interface for stdio MCP;
   browser → local HTTP API). Return paths and file-based convergence do not require symmetric
   “out” nodes unless you need a separate channel on the diagram.
+- Represent **inbound and outbound relationships from outside a container** (users, other
+  systems, upstream/downstream services) as `type: external` start/end nodes next to it,
+  with one labelled edge per channel, rather than wiring unrelated internals together.
+- A container the canvas shows as a **summary** card is a placeholder. Flesh it out into
+  child nodes (each with its own implementation globs and spec) before building from it.
 
 ### Common patterns
 
