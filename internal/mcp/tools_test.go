@@ -282,6 +282,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"get_graph": true, "list_proposals": true, "list_icons": true, "check_drift": true,
 		"set_constraints": true, "get_build_order": true, "get_started": true, "check_model": true,
 		"get_proposal": true, "wait_for_proposal": true, "check_done": true,
+		"rename_node": true, "withdraw_proposal": true,
 	}
 	for _, tool := range res.Tools {
 		delete(want, tool.Name)
@@ -289,8 +290,8 @@ func TestMCPServerListsTools(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing tools %v (got %d)", want, len(res.Tools))
 	}
-	if len(res.Tools) != 20 {
-		t.Fatalf("got %d tools, want 20", len(res.Tools))
+	if len(res.Tools) != 22 {
+		t.Fatalf("got %d tools, want 22", len(res.Tools))
 	}
 }
 
@@ -424,8 +425,12 @@ func TestCheckDriftTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(r.Unowned, ",") != "main.go" || len(r.Unmatched) != 1 || r.Ignored != 1 {
+	if strings.Join(r.Unowned, ",") != "main.go" || r.UnmatchedCount != 1 || len(r.Unmatched) != 0 || r.Ignored != 1 {
 		t.Fatalf("report %+v", r)
+	}
+	_, verbose, err := env.handleCheckDrift(context.Background(), nil, checkDriftIn{VerboseGlobs: true})
+	if err != nil || verbose.UnmatchedCount != 1 || len(verbose.Unmatched) != 1 {
+		t.Fatalf("verbose report %+v %v", verbose, err)
 	}
 	_, one, err := env.handleCheckDrift(context.Background(), nil, checkDriftIn{NodeID: "nope-node"})
 	if err == nil {
@@ -709,12 +714,12 @@ func TestProposalToolsReportAndWait(t *testing.T) {
 		t.Fatalf("pending: %+v %v", st, err)
 	}
 	_, w, err := env.handleWaitForProposal(ctx, nil, waitForProposalIn{ProposalID: staged.ProposalID, TimeoutS: 1})
-	if err != nil || !w.TimedOut || w.Status != core.ProposalPending {
+	if err != nil || !w.TimedOut || w.Status != core.ProposalPending || w.State != "pending" || w.Hint != "still pending, call again" {
 		t.Fatalf("wait while pending: %+v %v", w, err)
 	}
 	acceptOnly(t, idx)
 	_, w, err = env.handleWaitForProposal(ctx, nil, waitForProposalIn{ProposalID: staged.ProposalID, TimeoutS: 1})
-	if err != nil || w.TimedOut || w.Status != core.ProposalAccepted {
+	if err != nil || w.TimedOut || w.Status != core.ProposalAccepted || w.State != core.ProposalAccepted || w.Hint != "" {
 		t.Fatalf("wait after accept: %+v %v", w, err)
 	}
 	if _, _, err := env.handleGetProposal(ctx, nil, getProposalIn{ProposalID: "p-20200101-0000-abcd"}); err == nil {

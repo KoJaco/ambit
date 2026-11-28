@@ -213,9 +213,15 @@ type waitForProposalIn struct {
 
 type waitForProposalOut struct {
 	core.ProposalStateInfo
+	// State repeats Status ("pending" when the wait timed out).
+	State string `json:"state"`
 	// TimedOut is true when the proposal was still pending after the wait.
 	TimedOut bool `json:"timed_out"`
+	// Hint is set when TimedOut: the call did not fail, the architect has not decided yet.
+	Hint string `json:"hint,omitempty"`
 }
+
+const waitPendingHint = "still pending, call again"
 
 func (e *toolEnv) handleWaitForProposal(ctx context.Context, _ *sdkmcp.CallToolRequest, in waitForProposalIn) (*sdkmcp.CallToolResult, waitForProposalOut, error) {
 	secs := in.TimeoutS
@@ -229,7 +235,28 @@ func (e *toolEnv) handleWaitForProposal(ctx context.Context, _ *sdkmcp.CallToolR
 	if err != nil {
 		return nil, waitForProposalOut{}, err
 	}
-	return nil, waitForProposalOut{ProposalStateInfo: st, TimedOut: timedOut}, nil
+	out := waitForProposalOut{ProposalStateInfo: st, State: st.Status, TimedOut: timedOut}
+	if timedOut {
+		out.State = core.ProposalPending
+		out.Hint = waitPendingHint
+	}
+	return nil, out, nil
+}
+
+type withdrawProposalIn struct {
+	ProposalID string `json:"proposal_id" jsonschema:"id of a pending proposal you staged in this session"`
+}
+
+type withdrawProposalOut struct {
+	ProposalID string `json:"proposal_id"`
+	Status     string `json:"status"`
+}
+
+func (e *toolEnv) handleWithdrawProposal(_ context.Context, _ *sdkmcp.CallToolRequest, in withdrawProposalIn) (*sdkmcp.CallToolResult, withdrawProposalOut, error) {
+	if err := e.idx.WithdrawProposal(in.ProposalID, e.originID()); err != nil {
+		return nil, withdrawProposalOut{}, err
+	}
+	return nil, withdrawProposalOut{ProposalID: in.ProposalID, Status: core.ProposalWithdrawn}, nil
 }
 
 type listIconsIn struct{}
@@ -243,16 +270,37 @@ func (e *toolEnv) handleListIcons(_ context.Context, _ *sdkmcp.CallToolRequest, 
 }
 
 type checkDriftIn struct {
-	NodeID   string `json:"node_id,omitempty" jsonschema:"limit the report to this node's globs and overlaps; omit for the whole model"`
-	Worktree string `json:"worktree,omitempty" jsonschema:"path of a git worktree of this repository to read files from, so an agent can verify its own work before merging"`
+	VerboseGlobs bool   `json:"verbose_globs,omitempty" jsonschema:"list every unmatched glob instead of only unmatched_globs_count"`
+	NodeID       string `json:"node_id,omitempty" jsonschema:"limit the report to this node's globs and overlaps; omit for the whole model"`
+	Worktree     string `json:"worktree,omitempty" jsonschema:"path of a git worktree of this repository to read files from, so an agent can verify its own work before merging"`
 }
 
-func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest, in checkDriftIn) (*sdkmcp.CallToolResult, core.DriftReport, error) {
+// driftOut is core.DriftReport as the MCP tools return it: the unmatched globs are a count
+// unless the caller asks for them (a design-stage model has no files yet, so the list is
+// usually long and uninformative).
+type driftOut struct {
+	Unowned        []string             `json:"unowned_files"`
+	Unmatched      []core.UnmatchedGlob `json:"unmatched_globs,omitempty"`
+	UnmatchedCount int                  `json:"unmatched_globs_count"`
+	Overlaps       []core.Overlap       `json:"overlaps"`
+	Ignored        int                  `json:"ignored_files"`
+	Hint           string               `json:"hint,omitempty"`
+}
+
+func driftView(r core.DriftReport, verbose bool) driftOut {
+	out := driftOut{Unowned: r.Unowned, UnmatchedCount: len(r.Unmatched), Overlaps: r.Overlaps, Ignored: r.Ignored, Hint: r.Hint}
+	if verbose {
+		out.Unmatched = r.Unmatched
+	}
+	return out
+}
+
+func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest, in checkDriftIn) (*sdkmcp.CallToolResult, driftOut, error) {
 	report, err := core.DriftWith(e.idx, core.DriftOptions{Root: e.dir, FilesDir: in.Worktree, NodeID: core.NodeID(in.NodeID)})
 	if err != nil {
-		return nil, core.DriftReport{}, err
+		return nil, driftOut{}, err
 	}
-	return nil, report, nil
+	return nil, driftView(report, in.VerboseGlobs), nil
 }
 
 type getBuildOrderIn struct {

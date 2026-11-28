@@ -28,7 +28,7 @@ export type ReviewRow = {
     groupKey: string;
 };
 
-export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Remove connection" | "Rules" | "Other";
+export type RowVerb = "Create" | "Update" | "Delete" | "Connect" | "Remove connection" | "Rules" | "Rename" | "Other";
 
 const missingNode = "node is missing";
 const noDependents = "node now has dependents";
@@ -80,6 +80,7 @@ function summarize(op: OpDiff, names?: ReadonlyMap<string, string>): string {
         return `${name(op.relationship.from)} → ${name(op.relationship.to)}`;
     }
     if (op.op === "set_constraints") return "Project rules";
+    if (op.op === "rename_node") return `Rename ${name(op.node_id)} → ${op.new_id ?? ""}`;
     return `${op.op} ${name(op.node_id)}`;
 }
 
@@ -207,6 +208,8 @@ function verbOf(op: OpDiff): RowVerb {
             return "Remove connection";
         case "set_constraints":
             return "Rules";
+        case "rename_node":
+            return "Rename";
         default:
             return "Other";
     }
@@ -240,6 +243,7 @@ function changeOf(op: OpDiff, names: Map<string, string>): string {
     }
     if (op.op === "set_constraints") return constraintsChangeText(op.current_constraints, op.proposed_constraints);
     if (op.op === "delete_node") return "Removes the node";
+    if (op.op === "rename_node") return `Id ${op.node_id} → ${op.new_id ?? ""}`;
     if (op.op === "delete_relationship") return removeConnectionChange(op);
     if (op.op === "set_relationship" && op.relationship) {
         return edgeSummary(op);

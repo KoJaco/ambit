@@ -111,20 +111,33 @@ func nextSteps(m *core.Method, stage string) []string {
 type checkModelIn struct {
 	IncludeDrift *bool `json:"include_drift,omitempty"`
 	AllRules     bool  `json:"all_rules,omitempty"`
+	VerboseGlobs bool  `json:"verbose_globs,omitempty" jsonschema:"list every unmatched glob in drift instead of only unmatched_globs_count"`
 }
 
-func (e *toolEnv) handleCheckModel(_ context.Context, _ *sdkmcp.CallToolRequest, in checkModelIn) (*sdkmcp.CallToolResult, core.LintResult, error) {
+// checkModelOut is core.LintResult with drift in the MCP shape (see driftOut).
+type checkModelOut struct {
+	core.LintResult
+	Drift *driftOut `json:"drift,omitempty"`
+}
+
+func (e *toolEnv) handleCheckModel(_ context.Context, _ *sdkmcp.CallToolRequest, in checkModelIn) (*sdkmcp.CallToolResult, checkModelOut, error) {
 	opts := core.CheckModelOptions{AllRules: in.AllRules, IncludeDrift: in.IncludeDrift}
 	res, err := core.CheckModel(e.idx, opts)
 	if err != nil {
-		return nil, core.LintResult{}, err
+		return nil, checkModelOut{}, err
 	}
-	return nil, res, nil
+	out := checkModelOut{LintResult: res}
+	out.LintResult.Drift = nil
+	if res.Drift != nil {
+		v := driftView(*res.Drift, in.VerboseGlobs)
+		out.Drift = &v
+	}
+	return nil, out, nil
 }
 
 const getStartedDescription = "Start here. Returns the active workflow method ({id, name}), the project stage ({id, name} or null), the method guidance, the method's stages and short next_steps for this method and stage. Read-only: the method and stage are chosen by a human and no tool changes them."
 
-const checkModelDescription = "Lint the model against the active method's rules. Returns {ok, method, stage, findings[], counts, drift?}. Findings carry rule, severity (advisory|enforced), node_id or relationship_id and a message; ok is false only when an enforced finding exists. Optional include_drift (default: the method's setting) adds check_drift output (with a hint to use drift_ignore when many files are unowned); all_rules runs every rule as advisory. Read-only."
+const checkModelDescription = "Lint the model against the active method's rules. Returns {ok, method, stage, findings[], counts, drift?}. Findings carry rule, severity (advisory|enforced), node_id or relationship_id and a message; ok is false only when an enforced finding exists. Optional include_drift (default: the method's setting) adds check_drift output (with a hint to use drift_ignore when many files are unowned); all_rules runs every rule as advisory. Drift lists unmatched_globs_count only; pass verbose_globs: true for the globs themselves. Read-only."
 
 // completionStep states, from the method's completion policy, how an agent finishes.
 func completionStep(m *core.Method) string {

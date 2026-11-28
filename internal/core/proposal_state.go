@@ -35,13 +35,27 @@ type OpState struct {
 
 // ProposalStateInfo answers "what happened to proposal X": still pending, or how it ended.
 type ProposalStateInfo struct {
-	ID         string    `json:"proposal_id"`
-	Status     string    `json:"status"`
-	Source     string    `json:"source,omitempty"`
-	Summary    string    `json:"summary,omitempty"`
-	CreatedAt  string    `json:"created_at,omitempty"`
-	ResolvedAt string    `json:"resolved_at,omitempty"`
-	Operations []OpState `json:"operations"`
+	ID         string `json:"proposal_id"`
+	Status     string `json:"status"`
+	Source     string `json:"source,omitempty"`
+	Summary    string `json:"summary,omitempty"`
+	ChangeSet  string `json:"change_set,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	ResolvedAt string `json:"resolved_at,omitempty"`
+	// AcceptedOps counts operations that were applied; it survives withdrawal or
+	// supersession of a partially accepted proposal.
+	AcceptedOps int       `json:"accepted_ops,omitempty"`
+	Operations  []OpState `json:"operations"`
+}
+
+func countAccepted(ops []operation) int {
+	n := 0
+	for _, op := range ops {
+		if op.Status == opStatusAccepted {
+			n++
+		}
+	}
+	return n
 }
 
 type resolvedMeta struct {
@@ -176,8 +190,8 @@ func (idx *Index) proposalStateLocked(id string) (ProposalStateInfo, error) {
 		m, err := idx.loadReadable(id)
 		if err == nil {
 			return ProposalStateInfo{
-				ID: m.ProposalID, Status: ProposalPending, Source: m.Source, Summary: m.Summary,
-				CreatedAt: m.CreatedAt, Operations: opStates(idx, m.Operations, true),
+				ID: m.ProposalID, Status: ProposalPending, Source: m.Source, Summary: m.Summary, ChangeSet: m.ChangeSet,
+				CreatedAt: m.CreatedAt, AcceptedOps: countAccepted(m.Operations), Operations: opStates(idx, m.Operations, true),
 			}, nil
 		}
 		// Another process may be finishing this proposal right now: its directory is
@@ -202,8 +216,8 @@ func (idx *Index) resolvedStateLocked(id string) (ProposalStateInfo, error) {
 		return ProposalStateInfo{}, err
 	}
 	info := ProposalStateInfo{
-		ID: m.ProposalID, Status: outcomeOf(m.Operations), Source: m.Source, Summary: m.Summary,
-		CreatedAt: m.CreatedAt, Operations: opStates(idx, m.Operations, false),
+		ID: m.ProposalID, Status: outcomeOf(m.Operations), Source: m.Source, Summary: m.Summary, ChangeSet: m.ChangeSet,
+		CreatedAt: m.CreatedAt, AcceptedOps: countAccepted(m.Operations), Operations: opStates(idx, m.Operations, false),
 	}
 	if data, err := os.ReadFile(filepath.Join(dir, "resolved.json")); err == nil {
 		var meta resolvedMeta
@@ -354,12 +368,56 @@ func (idx *Index) Restage(id string, indexes []int) (string, error) {
 	}
 	nm := manifest{
 		ManifestVersion: proposalManifestVersion, ProposalID: newID, CreatedAt: now.Format(time.RFC3339),
-		Source: m.Source, Summary: summary, Operations: ops,
+		Source: m.Source, Summary: summary, ChangeSet: m.ChangeSet, Operations: ops,
 	}
 	if err := writeManifest(dst, nm); err != nil {
 		return fail(err)
 	}
 	return newID, nil
+}
+
+// orderOps returns the operations in staging (and so accept) order. Creates are ordered by
+// orderCreates. Within each contiguous run of update_node operations, those that move a
+// node in the hierarchy come first, so a move and a depends_on change written next to each
+// other are checked against the final tree whichever order they were written in. Updates
+// never move across a delete, create or edge operation. Renames move to the end, so
+// every other operation of a proposal refers to a node by its current id. Everything
+// else keeps its position.
+func orderOps(ops []StageOp) []StageOp {
+	ops = orderCreates(ops)
+	var renames []StageOp
+	var kept []StageOp
+	for _, op := range ops {
+		if op.Op == OpRenameNode {
+			renames = append(renames, op)
+			continue
+		}
+		kept = append(kept, op)
+	}
+	out := append([]StageOp(nil), kept...)
+	// Permute only within contiguous runs of update_node, so an update never passes a
+	// delete, create or edge operation.
+	for start := 0; start < len(out); {
+		if out[start].Op != OpUpdateNode {
+			start++
+			continue
+		}
+		end := start
+		for end < len(out) && out[end].Op == OpUpdateNode {
+			end++
+		}
+		var moves, others []StageOp
+		for _, op := range out[start:end] {
+			if op.Update.Parent != nil || op.Update.Relationship != nil {
+				moves = append(moves, op)
+			} else {
+				others = append(others, op)
+			}
+		}
+		copy(out[start:end], append(moves, others...))
+		start = end
+	}
+	return append(out, renames...)
 }
 
 // orderCreates reorders the create_node operations among themselves so a node comes

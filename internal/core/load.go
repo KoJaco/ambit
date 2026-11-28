@@ -42,6 +42,11 @@ type Index struct {
 	// DriftIgnore is the config.json drift_ignore globs, added to DefaultDriftIgnore.
 	DriftIgnore []string
 
+	// staging is set only while stageLocked runs.
+	staging *stagingCtx
+	// stageWarning carries a non-fatal staging warning out of stageLocked.
+	stageWarning string
+
 	userMethods  map[string]*Method
 	activeMethod *Method
 

@@ -79,6 +79,14 @@ proposal's age is obvious at a glance.
 
 #### Optional fields
 
+- `change_set` — a slug (max 64) grouping related proposals for display and review. Exposed
+  as `change_set` on `GET /proposals`, `GET /proposals/{id}` and the proposal state; kept
+  when a proposal is restaged.
+- `depends_on_proposal` — id of a proposal this one was staged against (see below). While
+  that proposal is still pending, accepting any operation here fails with `ErrStale`.
+- `origin` — identifies the MCP session that staged the proposal. It is never returned over
+  HTTP or MCP; it only lets that session withdraw or supersede the proposal. Proposals staged
+  from the UI have none and can only be deleted by the architect.
 - `summary` — a short human-readable description of the proposal's intent, shown at the top
   of the review panel. Worth populating for `seed_model`, where thirty operations arrive at
   once and the architect needs to know what they are looking at before reading any of them.
@@ -87,8 +95,8 @@ proposal's age is obvious at a glance.
 
 Every operation carries:
 
-- `op` — one of `create_node`, `update_node`, `delete_node`, `set_relationship`,
-  `delete_relationship`, `set_constraints`.
+- `op` — one of `create_node`, `update_node`, `delete_node`, `rename_node`,
+  `set_relationship`, `delete_relationship`, `set_constraints`.
 - `node_id` — the node this operation concerns. For `create_node`, the caller-supplied `id`
   when one was given (a free slug), otherwise the ID `ambit-core` derived from the proposed
   name. For `set_relationship` and `delete_relationship`, the `from` node — relationships
@@ -140,6 +148,56 @@ any nodes inside the edge (relationship interior). A proposal can only delete an
 exists in the canonical model at staging time.
 
 `delete_node` carries nothing further.
+
+`rename_node` carries `node_id` (the current id) and `new_id`, and has no staged node files;
+`base_hash` is the hash of the node being renamed. Staging rejects a `new_id` that is not a
+slug, equals the current id, is taken, is a relationship id, or is reserved by a pending
+`create_node` or `rename_node` in another proposal. Accepting it rewrites the node files
+(`.json` and `.md`), `parent_id`/`depends_on` of other nodes, `index.json` order and
+relationship endpoints, the `local.json` assignment and cached layouts, and restores all of
+them if any step fails. A rename in an unaccepted `create_node` waits for that create
+(`container create_node was not accepted`). The diff row shows the current snapshot and the
+same snapshot under the new id.
+
+`set_relationship` without `relationship_id` upserts: it resolves to an existing edge with
+the same `from`, `to` and `label` (on disk, or staged earlier in the same proposal) and
+records that edge's id; otherwise a new id is allocated. The manifest therefore always
+carries a `relationship_id` for a set_relationship. With a `relationship_id` the edge's
+endpoints, label and kind are replaced (distinct unlabelled `A -> B` edges merge under
+upsert).
+
+#### Operation order
+
+Operations are stored, and applied by accept-all, in this order: `create_node` ops ordered
+parent-first and dependency-first; `update_node` ops that change `parent_id` or
+`relationship_id` come before the other `update_node` ops (within the slots the update ops
+occupy); everything else keeps its written position; `rename_node` ops are moved to the end.
+Operations are permuted only within contiguous runs of `update_node`, never across a
+delete, create or edge operation. Each operation is still cycle-checked individually as it is
+staged, so a reparent and a `depends_on` written next to each other succeed in any order,
+but changes that are only valid in one particular order (such as swaps) can be rejected and
+should be split into separate proposals. After all
+operations are staged, every node whose `parent_id` or `depends_on` changed is validated once
+more against the final scratch state. Renames being last means that within a proposal every
+other operation names a node by its current id.
+
+#### Superseding and depending on pending proposals
+
+`supersedes: <id>` (staging input, not stored) names a pending proposal with the same
+`origin`. Once the new proposal is written the old one is archived as `withdrawn` and
+removed; its pending `create_node` ids are not reserved while the new proposal is validated.
+`depends_on_proposal: <id>` seeds the staging scratch state with that pending proposal's
+pending operations (creates and updates from its staged files, deletes, renames and
+relationship edges), so the new operations validate against the model as it will be after it,
+and their base hashes use its staged node bytes (so they are fresh once it is accepted and
+stale before). Accepting a dependent is refused (`ErrStale`) while the predecessor is
+pending and after it was withdrawn, superseded or rejected. Not modelled for the
+predecessor: `delete_relationship`, `set_constraints` and multi-level chains. Accepting a
+`rename_node` one operation at a time is refused while earlier operations of the same
+proposal are still pending. A withdrawn or superseded proposal that was partly accepted keeps
+its outcome: state info reports `accepted_ops`. If removing a superseded proposal fails
+after the new one is staged, staging succeeds and returns a `warning`. `WithdrawProposal` (MCP `withdraw_proposal`) removes a pending proposal for
+its own origin.
 
 #### Caller-supplied node ids
 

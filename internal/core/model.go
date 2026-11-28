@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"reflect"
 )
 
 // NodeID is the immutable slug stored in filenames, parent_id, and relationships.
@@ -201,6 +202,11 @@ type UpdateInput struct {
 	DependsOn *[]NodeID
 	// Contract replaces the contract; a non-nil empty contract clears it.
 	Contract *NodeContract
+}
+
+// IsEmpty reports whether the patch changes nothing.
+func (u UpdateInput) IsEmpty() bool {
+	return reflect.ValueOf(u).IsZero()
 }
 
 // EffectiveScope returns scope, or implementation when scope is absent or empty.

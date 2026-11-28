@@ -28,6 +28,9 @@ const (
 	// OpDeleteRelationship removes one edge by id (and, like DeleteRelationship, any
 	// interior nodes the edge owns). node_id is the edge's from node.
 	OpDeleteRelationship = "delete_relationship"
+	// OpRenameNode changes a node id and rewrites every reference to it. node_id is the
+	// current id; new_id is the replacement.
+	OpRenameNode = "rename_node"
 	// OpSetConstraints replaces the project constraints in config.json (full list).
 	// It carries no node id; its base_hash is the hash of the config.json bytes.
 	OpSetConstraints = "set_constraints"
@@ -66,6 +69,8 @@ type StageOp struct {
 	To     NodeID
 	Label  string
 	Kind   string
+	// NewID is the replacement id for rename_node.
+	NewID NodeID
 	// Contract is the edge contract for set_relationship: nil leaves an existing edge's
 	// contract unchanged, a non-nil empty contract clears it.
 	Contract *EdgeContract
@@ -79,17 +84,31 @@ type StageInput struct {
 	Source  string
 	Summary string
 	Ops     []StageOp
+	// ChangeSet is an optional slug that groups related proposals for display and review.
+	ChangeSet string
+	// Origin identifies the staging caller (one MCP session). Only the same origin may
+	// withdraw the proposal or supersede it. Empty means nobody but the architect can.
+	Origin string
+	// Supersedes names a pending proposal with the same Origin that is withdrawn once this
+	// one is staged. Its create ids are free for reuse by this proposal.
+	Supersedes string
+	// DependsOnProposal names a pending proposal whose result this one is validated
+	// against. Accepting this proposal is refused while that one is still pending.
+	DependsOnProposal string
 }
 
 // ProposalSummary is one proposal as listed, with staleness computed at read time.
 type ProposalSummary struct {
-	ID         string      `json:"proposal_id"`
-	CreatedAt  string      `json:"created_at,omitempty"`
-	Source     string      `json:"source,omitempty"`
-	Summary    string      `json:"summary,omitempty"`
-	Unreadable bool        `json:"unreadable"`
-	Error      string      `json:"error,omitempty"`
-	Operations []OpSummary `json:"operations,omitempty"`
+	ID        string `json:"proposal_id"`
+	CreatedAt string `json:"created_at,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Summary   string `json:"summary,omitempty"`
+	ChangeSet string `json:"change_set,omitempty"`
+	// DependsOnProposal is a pending proposal this one was validated against.
+	DependsOnProposal string      `json:"depends_on_proposal,omitempty"`
+	Unreadable        bool        `json:"unreadable"`
+	Error             string      `json:"error,omitempty"`
+	Operations        []OpSummary `json:"operations,omitempty"`
 }
 
 // OpSummary is one operation without the file diff.
@@ -97,6 +116,7 @@ type OpSummary struct {
 	Index       int      `json:"index"`
 	Op          string   `json:"op"`
 	NodeID      string   `json:"node_id"`
+	NewID       string   `json:"new_id,omitempty"`
 	Status      string   `json:"status"`
 	Stale       bool     `json:"stale"`
 	StaleReason string   `json:"stale_reason,omitempty"`
@@ -105,11 +125,14 @@ type OpSummary struct {
 
 // ProposalDiff is the current and proposed state of each operation.
 type ProposalDiff struct {
-	ID         string   `json:"proposal_id"`
-	CreatedAt  string   `json:"created_at"`
-	Source     string   `json:"source"`
-	Summary    string   `json:"summary,omitempty"`
-	Operations []OpDiff `json:"operations"`
+	ID        string `json:"proposal_id"`
+	CreatedAt string `json:"created_at"`
+	Source    string `json:"source"`
+	Summary   string `json:"summary,omitempty"`
+	ChangeSet string `json:"change_set,omitempty"`
+	// DependsOnProposal is a pending proposal this one was validated against.
+	DependsOnProposal string   `json:"depends_on_proposal,omitempty"`
+	Operations        []OpDiff `json:"operations"`
 }
 
 // OpDiff is one operation ready to render. Stale is computed here, not stored.
@@ -117,6 +140,7 @@ type OpDiff struct {
 	Index               int           `json:"index"`
 	Op                  string        `json:"op"`
 	NodeID              string        `json:"node_id"`
+	NewID               string        `json:"new_id,omitempty"`
 	Status              string        `json:"status"`
 	Stale               bool          `json:"stale"`
 	StaleReason         string        `json:"stale_reason,omitempty"`
@@ -200,12 +224,16 @@ type AcceptAllResult struct {
 }
 
 type manifest struct {
-	ManifestVersion int         `json:"manifest_version"`
-	ProposalID      string      `json:"proposal_id"`
-	CreatedAt       string      `json:"created_at"`
-	Source          string      `json:"source"`
-	Summary         string      `json:"summary,omitempty"`
-	Operations      []operation `json:"operations"`
+	ManifestVersion int    `json:"manifest_version"`
+	ProposalID      string `json:"proposal_id"`
+	CreatedAt       string `json:"created_at"`
+	Source          string `json:"source"`
+	Summary         string `json:"summary,omitempty"`
+	ChangeSet       string `json:"change_set,omitempty"`
+	Origin          string `json:"origin,omitempty"`
+	// DependsOnProposal is a proposal this one was staged against; see StageInput.
+	DependsOnProposal string      `json:"depends_on_proposal,omitempty"`
+	Operations        []operation `json:"operations"`
 }
 
 type operation struct {
@@ -216,6 +244,7 @@ type operation struct {
 	From     string   `json:"from,omitempty"`
 	To       string   `json:"to,omitempty"`
 	RelID    string   `json:"relationship_id,omitempty"`
+	NewID    string   `json:"new_id,omitempty"`
 	Label    *string  `json:"label,omitempty"`
 	Kind     *string  `json:"kind,omitempty"`
 	// Contract is the staged edge contract (set_relationship); nil means unchanged and a
@@ -250,10 +279,32 @@ func contentHash(jsonBytes, mdBytes []byte) string {
 
 // Stage writes a proposal and returns its id. It does not modify .arch/nodes/.
 func (idx *Index) Stage(in StageInput) (string, error) {
+	id, _, err := idx.StageWithWarning(in)
+	return id, err
+}
+
+// StageWithWarning is Stage that also returns a non-fatal warning (the proposal was staged,
+// but e.g. the superseded one could not be removed).
+func (idx *Index) StageWithWarning(in StageInput) (string, string, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
-	return idx.stageLocked(in)
+	idx.stageWarning = ""
+	id, err := idx.stageLocked(in)
+	w := idx.stageWarning
+	idx.stageWarning = ""
+	return id, w, err
 }
+
+// stagingCtx is state that only exists while stageLocked runs (idx.mu is held).
+type stagingCtx struct {
+	// skipPending lists proposals whose pending create ids are free to reuse.
+	skipPending map[string]bool
+	// predMaterial holds the staged node bodies of a depends_on_proposal predecessor, so
+	// base hashes match the files once that predecessor is accepted.
+	predMaterial map[NodeID]materialBody
+}
+
+var changeSetPattern = slugPattern
 
 // stageLocked is Stage for callers that already hold idx.mu.
 func (idx *Index) stageLocked(in StageInput) (string, error) {
@@ -262,6 +313,12 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 	}
 	if len(in.Ops) == 0 {
 		return "", fmt.Errorf("%w: proposal has no operations", ErrBadOperation)
+	}
+	if in.ChangeSet != "" && (len(in.ChangeSet) > maxExplicitIDLen || !changeSetPattern.MatchString(in.ChangeSet)) {
+		return "", fmt.Errorf("%w: change_set %q must be a lowercase slug of at most %d characters", ErrBadOperation, in.ChangeSet, maxExplicitIDLen)
+	}
+	if in.Supersedes != "" && in.Supersedes == in.DependsOnProposal {
+		return "", fmt.Errorf("%w: a proposal cannot both supersede and depend on %s", ErrBadOperation, in.Supersedes)
 	}
 
 	nodes := map[NodeID]*Node{}
@@ -273,8 +330,30 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 	files := map[NodeID]materialBody{}
 	stagedRels := []Relationship{}
 
+	idx.staging = &stagingCtx{skipPending: map[string]bool{}, predMaterial: map[NodeID]materialBody{}}
+	defer func() { idx.staging = nil }()
+
+	var superseded *manifest
+	if in.Supersedes != "" {
+		m, err := idx.ownedPending(in.Supersedes, in.Origin)
+		if err != nil {
+			return "", fmt.Errorf("supersedes: %w", err)
+		}
+		superseded = &m
+		idx.staging.skipPending[in.Supersedes] = true
+	}
+	if in.DependsOnProposal != "" {
+		m, err := idx.loadReadable(in.DependsOnProposal)
+		if err != nil {
+			return "", fmt.Errorf("depends_on_proposal: %w", err)
+		}
+		if err := idx.seedFromPredecessor(m, nodes, &stagedRels); err != nil {
+			return "", err
+		}
+	}
+
 	sawConstraints := false
-	for _, inOp := range orderCreates(in.Ops) {
+	for _, inOp := range orderOps(in.Ops) {
 		if inOp.Op == OpSetConstraints {
 			if sawConstraints {
 				return "", fmt.Errorf("%w: set_constraints may appear once per proposal", ErrBadOperation)
@@ -291,6 +370,9 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 			material[NodeID(op.NodeID)] = *body
 		}
 	}
+	if err := idx.validateFinalState(nodes); err != nil {
+		return "", err
+	}
 
 	now := time.Now().UTC()
 	id, err := idx.allocProposalID(now)
@@ -302,12 +384,15 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 		return "", err
 	}
 	m := manifest{
-		ManifestVersion: proposalManifestVersion,
-		ProposalID:      id,
-		CreatedAt:       now.Format(time.RFC3339),
-		Source:          in.Source,
-		Summary:         in.Summary,
-		Operations:      ops,
+		ManifestVersion:   proposalManifestVersion,
+		ProposalID:        id,
+		CreatedAt:         now.Format(time.RFC3339),
+		Source:            in.Source,
+		Summary:           in.Summary,
+		ChangeSet:         in.ChangeSet,
+		Origin:            in.Origin,
+		DependsOnProposal: in.DependsOnProposal,
+		Operations:        ops,
 	}
 	if err := os.MkdirAll(filepath.Join(dir, "nodes"), 0o755); err != nil {
 		return "", err
@@ -326,7 +411,120 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 		os.RemoveAll(dir)
 		return "", err
 	}
+	if superseded != nil {
+		idx.archiveResolved(*superseded, ProposalWithdrawn)
+		if err := os.RemoveAll(idx.mustProposalPath(superseded.ProposalID)); err != nil {
+			// The new proposal is staged; report success with a warning, not an error.
+			idx.stageWarning = fmt.Sprintf("staged %s but could not withdraw superseded %s: %v; withdraw it manually", id, superseded.ProposalID, err)
+		}
+	}
 	return id, nil
+}
+
+// ownedPending loads a pending proposal and checks that origin staged it.
+func (idx *Index) ownedPending(id, origin string) (manifest, error) {
+	m, err := idx.loadReadable(id)
+	if err != nil {
+		return manifest{}, err
+	}
+	if origin == "" || m.Origin != origin {
+		return manifest{}, fmt.Errorf("%w: proposal %s was not staged by this caller; only the architect (or the session that staged it) can withdraw it", ErrBadOperation, id)
+	}
+	return m, nil
+}
+
+// WithdrawProposal removes a pending proposal on behalf of the caller that staged it
+// (origin). The proposal stays queryable as withdrawn.
+func (idx *Index) WithdrawProposal(id, origin string) error {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	m, err := idx.ownedPending(id, origin)
+	if err != nil {
+		return err
+	}
+	idx.archiveResolved(m, ProposalWithdrawn)
+	return os.RemoveAll(idx.mustProposalPath(id))
+}
+
+// seedFromPredecessor applies a pending proposal's operations to the scratch state, so a
+// dependent proposal validates against the model as it will be once that one is accepted.
+func (idx *Index) seedFromPredecessor(m manifest, nodes map[NodeID]*Node, stagedRels *[]Relationship) error {
+	dir := idx.mustProposalPath(m.ProposalID)
+	for _, op := range m.Operations {
+		if op.Status != opStatusPending {
+			continue
+		}
+		switch op.Op {
+		case OpCreateNode, OpUpdateNode:
+			jsonBytes, mdBytes, err := readPair(filepath.Join(dir, "nodes", op.NodeID))
+			if err != nil {
+				return err
+			}
+			node, err := decodeNode(jsonBytes)
+			if err != nil {
+				return fmt.Errorf("%w: %s %s: %v", ErrUnreadableProposal, op.Op, op.NodeID, err)
+			}
+			node.Spec = string(mdBytes)
+			nodes[node.ID] = node
+			idx.staging.predMaterial[node.ID] = materialBody{json: jsonBytes, md: mdBytes}
+		case OpDeleteNode:
+			delete(nodes, NodeID(op.NodeID))
+		case OpRenameNode:
+			renameScratch(nodes, stagedRels, NodeID(op.NodeID), NodeID(op.NewID))
+		case OpSetRelationship:
+			*stagedRels = append(*stagedRels, Relationship{
+				ID: RelID(op.RelID), From: NodeID(op.From), To: NodeID(op.To),
+				Label: deref(op.Label), Kind: deref(op.Kind), Contract: op.Contract,
+			})
+		}
+	}
+	return nil
+}
+
+// dependsOnPending is an error while the proposal m depends on is still pending.
+func (idx *Index) dependsOnPending(m manifest) error {
+	if m.DependsOnProposal == "" {
+		return nil
+	}
+	dir, err := idx.proposalPath(m.DependsOnProposal)
+	if err != nil {
+		return nil
+	}
+	if _, err := os.Stat(dir); err == nil {
+		return fmt.Errorf("%w: proposal %s depends on %s, which is still pending; accept or reject that one first", ErrStale, m.ProposalID, m.DependsOnProposal)
+	}
+	// No longer pending: refuse when it was withdrawn (or superseded) or fully rejected,
+	// because the model it was validated against will never exist.
+	if info, err := idx.resolvedStateLocked(m.DependsOnProposal); err == nil &&
+		(info.Status == ProposalWithdrawn || info.Status == ProposalRejected) {
+		return fmt.Errorf("%w: proposal %s depends on %s, which was %s; re-stage this proposal against the current model", ErrStale, m.ProposalID, m.DependsOnProposal, info.Status)
+	}
+	return nil
+}
+
+// validateFinalState checks the hierarchy and dependency graph of every node a proposal
+// added or changed against the scratch state after all of its operations, so the answer
+// does not depend on the order the operations were written in.
+func (idx *Index) validateFinalState(nodes map[NodeID]*Node) error {
+	ids := make([]NodeID, 0, len(nodes))
+	for id := range nodes {
+		ids = append(ids, id)
+	}
+	sortNodeIDs(ids)
+	for _, id := range ids {
+		n := nodes[id]
+		cur := idx.Nodes[id]
+		if cur != nil && cur.ParentID == n.ParentID && slicesEqualIDs(cur.DependsOn, n.DependsOn) {
+			continue
+		}
+		if parentCyclesIn(nodes, id, n.ParentID) {
+			return fmt.Errorf("%w: %s -> %s", ErrCycle, id, n.ParentID)
+		}
+		if err := validateDependsOnIn(nodes, id, n.ParentID, n.DependsOn); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody, stagedRels *[]Relationship) (operation, *materialBody, error) {
@@ -337,6 +535,8 @@ func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[Node
 		return idx.stageUpdate(in, nodes, material)
 	case OpDeleteNode:
 		return idx.stageDelete(in, nodes, material)
+	case OpRenameNode:
+		return idx.stageRename(in, nodes, material, stagedRels)
 	case OpSetRelationship:
 		return idx.stageRelationship(in, nodes, material, stagedRels)
 	case OpDeleteRelationship:
@@ -497,6 +697,35 @@ func (idx *Index) stageDelete(in StageOp, nodes map[NodeID]*Node, material map[N
 	return op, nil, nil
 }
 
+// effectiveRels is the on-disk relationships with later staged entries (same id) applied,
+// then staged-only ones appended.
+func effectiveRels(disk, staged []Relationship) []Relationship {
+	out := append([]Relationship(nil), disk...)
+	for _, st := range staged {
+		replaced := false
+		for i := range out {
+			if out[i].ID == st.ID {
+				out[i] = st
+				replaced = true
+			}
+		}
+		if !replaced {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
+// findEdge returns the relationship with the same endpoints and label, or nil.
+func findEdge(rels []Relationship, from, to NodeID, label string) *Relationship {
+	for i := range rels {
+		if rels[i].From == from && rels[i].To == to && rels[i].Label == label {
+			return &rels[i]
+		}
+	}
+	return nil
+}
+
 func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody, stagedRels *[]Relationship) (operation, *materialBody, error) {
 	if in.From == "" || in.To == "" {
 		return operation{}, nil, fmt.Errorf("%w: set_relationship needs from and to", ErrBadOperation)
@@ -510,32 +739,31 @@ func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material
 	if in.Kind != "" && !validKind(in.Kind) {
 		return operation{}, nil, fmt.Errorf("%w: %s -> %s kind %q", ErrBadKind, in.From, in.To, in.Kind)
 	}
-	if in.RelID != "" {
+	all := effectiveRels(idx.Relationships, *stagedRels)
+	label, kind := in.Label, in.Kind
+	relID := in.RelID
+	if relID != "" {
 		found := false
-		for _, rel := range idx.Relationships {
-			if rel.ID == in.RelID {
+		for _, rel := range all {
+			if rel.ID == relID {
 				found = true
 				break
 			}
 		}
 		if !found {
-			for _, rel := range *stagedRels {
-				if rel.ID == in.RelID {
-					found = true
-					break
-				}
-			}
+			return operation{}, nil, fmt.Errorf("%w: %q (to create an edge omit relationship_id; to change one, pass the id of an existing edge)", ErrRelationshipNotFound, in.RelID)
 		}
-		if !found {
-			return operation{}, nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, in.RelID)
+	} else if match := findEdge(all, in.From, in.To, label); match != nil {
+		// Upsert: the same (from, to, label) edge is updated in place, not duplicated.
+		relID = match.ID
+		if kind == "" {
+			kind = match.Kind
 		}
 	}
 	hash, err := idx.hashFor(in.From, material)
 	if err != nil {
 		return operation{}, nil, err
 	}
-	label, kind := in.Label, in.Kind
-	relID := in.RelID
 
 	// The contract in effect before this op: an earlier op of this proposal, else disk.
 	var current *EdgeContract
@@ -570,22 +798,15 @@ func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material
 	if covered {
 		hash = relBaseHash(hash, onDisk)
 	}
-	if relID == "" {
+	isNew := relID == ""
+	if isNew {
 		id, err := idx.allocateRelationshipIDStaged(label, *stagedRels)
 		if err != nil {
 			return operation{}, nil, err
 		}
 		relID = id
 	}
-	if relID != in.RelID || onDisk != nil {
-		*stagedRels = append(*stagedRels, Relationship{ID: relID, From: in.From, To: in.To, Label: label, Kind: kind, Contract: effective})
-	} else {
-		for i := range *stagedRels {
-			if (*stagedRels)[i].ID == relID {
-				(*stagedRels)[i].Contract = effective
-			}
-		}
-	}
+	*stagedRels = append(*stagedRels, Relationship{ID: relID, From: in.From, To: in.To, Label: label, Kind: kind, Contract: effective})
 	op := operation{
 		Op:         OpSetRelationship,
 		NodeID:     string(in.From),
@@ -600,6 +821,94 @@ func (idx *Index) stageRelationship(in StageOp, nodes map[NodeID]*Node, material
 		Status:     opStatusPending,
 	}
 	return op, nil, nil
+}
+
+// stageRename validates a rename against the scratch state and moves the node, and every
+// reference to it, to the new id there.
+func (idx *Index) stageRename(in StageOp, nodes map[NodeID]*Node, material map[NodeID]materialBody, stagedRels *[]Relationship) (operation, *materialBody, error) {
+	if _, ok := nodes[in.NodeID]; !ok {
+		return operation{}, nil, fmt.Errorf("%w: %q", ErrNotFound, in.NodeID)
+	}
+	if in.NewID == "" || in.NewID == in.NodeID {
+		return operation{}, nil, fmt.Errorf("%w: rename_node %s needs a new_id that differs from the current id", ErrBadOperation, in.NodeID)
+	}
+	if err := idx.checkExplicitID(in.NewID, nodes); err != nil {
+		return operation{}, nil, fmt.Errorf("rename_node %s -> %s: %w", in.NodeID, in.NewID, err)
+	}
+	if idx.relationshipIDTaken(string(in.NewID), *stagedRels) {
+		return operation{}, nil, fmt.Errorf("%w: rename_node %s -> %q is already a relationship id", ErrExists, in.NodeID, in.NewID)
+	}
+	hash, err := idx.hashFor(in.NodeID, material)
+	if err != nil {
+		return operation{}, nil, err
+	}
+	renameScratch(nodes, stagedRels, in.NodeID, in.NewID)
+	op := operation{
+		Op:       OpRenameNode,
+		NodeID:   string(in.NodeID),
+		NewID:    string(in.NewID),
+		BaseHash: &hash,
+		Fields:   []string{"id"},
+		Status:   opStatusPending,
+	}
+	return op, nil, nil
+}
+
+func (idx *Index) relationshipIDTaken(id string, staged []Relationship) bool {
+	for _, rel := range effectiveRels(idx.Relationships, staged) {
+		if string(rel.ID) == id {
+			return true
+		}
+	}
+	return false
+}
+
+// renameScratch moves node old to new in a scratch node map and rewrites parent_id,
+// depends_on and staged relationship endpoints that name it.
+func renameScratch(nodes map[NodeID]*Node, stagedRels *[]Relationship, old, nw NodeID) {
+	n, ok := nodes[old]
+	if !ok {
+		return
+	}
+	delete(nodes, old)
+	n.ID = nw
+	nodes[nw] = n
+	for id, other := range nodes {
+		cp := cloneNode(other)
+		if cp.ParentID == old {
+			cp.ParentID = nw
+		}
+		cp.DependsOn = renameIDs(cp.DependsOn, old, nw)
+		nodes[id] = cp
+	}
+	if stagedRels != nil {
+		for i := range *stagedRels {
+			r := &(*stagedRels)[i]
+			if r.From == old {
+				r.From = nw
+			}
+			if r.To == old {
+				r.To = nw
+			}
+		}
+	}
+}
+
+// renameIDs replaces old with nw in ids and returns the list sorted.
+func renameIDs(ids []NodeID, old, nw NodeID) []NodeID {
+	changed := false
+	out := make([]NodeID, len(ids))
+	for i, d := range ids {
+		if d == old {
+			d = nw
+			changed = true
+		}
+		out[i] = d
+	}
+	if !changed {
+		return ids
+	}
+	return sortedDeps(out)
 }
 
 // relBaseHash folds a relationship's own JSON into a node hash (decision 7).
@@ -723,6 +1032,11 @@ func (idx *Index) hashFor(id NodeID, material map[NodeID]materialBody) (string, 
 	if body, ok := material[id]; ok {
 		return contentHash(body.json, body.md), nil
 	}
+	if idx.staging != nil {
+		if body, ok := idx.staging.predMaterial[id]; ok {
+			return contentHash(body.json, body.md), nil
+		}
+	}
 	hash, ok, err := idx.hashOnDisk(id)
 	if err != nil {
 		return "", err
@@ -781,11 +1095,13 @@ func (idx *Index) ProposalDiff(id string) (*ProposalDiff, error) {
 		return nil, fmt.Errorf("%w: %s", ErrUnreadableProposal, summary.Error)
 	}
 	diff := &ProposalDiff{
-		ID:         m.ProposalID,
-		CreatedAt:  m.CreatedAt,
-		Source:     m.Source,
-		Summary:    m.Summary,
-		Operations: make([]OpDiff, len(m.Operations)),
+		ID:                m.ProposalID,
+		CreatedAt:         m.CreatedAt,
+		Source:            m.Source,
+		Summary:           m.Summary,
+		ChangeSet:         m.ChangeSet,
+		DependsOnProposal: m.DependsOnProposal,
+		Operations:        make([]OpDiff, len(m.Operations)),
 	}
 	for i, op := range m.Operations {
 		diff.Operations[i] = idx.diffOp(m.ProposalID, i, op, m.Operations)
@@ -809,6 +1125,16 @@ func (idx *Index) AcceptOperation(id string, index int, confirmStale bool) error
 	op := m.Operations[index]
 	if op.Status != opStatusPending {
 		return fmt.Errorf("%w: %s %s is %s", ErrBadOperation, op.Op, op.NodeID, op.Status)
+	}
+	if err := idx.dependsOnPending(m); err != nil {
+		return err
+	}
+	if op.Op == OpRenameNode {
+		for i := 0; i < index; i++ {
+			if m.Operations[i].Status == opStatusPending {
+				return fmt.Errorf("%w: rename_node %s -> %s cannot be accepted while earlier operation %d (%s) is still pending; resolve it first or use accept_all", ErrStale, op.NodeID, op.NewID, i, m.Operations[i].Op)
+			}
+		}
 	}
 	if err := idx.rejectIfStale(m.Operations, op, confirmStale); err != nil {
 		return err
@@ -855,6 +1181,9 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 	result := AcceptAllResult{Applied: []int{}, Skipped: []SkippedOp{}, Failed: []FailedOp{}}
 	m, err := idx.loadReadable(id)
 	if err != nil {
+		return result, err
+	}
+	if err := idx.dependsOnPending(m); err != nil {
 		return result, err
 	}
 	snap, err := idx.snapshotModel()
@@ -911,6 +1240,9 @@ type modelSnapshot struct {
 	config  []byte
 	// configOK is false when config.json did not exist.
 	configOK bool
+	// local is local.json (the machine-local assignment); localOK is false when absent.
+	local   []byte
+	localOK bool
 }
 
 func readDirFiles(dir string) (map[string][]byte, error) {
@@ -981,12 +1313,15 @@ func (idx *Index) snapshotModel() (modelSnapshot, error) {
 	if err != nil {
 		return modelSnapshot{}, err
 	}
-	return modelSnapshot{index: index, nodes: nodes, layouts: layouts, config: config, configOK: configOK}, nil
+	local, localOK, err := readOptional(filepath.Join(idx.arch(), "local.json"))
+	if err != nil {
+		return modelSnapshot{}, err
+	}
+	return modelSnapshot{index: index, nodes: nodes, layouts: layouts, config: config, configOK: configOK, local: local, localOK: localOK}, nil
 }
 
-// rollbackAccept restores the model and the proposal manifest to their state before
-// an AcceptAll call started.
-func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []operation) error {
+// restoreFiles writes a snapshot back to disk (it does not reload the index).
+func (idx *Index) restoreFiles(snap modelSnapshot) error {
 	if err := restoreDirFiles(filepath.Join(idx.arch(), "nodes"), snap.nodes); err != nil {
 		return err
 	}
@@ -997,6 +1332,15 @@ func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []ope
 		return err
 	}
 	if err := restoreFile(filepath.Join(idx.arch(), "config.json"), snap.config, snap.configOK); err != nil {
+		return err
+	}
+	return restoreFile(filepath.Join(idx.arch(), "local.json"), snap.local, snap.localOK)
+}
+
+// rollbackAccept restores the model and the proposal manifest to their state before
+// an AcceptAll call started.
+func (idx *Index) rollbackAccept(snap modelSnapshot, m *manifest, original []operation) error {
+	if err := idx.restoreFiles(snap); err != nil {
 		return err
 	}
 	m.Operations = original
@@ -1099,6 +1443,10 @@ func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op o
 		if notAccepted(op.From) || notAccepted(op.To) {
 			return staleEndpointNotAccepted
 		}
+	case OpRenameNode:
+		if notAccepted(op.NodeID) {
+			return staleCreateNotAccepted
+		}
 	case OpCreateNode, OpUpdateNode:
 		jsonBytes, _, err := readPair(filepath.Join(idx.mustProposalPath(proposalID), "nodes", op.NodeID))
 		if err != nil {
@@ -1128,13 +1476,22 @@ func (idx *Index) pendingCreateIDs() map[string]bool {
 		return out
 	}
 	for _, pid := range ids {
+		if idx.staging != nil && idx.staging.skipPending[pid] {
+			continue
+		}
 		summary, m, err := idx.inspect(pid)
 		if err != nil || summary.Unreadable {
 			continue
 		}
 		for _, op := range m.Operations {
-			if op.Op == OpCreateNode && op.Status == opStatusPending {
+			if op.Status != opStatusPending {
+				continue
+			}
+			switch op.Op {
+			case OpCreateNode:
 				out[op.NodeID] = true
+			case OpRenameNode:
+				out[op.NewID] = true
 			}
 		}
 	}
@@ -1203,7 +1560,7 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 		if op.Op == OpSetRelationship && pendingCreate(ops, op.NodeID) {
 			return false, ""
 		}
-		if op.Op == OpUpdateNode || op.Op == OpDeleteNode || op.Op == OpSetRelationship || op.Op == OpDeleteRelationship {
+		if op.Op == OpUpdateNode || op.Op == OpDeleteNode || op.Op == OpRenameNode || op.Op == OpSetRelationship || op.Op == OpDeleteRelationship {
 			return true, staleMissing
 		}
 		return false, ""
@@ -1227,6 +1584,8 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 		return idx.applyNodeFiles(proposalID, op)
 	case OpDeleteNode:
 		return idx.applyDelete(op)
+	case OpRenameNode:
+		return idx.applyRename(op)
 	case OpSetRelationship:
 		in := SetRelationshipInput{
 			ID:       RelID(op.RelID),
@@ -1235,6 +1594,8 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 			Label:    deref(op.Label),
 			Kind:     deref(op.Kind),
 			Contract: op.Contract,
+
+			AllowEndpointChange: true,
 		}
 		if _, err := idx.setRelationshipLocked(in); err != nil {
 			return err
@@ -1544,11 +1905,13 @@ func (idx *Index) inspect(id string) (ProposalSummary, manifest, error) {
 		return ProposalSummary{ID: id, Unreadable: true, Error: msg}, manifest{}, nil
 	}
 	summary := ProposalSummary{
-		ID:         m.ProposalID,
-		CreatedAt:  m.CreatedAt,
-		Source:     m.Source,
-		Summary:    m.Summary,
-		Operations: make([]OpSummary, len(m.Operations)),
+		ID:                m.ProposalID,
+		CreatedAt:         m.CreatedAt,
+		Source:            m.Source,
+		Summary:           m.Summary,
+		ChangeSet:         m.ChangeSet,
+		DependsOnProposal: m.DependsOnProposal,
+		Operations:        make([]OpSummary, len(m.Operations)),
 	}
 	for i, op := range m.Operations {
 		stale, reason := idx.staleness(m.Operations, op)
@@ -1556,6 +1919,7 @@ func (idx *Index) inspect(id string) (ProposalSummary, manifest, error) {
 			Index:       i,
 			Op:          op.Op,
 			NodeID:      op.NodeID,
+			NewID:       op.NewID,
 			Status:      op.Status,
 			Stale:       stale,
 			StaleReason: reason,
@@ -1582,6 +1946,7 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		Index:       index,
 		Op:          op.Op,
 		NodeID:      op.NodeID,
+		NewID:       op.NewID,
 		Status:      op.Status,
 		Stale:       stale,
 		StaleReason: reason,
@@ -1636,6 +2001,12 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 			row.Relationship.ContractCleared = row.Relationship.Contract == nil
 		} else if cur != nil {
 			row.Relationship.Contract = row.CurrentRelationship.Contract
+		}
+	case OpRenameNode:
+		if row.Current != nil {
+			proposed := *row.Current
+			proposed.ID = op.NewID
+			row.Proposed = &proposed
 		}
 	case OpSetConstraints:
 		row.CurrentConstraints = append([]Constraint(nil), idx.Constraints...)
@@ -1771,7 +2142,7 @@ func newProposalID(now time.Time) (string, error) {
 
 func validProposalSource(source string) bool {
 	switch source {
-	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship, OpSetConstraints:
+	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship, OpRenameNode, OpSetConstraints:
 		return true
 	default:
 		return false
@@ -1819,7 +2190,7 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 		fields = append(fields, "spec")
 	}
 	if in.Status != nil {
-		return nil, fmt.Errorf("%w: status must be set with update_node_status, not update_node", ErrBadOperation)
+		return nil, fmt.Errorf("%w: update_node cannot set status; use update_node_status (it writes the status directly and applies the stage gate)", ErrBadOperation)
 	}
 	if in.Parent != nil {
 		parent := *in.Parent
@@ -1848,7 +2219,7 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 				}
 			}
 			if !found {
-				return nil, fmt.Errorf("%w: %q", ErrRelationshipNotFound, rid)
+				return nil, fmt.Errorf("%w: %q (relationship_id on update_node puts the node inside an existing edge; to create or change an edge use set_relationship)", ErrRelationshipNotFound, rid)
 			}
 			if n.ParentID != "" {
 				return nil, ErrContainerConflict

@@ -3,8 +3,12 @@ package mcp
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
+	"sync"
+	"time"
 
 	"github.com/KoJaco/ambit/internal/core"
 	sdkmcp "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -45,12 +49,31 @@ func Run(ctx context.Context, dir string) error {
 type toolEnv struct {
 	idx *core.Index
 	dir string
+
+	originOnce sync.Once
+	origin     string
+}
+
+// originID identifies this MCP session as the staging caller. Only the session that staged
+// a proposal may withdraw it or supersede it.
+func (e *toolEnv) originID() string {
+	e.originOnce.Do(func() {
+		var b [8]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			e.origin = fmt.Sprintf("mcp-%d", time.Now().UnixNano())
+			return
+		}
+		e.origin = "mcp-" + hex.EncodeToString(b[:])
+	})
+	return e.origin
 }
 
 func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "seed_model", Description: seedModelDescription}, env.handleSeedModel)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "create_node", Description: createNodeDescription}, env.handleCreateNode)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node", Description: updateNodeDescription}, env.handleUpdateNode)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "rename_node", Description: renameNodeDescription}, env.handleRenameNode)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "withdraw_proposal", Description: withdrawProposalDescription}, env.handleWithdrawProposal)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "delete_node", Description: "Propose deleting a node (staged, not applied)."}, env.handleDeleteNode)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_relationship", Description: setRelationshipDescription}, env.handleSetRelationship)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "delete_relationship", Description: deleteRelationshipDescription}, env.handleDeleteRelationship)
@@ -60,9 +83,9 @@ func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "list_proposals", Description: "List pending proposals (id, source, summary, operations)."}, env.handleListProposals)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_done", Description: "One pass/fail answer to 'am I done?' for your node. Takes the files changed on your branch (committed, uncommitted and untracked, compared with the merge-base of main), checks them against the node's scope, runs drift limited to your node, flags contracts that changed under you, lists the node's verify commands, and says which status you may set next under the completion policy (needs_review, done, or none). Pass worktree if you work in a git worktree. It does not run tests."}, env.handleCheckDone)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_proposal", Description: "Report what happened to a proposal by id: pending (with per-operation status), accepted, rejected, partial (some accepted, some rejected) or withdrawn. Finished proposals stay queryable (the 100 most recently resolved)."}, env.handleGetProposal)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "wait_for_proposal", Description: "Block until the architect has accepted or rejected every operation of a proposal you staged, or the timeout passes (default 60 s, max 300 s; some MCP clients give up on a call sooner, so pass a smaller timeout_s and call again), then return its state. Use it instead of asking the architect to reply 'accepted'. If timed_out is true the proposal is still pending: tell the architect and call it again."}, env.handleWaitForProposal)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "wait_for_proposal", Description: "Block until the architect has accepted or rejected every operation of a proposal you staged, or the timeout passes (default 60 s, max 300 s; some MCP clients give up on a call sooner, so pass a smaller timeout_s and call again), then return its state. Use it instead of asking the architect to reply 'accepted'. If timed_out is true (state pending, with a hint) the proposal is still pending: tell the architect and call it again."}, env.handleWaitForProposal)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "list_icons", Description: listIconsDescription}, env.handleListIcons)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_drift", Description: "Report model/code drift using the files git can see (tracked, plus untracked and not gitignored; tooling files such as go.mod are skipped via drift_ignore; add globs for other files no node should own to drift_ignore in .arch/config.json): files owned by no node, implementation or scope globs matching no files, and files owned by multiple non-nested nodes. Pass node_id to limit the report to one node and worktree (path of a git worktree of this repository) to check work that is not in the main checkout."}, env.handleCheckDrift)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_drift", Description: "Report model/code drift using the files git can see (tracked, plus untracked and not gitignored; tooling files such as go.mod are skipped via drift_ignore; add globs for other files no node should own to drift_ignore in .arch/config.json): files owned by no node, implementation or scope globs matching no files, and files owned by multiple non-nested nodes. Pass node_id to limit the report to one node and worktree (path of a git worktree of this repository) to check work that is not in the main checkout. unmatched_globs is reduced to unmatched_globs_count unless verbose_globs is true."}, env.handleCheckDrift)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_constraints", Description: setConstraintsDescription}, env.handleSetConstraints)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_build_order", Description: getBuildOrderDescription}, env.handleGetBuildOrder)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "update_node_status", Description: "Set a node status directly on the canonical model. Refused with a stage-gate error when the active method forbids that status in the current stage (design-first: assigned, in_progress, needs_review and done while the stage is design)."}, env.handleUpdateNodeStatus)

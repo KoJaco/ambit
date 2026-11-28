@@ -124,6 +124,9 @@ export function proposalDetailBlocks(op: OpDiff, names?: ReadonlyMap<string, str
                 for (const n of op.removes_nodes) blocks.push({ kind: "line", text: `${n.name || n.id} (${n.id})` });
             }
             break;
+        case "rename_node":
+            blocks.push({ kind: "line", text: `Rename ${op.node_id} → ${op.new_id ?? ""}` });
+            break;
         default:
             blocks.push({ kind: "line", text: `${op.op} ${nm(op.node_id)}` });
     }
@@ -173,6 +176,7 @@ function summarizeOp(op: OpDiff, names?: ReadonlyMap<string, string>): string {
     if (op.op === "delete_relationship" && op.relationship) {
         return `Remove connection · ${nm(op.relationship.from)} → ${nm(op.relationship.to)}`;
     }
+    if (op.op === "rename_node") return `Rename ${op.node_id} → ${op.new_id ?? ""}`;
     return `${op.op} ${nm(op.node_id)}`;
 }
 

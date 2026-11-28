@@ -13,6 +13,7 @@ type stageResponse struct {
 	ProposalID string `json:"proposal_id"`
 	Applied    bool   `json:"applied"`
 	Message    string `json:"message"`
+	Warning    string `json:"warning,omitempty"`
 }
 
 func stagedMessage(source, id, detail string) string {
@@ -21,7 +22,8 @@ func stagedMessage(source, id, detail string) string {
 
 func (e *toolEnv) stage(ctx context.Context, in core.StageInput) (*sdkmcp.CallToolResult, stageResponse, error) {
 	_ = ctx
-	id, err := e.idx.Stage(in)
+	in.Origin = e.originID()
+	id, warning, err := e.idx.StageWithWarning(in)
 	if err != nil {
 		return nil, stageResponse{}, err
 	}
@@ -29,6 +31,7 @@ func (e *toolEnv) stage(ctx context.Context, in core.StageInput) (*sdkmcp.CallTo
 		ProposalID: id,
 		Applied:    false,
 		Message:    stagedMessage(in.Source, id, in.Summary),
+		Warning:    warning,
 	}
 	return nil, out, nil
 }

@@ -410,6 +410,9 @@ export type ProposalSummary = {
     created_at?: string;
     source?: string;
     summary?: string;
+    // Groups related proposals (set by the staging agent); not yet used for grouping in the UI.
+    change_set?: string;
+    depends_on_proposal?: string;
     unreadable: boolean;
     error?: string;
     operations?: OpSummary[];
@@ -419,6 +422,7 @@ export type OpSummary = {
     index: number;
     op: string;
     node_id: string;
+    new_id?: string;
     status: string;
     stale: boolean;
     stale_reason?: string;
@@ -460,6 +464,7 @@ export type OpDiff = {
     index: number;
     op: string;
     node_id: string;
+    new_id?: string;
     status: string;
     stale: boolean;
     stale_reason?: string;
@@ -480,6 +485,8 @@ export type ProposalDiff = {
     created_at: string;
     source: string;
     summary?: string;
+    change_set?: string;
+    depends_on_proposal?: string;
     operations: OpDiff[];
 };
 

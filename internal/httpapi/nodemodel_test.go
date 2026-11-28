@@ -207,3 +207,25 @@ func TestBuildOrderEndpoint(t *testing.T) {
 		t.Fatalf("unknown scope %d", rec.Code)
 	}
 }
+
+func TestPutRelationshipWithIDNeverMovesEndpoints(t *testing.T) {
+	idx, _ := newModel(t)
+	doJSON(t, idx, http.MethodPost, "/nodes", map[string]any{"id": "a", "name": "A", "type": "service"})
+	doJSON(t, idx, http.MethodPost, "/nodes", map[string]any{"id": "b", "name": "B", "type": "service"})
+	doJSON(t, idx, http.MethodPost, "/nodes", map[string]any{"id": "c", "name": "C", "type": "service"})
+	rec := doJSON(t, idx, http.MethodPut, "/relationships", map[string]any{"from": "a", "to": "b", "label": "calls"})
+	var rel relJSON
+	_ = json.Unmarshal(rec.Body.Bytes(), &rel)
+	rec = doJSON(t, idx, http.MethodPut, "/relationships", map[string]any{"id": rel.ID, "from": "c", "to": "b", "label": "calls2"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("put %d %s", rec.Code, rec.Body.String())
+	}
+	got := relJSON{}
+	_ = json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.From != "a" || got.To != "b" || got.Label != "calls2" {
+		t.Fatalf("endpoints moved or label lost: %+v", got)
+	}
+	if r := idx.Relationships[0]; r.From != "a" || r.To != "b" {
+		t.Fatalf("stored %+v", r)
+	}
+}
