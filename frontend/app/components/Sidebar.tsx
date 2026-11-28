@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
-import { PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
+import { LayersIcon, PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
 import { history } from "../history";
 import { createNode as postNode, deleteNode, getLevel, getParts, getRelationshipLevel, putParts, type ScopeInfo, type SchemaColumn, type Summary } from "../api";
 import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
@@ -12,7 +12,7 @@ import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-
 import { PartsPanel } from "./parts-panel";
 import { partSelection } from "../part-selection";
 import { filterRoots } from "../parts-scope";
-import { nextTab, type SidebarTab } from "../sidebar-tabs";
+import { nextTab, showEnablePartsAction, type SidebarTab } from "../sidebar-tabs";
 import { Tooltip } from "./tooltip";
 import styles from "./Sidebar.module.css";
 
@@ -250,7 +250,7 @@ export function Sidebar({
                     role="tabpanel"
                     id={`${creatorId}-panel-parts`}
                     aria-labelledby={`${creatorId}-tab-parts`}
-                    className={clsx("min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-4 text-sm", styles.sidebarScroll)}
+                    className="flex min-h-0 flex-1 flex-col text-sm"
                 >
                     <PartsPanel info={scopeInfo} roots={roots} selectedId={selection.id} onInfo={setScopeInfo} />
                 </div>
@@ -274,16 +274,6 @@ export function Sidebar({
                             </h2>
                             <NodeLinks items={children} currentId={nodeId} />
                         </section>
-                    ) : null}
-                    {scopeInfo && !partial ? (
-                        <button
-                            type="button"
-                            disabled={scopeBusy}
-                            className="self-start text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                            onClick={() => void enablePartialScope()}
-                        >
-                            Work on parts of the model
-                        </button>
                     ) : null}
                 </div>
             )}
@@ -364,6 +354,19 @@ export function Sidebar({
                         <Plus className="size-4" aria-hidden />
                         New node
                     </button>
+                    {showEnablePartsAction(tab, scopeInfo?.scope ?? null) ? (
+                        <div className="mt-2.5 border-t border-border pt-2.5">
+                            <button
+                                type="button"
+                                disabled={scopeBusy}
+                                className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                                onClick={() => void enablePartialScope()}
+                            >
+                                <LayersIcon className="size-4" aria-hidden />
+                                Work on parts of the model
+                            </button>
+                        </div>
+                    ) : null}
                 </div>
             )}
         </aside>

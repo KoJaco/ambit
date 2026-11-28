@@ -19,3 +19,8 @@ export function nextTab(current: SidebarTab, key: string, tabs: SidebarTab[]): S
             return null;
     }
 }
+
+/** The "Work on parts of the model" footer action: Nodes tab, whole scope only (partial scope switches back from the Parts tab). */
+export function showEnablePartsAction(tab: SidebarTab, scope: "whole" | "partial" | null): boolean {
+    return tab === "nodes" && scope === "whole";
+}

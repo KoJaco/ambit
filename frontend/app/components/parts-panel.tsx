@@ -1,8 +1,9 @@
 import { useId, useRef, useState } from "react";
 import clsx from "clsx";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { LayoutGridIcon, Pencil, Plus, Trash2 } from "lucide-react";
 import { deletePart, putParts, type ModelScope, type Part, type ScopeInfo, type Summary } from "../api";
 import { partSelection } from "../part-selection";
+import styles from "./Sidebar.module.css";
 import { parseGlobs, partSummary, validatePartForm, type PartForm } from "../parts-scope";
 
 const fieldClass =
@@ -106,7 +107,8 @@ export function PartsPanel({
     const selectRow = (part: Part | null) => partSelection.select(part);
 
     return (
-        <div className="flex flex-col gap-3">
+        <>
+        <div className={clsx("flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-3 pt-3 pb-4", styles.sidebarScroll)}>
             <section aria-label="Part scope">
                 <h2 className="mb-1 pr-8 text-xs uppercase tracking-wide text-foreground/60">Parts</h2>
                 <ul className="flex flex-col gap-1">
@@ -270,17 +272,7 @@ export function PartsPanel({
                         </button>
                     </div>
                 </form>
-            ) : (
-                <button
-                    ref={newRef}
-                    type="button"
-                    className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    onClick={() => open({ name: "", includeText: "", rootIds: [] })}
-                >
-                    <Plus className="size-4" aria-hidden />
-                    New part
-                </button>
-            )}
+            ) : null}
             {!form && error ? (
                 <p role="alert" className="text-xs text-destructive">
                     {error}
@@ -289,9 +281,30 @@ export function PartsPanel({
             <p role="status" aria-live="polite" className="sr-only">
                 {status}
             </p>
-            <button type="button" disabled={busy} className="self-start text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" onClick={() => void setScope("whole")}>
-                Switch to whole model
-            </button>
         </div>
+        <div className="shrink-0 border-t border-border px-3 py-2.5">
+            <button
+                ref={newRef}
+                type="button"
+                aria-expanded={form !== null}
+                className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-medium hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                onClick={() => (form && !form.id ? nameRef.current?.focus() : open({ name: "", includeText: "", rootIds: [] }))}
+            >
+                <Plus className="size-4" aria-hidden />
+                New part
+            </button>
+            <div className="mt-2.5 border-t border-border pt-2.5">
+                <button
+                    type="button"
+                    disabled={busy}
+                    className="flex min-h-8 w-full items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+                    onClick={() => void setScope("whole")}
+                >
+                    <LayoutGridIcon className="size-4" aria-hidden />
+                    Switch to whole model
+                </button>
+            </div>
+        </div>
+        </>
     );
 }
