@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Select } from "./ui/select";
 import { getMethod, getMethods, getProposalPolicy, putMethod, putProposalPolicy, type MethodDetail, type MethodSummary, type ProposalPolicyInfo } from "../api";
 import { autoAcceptCanToggle, autoAcceptHint, autoAcceptStatus } from "../auto-accept";
-import { formatRuleParams, gatesSummary, orderRules, severityLabel, switchNotice } from "../method-ui";
+import { formatRuleParams, orderRules, severityLabel, stageGateRows, switchNotice } from "../method-ui";
 import { Overlay } from "./overlay";
 import { CloseButton } from "./shortcuts-dialog";
 
@@ -98,7 +98,7 @@ export function MethodSheet({
     }
 
     const switchDisabled = policyBusy || !autoAcceptCanToggle(policy);
-    const gates = method ? gatesSummary(method.gates, method.stages) : [];
+    const gates = method ? stageGateRows(method.gates, method.stages, method.stage?.id) : [];
 
     return (
         <Overlay variant="sheet" labelledBy={titleId} onClose={onClose} returnFocusRef={returnFocusRef} initialFocusRef={closeRef}>
@@ -210,13 +210,28 @@ export function MethodSheet({
                             <h3 id={`${selectId}-gates`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Stage gates
                             </h3>
+                            {method.stage ? (
+                                <p className="mb-2 text-sm">
+                                    Current stage: <span className="font-medium">{method.stage.name}</span>
+                                    {gates.find((g) => g.current)?.statuses.length === 0 ? (
+                                        <span className="text-muted-foreground">. No gate applies right now.</span>
+                                    ) : null}
+                                </p>
+                            ) : null}
                             {gates.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No stage gates.</p>
+                                <p className="text-sm text-muted-foreground">This method has no stages.</p>
                             ) : (
                                 <ul className="flex flex-col gap-1 text-sm">
                                     {gates.map((g) => (
-                                        <li key={g.stage}>
-                                            <span className="font-medium">{g.stage}:</span> agents cannot set status {g.statuses.join(", ")}.
+                                        <li key={g.id} aria-current={g.current ? "step" : undefined} className={g.current ? "rounded-lg border border-foreground/60 bg-accent px-2 py-1" : "px-2 py-1"}>
+                                            <span className="font-medium">{g.stage}</span>
+                                            {g.current ? <span className="text-xs font-medium"> (current stage)</span> : null}
+                                            <span>: </span>
+                                            {g.statuses.length > 0 ? (
+                                                <span>agents cannot set status {g.statuses.join(", ")}.</span>
+                                            ) : (
+                                                <span className="text-muted-foreground">no gate.</span>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>

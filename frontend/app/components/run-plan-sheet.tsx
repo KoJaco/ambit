@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
 import { BotIcon, CheckIcon, LockIcon, UserIcon, type LucideIcon } from "lucide-react";
 import { getBuildOrder, putGate, type BuildClass, type BuildItem, type BuildOrder } from "../api";
-import { CLASS_LABEL, chipDescription, gateRowLabel, groupGates, remainingGates, summaryText, waveColumns, withGateCleared } from "../run-plan";
+import { CLASS_LABEL, chipDescription, earlierWavesNote, gateRowLabel, groupGates, readyPills, remainingGates, summaryText, waveColumns, withGateCleared } from "../run-plan";
 import { Overlay } from "./overlay";
 import { CloseButton } from "./shortcuts-dialog";
 import { sheetButtonClass } from "./method-sheet";
@@ -103,8 +103,7 @@ export function RunPlanSheet({
     const columns = plan ? waveColumns(plan) : [];
     const groups = plan ? groupGates(plan) : [];
     const ready = new Set(plan?.ready_now ?? []);
-    const parallel = new Set(plan?.parallel_set ?? []);
-    const left = remainingGates(groups);
+        const left = remainingGates(groups);
     const checkboxClass = "mt-0.5 size-4 shrink-0 accent-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
     return (
@@ -135,16 +134,20 @@ export function RunPlanSheet({
                             ) : (
                                 <>
                                     <ul className="flex flex-wrap gap-2 p-1.5">
-                                        {plan.ready_now.map((id) => (
-                                            <li
-                                                key={id}
-                                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm ${parallel.has(id) ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
-                                            >
-                                                {parallel.has(id) ? <BotIcon aria-hidden className="size-3.5" /> : null}
-                                                {nameOf(id)}
-                                                {parallel.has(id) ? <span className="text-xs">(in parallel set)</span> : null}
-                                            </li>
-                                        ))}
+                                        {readyPills(plan).map((pill) => {
+                                            const Icon = pill.class ? CLASS_ICON[pill.class] : null;
+                                            return (
+                                                <li
+                                                    key={pill.id}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${pill.inParallelSet ? "border-primary bg-primary text-primary-foreground" : pill.class === "needs-human" ? "border-dashed border-foreground" : "border-border"}`}
+                                                >
+                                                    {Icon ? <Icon aria-hidden className="size-3.5" /> : null}
+                                                    {pill.name}
+                                                    {pill.classText ? <span className="text-xs">{pill.classText}</span> : null}
+                                                    {pill.inParallelSet ? <span className="text-xs">(in parallel set)</span> : null}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                     <p className="mt-1 text-xs text-muted-foreground">
                                         The parallel set are ready nodes whose files do not overlap, so they can be built at the same time.
@@ -156,6 +159,7 @@ export function RunPlanSheet({
                         <section aria-label="Waves" className="mt-5">
                             <h3 className={headingClass}>Waves</h3>
                             {columns.length === 0 ? <p className="text-sm text-muted-foreground">No buildable nodes.</p> : null}
+                            {earlierWavesNote(columns) ? <p className="mb-1 text-xs text-muted-foreground">{earlierWavesNote(columns)}</p> : null}
                             <div className="flex gap-4 overflow-x-auto rounded-[10px] p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
                                 {columns.map((col) => (
                                     <div key={col.wave} className="w-44 shrink-0">

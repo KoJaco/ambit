@@ -176,6 +176,19 @@ export function switchNotice(
     return `${base} Stage set to ${stageName(res.stage)}.${note}`;
 }
 
+export type StageGateRow = { id: string; stage: string; statuses: string[]; current: boolean };
+
+// Every stage of the method in order, each with the statuses agents cannot set there (empty when
+// the stage has no gate), and the current stage marked. Gates for ids that are not stages are kept last.
+export function stageGateRows(gates: Record<string, string[]>, stages: StageInfo[], currentId: string | null | undefined): StageGateRow[] {
+    const known = new Set(stages.map((s) => s.id));
+    const rows: StageGateRow[] = stages.map((s) => ({ id: s.id, stage: s.name, statuses: gates[s.id] ?? [], current: s.id === currentId }));
+    for (const id of Object.keys(gates).sort()) {
+        if (!known.has(id) && gates[id].length > 0) rows.push({ id, stage: id, statuses: gates[id], current: id === currentId });
+    }
+    return rows;
+}
+
 export function gatesSummary(gates: Record<string, string[]>, stages: StageInfo[]): { stage: string; statuses: string[] }[] {
     const names = new Map(stages.map((s) => [s.id, s.name]));
     const order = new Map(stages.map((s, i) => [s.id, i]));

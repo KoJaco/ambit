@@ -12,6 +12,7 @@ import {
     decideStageChange,
     findingTarget,
     gatesSummary,
+    stageGateRows,
     groupFindings,
     nextStage,
     orderRules,
@@ -179,5 +180,20 @@ describe("orderRules / gatesSummary", () => {
             { stage: "Design", statuses: ["x", "y"] },
             { stage: "Build", statuses: ["done"] },
         ]);
+    });
+});
+
+describe("stageGateRows", () => {
+    it("lists every stage in order, marks the current one and keeps stages without gates", () => {
+        const rows = stageGateRows({ design: ["building", "done"] }, stages, "build");
+        expect(rows.map((r) => r.stage)).toEqual(["Design", "Build", "Ship"]);
+        expect(rows.map((r) => r.current)).toEqual([false, true, false]);
+        expect(rows[0].statuses).toEqual(["building", "done"]);
+        expect(rows[1].statuses).toEqual([]);
+    });
+    it("marks nothing current without a stage and appends gates for unknown stages", () => {
+        const rows = stageGateRows({ legacy: ["x"], design: [] }, stages, null);
+        expect(rows.some((r) => r.current)).toBe(false);
+        expect(rows[rows.length - 1]).toMatchObject({ id: "legacy", statuses: ["x"] });
     });
 });
