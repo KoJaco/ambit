@@ -56,6 +56,63 @@ export function outsideReparentTarget(found: string | null, levelNodeId: string 
     return found ?? levelNodeId ?? "";
 }
 
+type TreeNode = { id: string; parentId?: string };
+
+// Every node below `id`, through parentId links.
+export function descendantIds(id: string, nodes: TreeNode[]): Set<string> {
+    const out = new Set<string>();
+    for (let grew = true; grew; ) {
+        grew = false;
+        for (const node of nodes) {
+            if (node.parentId && (node.parentId === id || out.has(node.parentId)) && !out.has(node.id)) {
+                out.add(node.id);
+                grew = true;
+            }
+        }
+    }
+    return out;
+}
+
+// Where a dragged node would be reparented, read from the pointer (`point`, absolute flow
+// coordinates) and the absolute rects of the nodes that accept a drop. Null means no change.
+// A member is clamped to its group, so leaving it is read from the pointer: outside the parent the
+// innermost container under it wins, else the level itself ("" or the level node). Inside the
+// parent, any sibling container (open or collapsed) under the pointer is a target, and so is
+// anything nested in one. A node never targets itself, its descendants, or its own ancestors.
+export function resolveDropTarget(opts: {
+    nodeId: string;
+    nodes: TreeNode[];
+    rects: Rect[];
+    point: { x: number; y: number };
+    levelNodeId?: string;
+}): string | null {
+    const { nodeId, nodes, rects, point } = opts;
+    const parentOf = new Map(nodes.map((node) => [node.id, node.parentId]));
+    const parentId = parentOf.get(nodeId);
+    const banned = [nodeId, ...descendantIds(nodeId, nodes)];
+    if (!parentId) return containerAt(point, rects, banned);
+    const ancestors: string[] = [];
+    for (let at: string | undefined = parentId; at && !ancestors.includes(at); at = parentOf.get(at)) ancestors.push(at);
+    if (containerAt(point, rects.filter((rect) => rect.id === parentId)) === null) {
+        return outsideReparentTarget(containerAt(point, rects, [parentId, ...banned]), opts.levelNodeId);
+    }
+    return containerAt(point, rects, [...ancestors, ...banned]);
+}
+
+function intersects(a: Rect, b: Rect): boolean {
+    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+// Open groups a dropped node overlaps without being inside them (and without being reparented
+// into them): it would sit half behind the group, hard to reach. Its own ancestors and descendants
+// are fine. `groups` and `node` are in the same absolute coordinates.
+export function straddledGroups(node: Rect, groups: Rect[], nodes: TreeNode[]): string[] {
+    const parentOf = new Map(nodes.map((item) => [item.id, item.parentId]));
+    const ok = new Set<string>([node.id, ...descendantIds(node.id, nodes)]);
+    for (let at = parentOf.get(node.id); at && !ok.has(at); at = parentOf.get(at)) ok.add(at);
+    return groups.filter((group) => !ok.has(group.id) && intersects(node, group)).map((group) => group.id);
+}
+
 export type SelectableNode = { id: string; selected?: boolean; parentId?: string };
 
 // Ids that can be grouped together: at least two selected nodes that share the same parent.

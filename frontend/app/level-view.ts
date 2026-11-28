@@ -257,8 +257,23 @@ export function summaryText(childCount: number, typeMix?: { type: string; count:
     return `${childCount} · ${shown.join(", ")}${rest > 0 ? ` +${rest}` : ""}`;
 }
 
-// Whether on-screen container sizes stay as a floor for a relayout. Only a pure group toggle keeps
-// them; when membership changed too (a node moved between groups), groups must be free to shrink.
-export function keepsSizeFloor(toggled: boolean, lastSig: string | undefined, currentSig: string): boolean {
-    return toggled && (lastSig === undefined || lastSig === currentSig);
+// On-screen container sizes that stay as a floor for a relayout. Only a pure group toggle keeps
+// any, and only for a container whose own direct members are unchanged: a group that gained or
+// lost a member (a node reparented in or out, alongside a toggle or not) must be free to shrink to
+// fit what it has now. Decided per container, so an unrelated toggle never grows or shrinks it.
+export function sizeFloors(
+    toggled: boolean,
+    onScreen: Record<string, { width: number; height: number }>,
+    before: { id: string; parentId?: string }[],
+    after: { id: string; parentId?: string }[],
+): Record<string, { width: number; height: number }> {
+    const out: Record<string, { width: number; height: number }> = {};
+    if (!toggled) return out;
+    const present = new Set(after.map((node) => node.id));
+    for (const [id, size] of Object.entries(onScreen)) {
+        if (!present.has(id)) continue;
+        if (memberSignature(id, before) !== memberSignature(id, after)) continue;
+        out[id] = size;
+    }
+    return out;
 }

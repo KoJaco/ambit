@@ -16,10 +16,13 @@ export function layoutCacheKey(opts: {
     nodeId?: string;
     relationshipId?: string;
     expanded?: Iterable<string>;
+    // Selected part on the root level: its scoped level has other nodes, so it keeps its own layout.
+    partId?: string;
 }): string {
     if (opts.relationshipId) return `_rel_${opts.relationshipId}`;
     const base = opts.nodeId ? opts.nodeId : rootLayoutKey;
-    const hash = expandedKey(opts.expanded ?? []);
+    // "@" cannot appear in a node id, so the part token never collides with an expanded id.
+    const hash = expandedKey([...(opts.expanded ?? []), ...(opts.partId && !opts.nodeId ? [`@part:${opts.partId}`] : [])]);
     return hash ? `${base}~${hash}` : base;
 }
 

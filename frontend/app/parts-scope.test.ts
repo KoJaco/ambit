@@ -35,6 +35,40 @@ describe("scopeRootLevel", () => {
         expect(out.children.map((c) => c.id)).toEqual(["a", "b"]);
         expect(out.relationships.map((r) => r.id)).toEqual(["1"]);
     });
+    it("keeps the descendants of a part root that is open, with the edges among them", () => {
+        const open: Level = {
+            node: null,
+            children: [
+                { ...sum("demo-app"), expanded: true, child_count: 2 },
+                { ...sum("web"), group_id: "demo-app" },
+                { ...sum("db"), group_id: "demo-app" },
+                { ...sum("other"), expanded: true, child_count: 1 },
+                { ...sum("other-kid"), group_id: "other" },
+            ],
+            relationships: [
+                { id: "1", from: "web", to: "db", label: "", kind: "" },
+                { id: "2", from: "web", to: "other-kid", label: "", kind: "" },
+            ],
+            crossings: [{ node_id: "db" }, { node_id: "other-kid" }] as Level["crossings"],
+            warnings: [],
+        };
+        const out = scopeRootLevel(open, { root_node_ids: ["demo-app"] });
+        expect(out.children.map((c) => c.id)).toEqual(["demo-app", "web", "db"]);
+        expect(out.relationships.map((r) => r.id)).toEqual(["1"]);
+        expect(out.crossings.map((c) => c.node_id)).toEqual(["db"]);
+    });
+
+    it("keeps depth-2 members through the ancestor chain", () => {
+        const deep: Level = {
+            node: null,
+            children: [{ ...sum("r"), expanded: true }, { ...sum("g"), group_id: "r", expanded: true }, { ...sum("leaf"), group_id: "g" }, sum("x")],
+            relationships: [],
+            crossings: [],
+            warnings: [],
+        };
+        expect(scopeRootLevel(deep, { root_node_ids: ["r"] }).children.map((c) => c.id)).toEqual(["r", "g", "leaf"]);
+    });
+
     it("leaves All and non-root levels alone", () => {
         expect(scopeRootLevel(level, null)).toBe(level);
         const inner = { ...level, node: sum("a") };

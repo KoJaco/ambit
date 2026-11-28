@@ -22,12 +22,25 @@ export function filterRoots<T extends { id: string }>(roots: T[], part: Pick<Par
 }
 
 /**
- * Scopes a root-level response to a part: children are filtered and edges or crossings that would
- * point at a removed node are dropped. Levels below the root are never scoped.
+ * Scopes a root-level response to a part. A node is in the part when it is a part root or sits
+ * inside one (any ancestor through `group_id` is a root), so an open root keeps its members.
+ * Edges and crossings that would point at a removed node are dropped. Levels below the root
+ * are never scoped.
  */
 export function scopeRootLevel(level: Level, part: Pick<Part, "root_node_ids"> | null): Level {
     if (!part || level.node) return level;
-    const children = filterRoots<Summary>(level.children ?? [], part);
+    const all = level.children ?? [];
+    const roots = new Set(part.root_node_ids);
+    const byId = new Map(all.map((c) => [c.id, c]));
+    const inPart = (child: Summary): boolean => {
+        const seen = new Set<string>();
+        for (let at: Summary | undefined = child; at && !seen.has(at.id); at = at.group_id ? byId.get(at.group_id) : undefined) {
+            if (roots.has(at.id)) return true;
+            seen.add(at.id);
+        }
+        return false;
+    };
+    const children = all.filter(inPart);
     const keep = new Set(children.map((c) => c.id));
     const inScope = (r: Relationship) => keep.has(r.from) && keep.has(r.to);
     return {
