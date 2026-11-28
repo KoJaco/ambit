@@ -156,7 +156,7 @@ export function RunPlanSheet({
                         <section aria-label="Waves" className="mt-5">
                             <h3 className={headingClass}>Waves</h3>
                             {columns.length === 0 ? <p className="text-sm text-muted-foreground">No buildable nodes.</p> : null}
-                            <div className="flex gap-4 overflow-x-auto p-2" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
+                            <div className="flex gap-4 overflow-x-auto rounded-[10px] p-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
                                 {columns.map((col) => (
                                     <div key={col.wave} className="w-44 shrink-0">
                                         <h4 className="mb-1 text-xs font-medium">
