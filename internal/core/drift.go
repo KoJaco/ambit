@@ -31,6 +31,10 @@ type DriftReport struct {
 	Overlaps  []Overlap       `json:"overlaps"`
 	// Ignored counts files skipped because they match a drift_ignore glob.
 	Ignored int `json:"ignored_files"`
+	// OutsideParts counts unowned files left out of the report because they match no part
+	// (partial scope) or not the requested part. It is not part of Ignored, which counts
+	// drift_ignore matches only.
+	OutsideParts int `json:"outside_parts,omitempty"`
 	// Hint suggests drift_ignore when many unowned files are reported.
 	Hint string `json:"hint,omitempty"`
 }
@@ -118,6 +122,10 @@ type DriftOptions struct {
 	// NodeID limits the report to that node: its unmatched globs and the overlaps
 	// it takes part in. Unowned files are not reported.
 	NodeID NodeID
+	// Part limits unowned-file reporting to the files matching that part's include globs
+	// (see decision 0016). Empty means every part in partial scope, or no restriction in
+	// whole scope. An unknown part id is an error.
+	Part string
 }
 
 // Drift compares the model's implementation and scope globs with the files in the
@@ -157,6 +165,14 @@ func DriftWith(idx *Index, opts DriftOptions) (DriftReport, error) {
 	}
 	snap := &Index{Order: append([]NodeID(nil), idx.Order...), Nodes: make(map[NodeID]*Node, len(idx.Nodes))}
 	snap.DriftIgnore = append([]string(nil), idx.DriftIgnore...)
+	snap.Scope = idx.scopeLocked()
+	snap.Parts = clonePartList(idx.Parts)
+	if opts.Part != "" {
+		if _, ok := idx.partLocked(opts.Part); !ok {
+			idx.mu.Unlock()
+			return DriftReport{}, fmt.Errorf("unknown part %q", opts.Part)
+		}
+	}
 	for id, n := range idx.Nodes {
 		if n == nil {
 			continue
@@ -167,10 +183,10 @@ func DriftWith(idx *Index, opts DriftOptions) (DriftReport, error) {
 		snap.Nodes[id] = &c
 	}
 	idx.mu.Unlock()
-	return driftLocked(snap, files, opts.NodeID)
+	return driftLocked(snap, files, opts.NodeID, opts.Part)
 }
 
-func driftLocked(idx *Index, files []string, only NodeID) (DriftReport, error) {
+func driftLocked(idx *Index, files []string, only NodeID, part string) (DriftReport, error) {
 	report := DriftReport{Unowned: []string{}, Unmatched: []UnmatchedGlob{}, Overlaps: []Overlap{}}
 	if err := validateGlobs(idx); err != nil {
 		return report, err
@@ -206,9 +222,14 @@ func driftLocked(idx *Index, files []string, only NodeID) (DriftReport, error) {
 		}
 		switch {
 		case len(owners) == 0:
-			if only == "" {
-				report.Unowned = append(report.Unowned, path)
+			if only != "" {
+				break
 			}
+			if (idx.Scope == ScopePartial || part != "") && !inUnownedScope(idx, part, path) {
+				report.OutsideParts++
+				break
+			}
+			report.Unowned = append(report.Unowned, path)
 		case len(owners) > 1 && hasNonNestedPair(idx, owners):
 			if only == "" || containsNode(owners, only) {
 				report.Overlaps = append(report.Overlaps, Overlap{Path: path, Owners: owners})
@@ -247,7 +268,29 @@ func driftLocked(idx *Index, files []string, only NodeID) (DriftReport, error) {
 	}
 	sort.Strings(report.Unowned)
 	report.Hint = driftIgnoreHint(len(report.Unowned))
+	if idx.Scope == ScopePartial && len(idx.Parts) == 0 {
+		msg := "partial scope has no parts; add one with set_part"
+		if report.Hint != "" {
+			msg += ". " + report.Hint
+		}
+		report.Hint = msg
+	}
 	return report, nil
+}
+
+// inUnownedScope reports whether an unowned file is in the scope drift covers: in partial
+// scope (or when part is set) only files matching an include glob of a part, or of the
+// requested part. Parts with an invalid glob were dropped at load.
+func inUnownedScope(idx *Index, part, path string) bool {
+	for _, p := range idx.Parts {
+		if part != "" && p.ID != part {
+			continue
+		}
+		if ok, err := partFileMatch(p, path); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 // ownersOfPath lists the nodes whose implementation globs match path, in model order.
@@ -334,6 +377,9 @@ func FormatDrift(r DriftReport) string {
 		b.WriteString("Drift compares the model with files git can see (tracked, plus untracked files that are not gitignored). Files in another worktree are only seen when that worktree is passed.\n")
 		if r.Ignored > 0 {
 			fmt.Fprintf(&b, "(%d file(s) skipped by drift_ignore.)\n", r.Ignored)
+		}
+		if r.OutsideParts > 0 {
+			fmt.Fprintf(&b, "(%d unowned file(s) outside the model's parts were not reported.)\n", r.OutsideParts)
 		}
 		if hint := driftIgnoreHint(len(r.Unowned)); hint != "" {
 			b.WriteString(hint + "\n")

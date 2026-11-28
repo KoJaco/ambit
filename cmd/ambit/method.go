@@ -102,6 +102,20 @@ func stdoutIsTerminal(w io.Writer) bool {
 // created (or still empty). Re-running init never changes an existing method or stage
 // unless --method is given.
 func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io.Writer) int {
+	args, scope, err := splitInitScope(args)
+	if err != nil {
+		fmt.Fprintf(stderr, "ambit init: %v\n", err)
+		return 1
+	}
+	var parts []core.Part
+	for _, raw := range scope.Parts {
+		p, perr := parsePartFlag(raw)
+		if perr != nil {
+			fmt.Fprintf(stderr, "ambit init: %v\n", perr)
+			return 1
+		}
+		parts = append(parts, p)
+	}
 	dir, method, mcp, err := parseInitArgs(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "ambit init: %v\n", err)
@@ -139,11 +153,56 @@ func cmdInit(args []string, stdin io.Reader, interactive bool, stdout, stderr io
 		prev = core.FreeformMethod
 	}
 	fresh := existing == nil || (len(existing.Order) == 0 && existing.MethodID == "" && existing.StageID == "")
+	if interactive {
+		// One buffered reader for every prompt, so a line read ahead is not lost.
+		stdin = bufio.NewReader(stdin)
+	}
 	if method == "" && interactive && fresh {
 		method, err = promptMethod(stdin, stdout, idx.ListMethods(), stdoutIsTerminal(stdout))
 		if err != nil {
 			fmt.Fprintf(stderr, "ambit init: %v\n", err)
 			return 1
+		}
+	}
+	if scope.Scope == "" && interactive && fresh {
+		scope.Scope, err = promptScope(stdin, stdout)
+		if err != nil {
+			fmt.Fprintf(stderr, "ambit init: %v\n", err)
+			return 1
+		}
+		if scope.Scope == core.ScopePartial {
+			raw, _ := promptPart(stdin, stdout)
+			if raw != "" {
+				p, perr := parsePartFlag(raw)
+				if perr != nil {
+					fmt.Fprintf(stderr, "ambit init: %v\n", perr)
+					return 1
+				}
+				parts = append(parts, p)
+			}
+		}
+	}
+	// Validate every --part before anything is written, so a bad value leaves scope untouched.
+	for i, p := range parts {
+		np, perr := core.NormalizePart(p)
+		if perr != nil {
+			fmt.Fprintf(stderr, "ambit init: %v\n", perr)
+			return 1
+		}
+		parts[i] = np
+	}
+	if scope.Scope != "" {
+		if err := idx.SetScope(scope.Scope); err != nil {
+			fmt.Fprintf(stderr, "ambit init: %v\n", err)
+			return 1
+		}
+		fmt.Fprintf(stdout, "scope: %s\n", scope.Scope)
+		for _, p := range parts {
+			if _, err := idx.SetPart(p); err != nil {
+				fmt.Fprintf(stderr, "ambit init: %v\n", err)
+				return 1
+			}
+			fmt.Fprintf(stdout, "part: %s (%s)\n", p.ID, strings.Join(p.Include, ", "))
 		}
 	}
 	if method != "" && method == prev && existing != nil {

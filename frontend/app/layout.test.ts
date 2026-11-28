@@ -147,6 +147,42 @@ describe("seedPositions", () => {
     });
 });
 
+describe("seedPositions inside an existing group", () => {
+    const sizes = { h: { width: 220, height: 96 }, n: { width: 220, height: 96 } };
+
+    it("puts a new member in free space, not on top of an existing sibling", () => {
+        const out = seedPositions(
+            [{ id: "api" }, { id: "h", parentId: "api" }, { id: "n", parentId: "api" }],
+            [
+                { id: "api", position: { x: 0, y: 0 } },
+                { id: "h", parentId: "api", position: { x: containerPadding.left, y: containerPadding.top } },
+            ],
+            { ...sizes, api: { width: 252, height: 160 } },
+        );
+        expect(out.h).toEqual({ x: containerPadding.left, y: containerPadding.top });
+        const apart = out.n.x >= out.h.x + 220 || out.n.y >= out.h.y + 96;
+        expect(apart).toBe(true);
+        expect(out.n.x).toBeGreaterThanOrEqual(containerPadding.left);
+        expect(out.n.y).toBeGreaterThanOrEqual(containerPadding.top);
+    });
+
+    it("avoids every existing member, filling a gap when one exists", () => {
+        const out = seedPositions(
+            [{ id: "api" }, { id: "h", parentId: "api" }, { id: "i", parentId: "api" }, { id: "n", parentId: "api" }],
+            [
+                { id: "api", position: { x: 0, y: 0 } },
+                { id: "h", parentId: "api", position: { x: 16, y: 48 } },
+                { id: "i", parentId: "api", position: { x: 276, y: 48 } },
+            ],
+            { ...sizes, i: sizes.h, api: { width: 512, height: 160 } },
+        );
+        for (const other of [out.h, out.i]) {
+            const clear = out.n.x >= other.x + 220 || out.n.x + 220 <= other.x || out.n.y >= other.y + 96 || out.n.y + 96 <= other.y;
+            expect(clear).toBe(true);
+        }
+    });
+});
+
 describe("group growth on toggle", () => {
     const sizes = { m: { width: 220, height: 96 } };
     const nodes = [{ id: "g" }, { id: "m", parentId: "g" }];
@@ -197,9 +233,22 @@ describe("pushOverlaps", () => {
     it("leaves nodes alone when nothing grew or nothing overlaps", () => {
         const pos = { g: { x: 0, y: 0 }, right: { x: 260, y: 0 }, below: { x: 0, y: 136 }, far: { x: 600, y: 0 }, p: { x: 0, y: 900 }, other: { x: 0, y: 0 } };
         expect(pushOverlaps(nodes, pos, old, { g: { width: 220, height: 96 } })).toEqual(pos);
-        // Growth below the 0.5px tolerance is ignored; real growth only moves by what it takes.
+        // Growth below the 0.5px tolerance is ignored.
         expect(pushOverlaps(nodes, pos, old, { g: { width: 220.4, height: 96 } })).toEqual(pos);
-        expect(pushOverlaps(nodes, pos, old, { g: { width: 230, height: 96 } }).right.x).toBe(270);
+        // Growing into the gap without touching a neighbour moves nothing (the neighbour was laid out 40px away).
+        expect(pushOverlaps(nodes, pos, old, { g: { width: 230, height: 96 } })).toEqual(pos);
+        // A real overlap moves the neighbour just far enough to clear by the gap.
+        expect(pushOverlaps(nodes, pos, old, { g: { width: 280, height: 96 } }).right.x).toBe(320);
+    });
+
+    it("does not push siblings that sit close to a new container but do not overlap it", () => {
+        const flat = [{ id: "grp" }, { id: "m1", parentId: "grp" }, { id: "m2", parentId: "grp" }, { id: "near" }, { id: "near-kid", parentId: "near" }];
+        const pos = { grp: { x: 0, y: 0 }, m1: { x: 16, y: 48 }, m2: { x: 276, y: 48 }, near: { x: 0, y: 182 }, "near-kid": { x: 16, y: 48 } };
+        const sizes = { m1: { width: 220, height: 96 }, m2: { width: 220, height: 96 }, near: { width: 300, height: 150 }, "near-kid": { width: 220, height: 96 } };
+        const grp = computeGroupSizes(flat, pos, sizes).grp;
+        // grp ends at y = 160; near starts at 182, inside the 40px gap but clear of it.
+        const out = pushOverlaps(flat, pos, { near: sizes.near }, { ...sizes, grp });
+        expect(out).toEqual(pos);
     });
 
     it("only interacts with siblings under the same parent", () => {

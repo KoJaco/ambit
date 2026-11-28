@@ -80,7 +80,7 @@ function summarize(op: OpDiff, names?: ReadonlyMap<string, string>): string {
         return `${name(op.relationship.from)} → ${name(op.relationship.to)}`;
     }
     if (op.op === "set_constraints") return "Project rules";
-    if (op.op === "rename_node") return `Rename ${name(op.node_id)} → ${op.new_id ?? ""}`;
+    if (op.op === "rename_node") return `Rename ${op.node_id} → ${op.new_id ?? ""}`;
     return `${op.op} ${name(op.node_id)}`;
 }
 
@@ -225,6 +225,8 @@ function titleOf(op: OpDiff, names: Map<string, string>): string {
         const { from, to } = op.relationship;
         return `${names.get(from) ?? from} → ${names.get(to) ?? to}`;
     }
+    // A rename is about the id, so the row reads "Rename <old id> → <new id>" (the verb comes first).
+    if (op.op === "rename_node") return `${op.node_id} → ${op.new_id ?? ""}`;
     return op.proposed?.name ?? op.current?.name ?? names.get(op.node_id) ?? op.node_id;
 }
 
@@ -243,7 +245,10 @@ function changeOf(op: OpDiff, names: Map<string, string>): string {
     }
     if (op.op === "set_constraints") return constraintsChangeText(op.current_constraints, op.proposed_constraints);
     if (op.op === "delete_node") return "Removes the node";
-    if (op.op === "rename_node") return `Id ${op.node_id} → ${op.new_id ?? ""}`;
+    if (op.op === "rename_node") {
+        const name = op.current?.name ?? names.get(op.node_id);
+        return name ? `Node ${name}` : "";
+    }
     if (op.op === "delete_relationship") return removeConnectionChange(op);
     if (op.op === "set_relationship" && op.relationship) {
         return edgeSummary(op);
@@ -299,6 +304,32 @@ export type ProposalSummaryLine = {
     // Pending operations whose target changed since the proposal was staged.
     staleCount: number;
 };
+
+export type AcceptAllPlan = {
+    apply: number;
+    // Pending operations that are out of date: accept-all skips them and leaves them pending.
+    skip: number;
+    // Set when accept-all would skip something, so the architect is told before it runs.
+    warning: string;
+};
+
+// What "Accept all" will do. The server applies the pending operations that are not stale and
+// reports the rest as skipped (docs/contracts/proposals.md, Staleness); nothing stale is swept through.
+export function acceptAllPlan(rows: Pick<ReviewRow, "status" | "stale">[]): AcceptAllPlan {
+    const pending = rows.filter((row) => row.status === "pending");
+    const skip = pending.filter((row) => row.stale).length;
+    const apply = pending.length - skip;
+    if (skip === 0) return { apply, skip, warning: "" };
+    const skipText = `${plural(skip, "out-of-date change")} will be skipped and stay pending for you to review`;
+    return {
+        apply,
+        skip,
+        warning:
+            apply === 0
+                ? `All ${plural(skip, "pending change")} are out of date, so Accept all would apply nothing. Review them one by one.`
+                : `${skipText}. The other ${apply} will be applied.`,
+    };
+}
 
 function plural(n: number, one: string, many = `${one}s`): string {
     return `${n} ${n === 1 ? one : many}`;

@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { Select } from "./ui/select";
-import { getMethod, getMethods, putMethod, type MethodDetail, type MethodSummary } from "../api";
-import { formatRuleParams, gatesSummary, orderRules, severityLabel, switchNotice } from "../method-ui";
+import { getMethod, getMethods, getProposalPolicy, putMethod, putProposalPolicy, type MethodDetail, type MethodSummary, type ProposalPolicyInfo } from "../api";
+import { autoAcceptCanToggle, autoAcceptHint, autoAcceptStatus } from "../auto-accept";
+import { formatRuleParams, orderRules, severityLabel, stageGateRows, switchNotice } from "../method-ui";
 import { Overlay } from "./overlay";
 import { CloseButton } from "./shortcuts-dialog";
 
@@ -14,6 +15,7 @@ export function MethodSheet({
     onClose,
     onChanged,
     onOpenCheck,
+    onOpenAccepted,
     returnFocusRef,
     version = 0,
 }: {
@@ -21,6 +23,7 @@ export function MethodSheet({
     // Called after a successful switch so the stage chip can refetch.
     onChanged: () => void;
     onOpenCheck: () => void;
+    onOpenAccepted?: () => void;
     returnFocusRef?: RefObject<HTMLElement | null>;
     // Changes when the model or config changed elsewhere; the sheet refetches.
     version?: number;
@@ -36,6 +39,21 @@ export function MethodSheet({
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
     const [notice, setNotice] = useState("");
+    const [policy, setPolicy] = useState<ProposalPolicyInfo | null>(null);
+    const [policyError, setPolicyError] = useState<string | null>(null);
+    const [policyBusy, setPolicyBusy] = useState(false);
+
+    async function toggleAutoAccept(next: boolean) {
+        setPolicyBusy(true);
+        setPolicyError(null);
+        try {
+            setPolicy(await putProposalPolicy(next));
+        } catch (err) {
+            setPolicyError(err instanceof Error ? err.message : "could not change auto-accept");
+        } finally {
+            setPolicyBusy(false);
+        }
+    }
 
     async function load(signal?: AbortSignal) {
         const [m, list] = await Promise.all([getMethod(signal), getMethods(signal)]);
@@ -51,6 +69,11 @@ export function MethodSheet({
             if (ac.signal.aborted) return;
             setLoadError(err instanceof Error ? err.message : "could not load the method");
         });
+        getProposalPolicy(ac.signal)
+            .then(setPolicy)
+            .catch(() => {
+                if (!ac.signal.aborted) setPolicy(null);
+            });
         return () => ac.abort();
     }, [version]);
 
@@ -74,7 +97,8 @@ export function MethodSheet({
         }
     }
 
-    const gates = method ? gatesSummary(method.gates, method.stages) : [];
+    const switchDisabled = policyBusy || !autoAcceptCanToggle(policy);
+    const gates = method ? stageGateRows(method.gates, method.stages, method.stage?.id) : [];
 
     return (
         <Overlay variant="sheet" labelledBy={titleId} onClose={onClose} returnFocusRef={returnFocusRef} initialFocusRef={closeRef}>
@@ -186,18 +210,81 @@ export function MethodSheet({
                             <h3 id={`${selectId}-gates`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Stage gates
                             </h3>
+                            {method.stage ? (
+                                <p className="mb-2 text-sm">
+                                    Current stage: <span className="font-medium">{method.stage.name}</span>
+                                    {gates.find((g) => g.current)?.statuses.length === 0 ? (
+                                        <span className="text-muted-foreground">. No gate applies right now.</span>
+                                    ) : null}
+                                </p>
+                            ) : null}
                             {gates.length === 0 ? (
-                                <p className="text-sm text-muted-foreground">No stage gates.</p>
+                                <p className="text-sm text-muted-foreground">This method has no stages.</p>
                             ) : (
                                 <ul className="flex flex-col gap-1 text-sm">
                                     {gates.map((g) => (
-                                        <li key={g.stage}>
-                                            <span className="font-medium">{g.stage}:</span> agents cannot set status {g.statuses.join(", ")}.
+                                        <li key={g.id} aria-current={g.current ? "step" : undefined} className={g.current ? "rounded-lg border border-foreground/60 bg-accent px-2 py-1" : "px-2 py-1"}>
+                                            <span className="font-medium">{g.stage}</span>
+                                            {g.current ? <span className="text-xs font-medium"> (current stage)</span> : null}
+                                            <span>: </span>
+                                            {g.statuses.length > 0 ? (
+                                                <span>agents cannot set status {g.statuses.join(", ")}.</span>
+                                            ) : (
+                                                <span className="text-muted-foreground">no gate.</span>
+                                            )}
                                         </li>
                                     ))}
                                 </ul>
                             )}
                         </section>
+
+                        {policy ? (
+                            <section aria-labelledby={`${selectId}-auto`} className="mt-5">
+                                <h3 id={`${selectId}-auto`} className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                    Architect auto-accept
+                                </h3>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        type="button"
+                                        role="switch"
+                                        id={`${selectId}-auto-switch`}
+                                        aria-checked={policy.auto_accept}
+                                        aria-describedby={`${selectId}-auto-desc`}
+                                        aria-disabled={switchDisabled || undefined}
+                                        onClick={() => {
+                                            if (switchDisabled) return;
+                                            void toggleAutoAccept(!policy.auto_accept);
+                                        }}
+                                        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring ${
+                                            switchDisabled
+                                                ? "cursor-not-allowed border-muted-foreground border-dashed bg-card"
+                                                : policy.auto_accept
+                                                  ? "border-border bg-primary"
+                                                  : "border-border bg-accent"
+                                        }`}
+                                    >
+                                        <span
+                                            aria-hidden
+                                            className={`inline-block size-4 rounded-full shadow transition-transform motion-reduce:transition-none ${switchDisabled ? "bg-muted-foreground" : "bg-card"} ${policy.auto_accept ? "translate-x-6" : "translate-x-1"}`}
+                                        />
+                                    </button>
+                                    <label htmlFor={`${selectId}-auto-switch`} className="text-sm font-medium">
+                                        Let the architect agent accept safe proposals
+                                    </label>
+                                </div>
+                                <p id={`${selectId}-auto-desc`} className="mt-1 text-xs text-muted-foreground">
+                                    {autoAcceptHint(policy) || "Only low-risk changes qualify. Protected nodes, new external nodes, and stage, risk or review changes still need you."}
+                                </p>
+                                <p role="status" aria-live="polite" className="mt-1 text-sm">
+                                    {autoAcceptStatus(policy)}
+                                </p>
+                                {policyError ? (
+                                    <p role="alert" className="mt-1 text-sm text-destructive">
+                                        {policyError}
+                                    </p>
+                                ) : null}
+                            </section>
+                        ) : null}
 
                         <div className="mt-5 border-t border-border pt-3">
                             <button
@@ -210,6 +297,18 @@ export function MethodSheet({
                             >
                                 Open model check
                             </button>
+                            {onOpenAccepted ? (
+                                <button
+                                    type="button"
+                                    className={`${sheetButtonClass} ml-2`}
+                                    onClick={() => {
+                                        onClose();
+                                        onOpenAccepted();
+                                    }}
+                                >
+                                    Architect accepted
+                                </button>
+                            ) : null}
                         </div>
                     </>
                 )}

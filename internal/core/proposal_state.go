@@ -369,6 +369,9 @@ func (idx *Index) Restage(id string, indexes []int) (string, error) {
 	nm := manifest{
 		ManifestVersion: proposalManifestVersion, ProposalID: newID, CreatedAt: now.Format(time.RFC3339),
 		Source: m.Source, Summary: summary, ChangeSet: m.ChangeSet, Operations: ops,
+		// Keep the staging origin (so the self-accept guard still holds) and mark the
+		// proposal restaged: auto-accept never takes it.
+		Origin: m.Origin, Restaged: true,
 	}
 	if err := writeManifest(dst, nm); err != nil {
 		return fail(err)

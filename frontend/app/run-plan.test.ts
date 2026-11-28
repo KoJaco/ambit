@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BuildItem, BuildOrder } from "./api";
-import { chipDescription, groupGates, summaryText, waveColumns, withGateCleared } from "./run-plan";
+import { chipDescription, earlierWavesNote, groupGates, readyPills, summaryText, waveColumns, withGateCleared } from "./run-plan";
 
 const item = (id: string, wave: number, extra: Partial<BuildItem> = {}): BuildItem => ({
     id,
@@ -69,5 +69,30 @@ describe("withGateCleared", () => {
 describe("chipDescription", () => {
     it("includes class and blockers", () => {
         expect(chipDescription(order.order[1], (id) => id.toUpperCase())).toBe("B, Blocked, blocked by A");
+    });
+});
+
+describe("earlierWavesNote", () => {
+    it("says earlier waves are complete when the first listed wave is after wave 1", () => {
+        expect(earlierWavesNote([{ wave: 1 }, { wave: 2 }])).toBe("Earlier waves are complete.");
+    });
+    it("is empty when wave 1 is listed or there are no waves", () => {
+        expect(earlierWavesNote([{ wave: 0 }, { wave: 1 }])).toBe("");
+        expect(earlierWavesNote([])).toBe("");
+    });
+});
+
+describe("readyPills", () => {
+    const plan = {
+        order: [item("a", 0), item("b", 0, { class: "needs-human" }), item("c", 0)],
+        ready_now: ["a", "b", "c", "x"],
+        parallel_set: ["a"],
+    };
+    it("labels each pill with its class and marks only the parallel set", () => {
+        const pills = readyPills(plan);
+        expect(pills.map((p) => p.classText)).toEqual(["Agent", "Needs you", "Agent", ""]);
+        expect(pills.map((p) => p.inParallelSet)).toEqual([true, false, false, false]);
+        expect(pills[1].class).toBe("needs-human");
+        expect(pills[3].name).toBe("x");
     });
 });

@@ -1,11 +1,12 @@
 import { BaseEdge, type EdgeProps } from "@xyflow/react";
 import { edgeKindStyle } from "../../kind-style";
-import { useEdgeGeometry } from "./edge-shared";
+import { EdgeHalo, useEdgeGeometry } from "./edge-shared";
 
 export function AnimatedEdge(props: EdgeProps) {
     const { edgePath } = useEdgeGeometry(props);
     return (
         <>
+            <EdgeHalo path={edgePath} />
             <BaseEdge
                 id={props.id}
                 path={edgePath}

@@ -76,6 +76,9 @@ type StageOp struct {
 	Contract *EdgeContract
 	// Constraints is the full replacement list for set_constraints (nil or empty clears).
 	Constraints []Constraint
+	// Part is the part for set_part (full replacement of the part with that id) and, with
+	// only its ID set, for delete_part.
+	Part *Part
 }
 
 // StageInput is one authoring call: a source tool name, an optional summary, and
@@ -153,6 +156,9 @@ type OpDiff struct {
 	// (absent means an empty list).
 	CurrentConstraints  []Constraint `json:"current_constraints,omitempty"`
 	ProposedConstraints []Constraint `json:"proposed_constraints,omitempty"`
+	// CurrentPart and ProposedPart are set for set_part (ProposedPart absent for delete_part).
+	CurrentPart  *Part `json:"current_part,omitempty"`
+	ProposedPart *Part `json:"proposed_part,omitempty"`
 	// RemovesNodes lists the interior nodes a delete_relationship also deletes.
 	RemovesNodes []RemovedNode `json:"removes_nodes,omitempty"`
 	Error        string        `json:"error,omitempty"`
@@ -238,6 +244,8 @@ type manifest struct {
 	Summary         string `json:"summary,omitempty"`
 	ChangeSet       string `json:"change_set,omitempty"`
 	Origin          string `json:"origin,omitempty"`
+	// Restaged marks a proposal re-created by undo. Auto-accept refuses it.
+	Restaged bool `json:"restaged,omitempty"`
 	// DependsOnProposal is a proposal this one was staged against; see StageInput.
 	DependsOnProposal string      `json:"depends_on_proposal,omitempty"`
 	Operations        []operation `json:"operations"`
@@ -262,7 +270,9 @@ type operation struct {
 	RelCovered bool `json:"rel_covered,omitempty"`
 	// Constraints is the full replacement list for set_constraints (non-nil, possibly empty).
 	Constraints *[]Constraint `json:"constraints,omitempty"`
-	Status      string        `json:"status"`
+	// Part is the staged part for set_part (node_id carries the part id for both part ops).
+	Part   *Part  `json:"part,omitempty"`
+	Status string `json:"status"`
 }
 
 type materialBody struct {
@@ -359,8 +369,14 @@ func (idx *Index) stageLocked(in StageInput) (string, error) {
 		}
 	}
 
-	sawConstraints := false
+	sawConstraints, sawPart := false, false
 	for _, inOp := range orderOps(in.Ops) {
+		if inOp.Op == OpSetPart || inOp.Op == OpDeletePart {
+			if sawPart {
+				return "", fmt.Errorf("%w: set_part and delete_part may appear once per proposal", ErrBadOperation)
+			}
+			sawPart = true
+		}
 		if inOp.Op == OpSetConstraints {
 			if sawConstraints {
 				return "", fmt.Errorf("%w: set_constraints may appear once per proposal", ErrBadOperation)
@@ -553,6 +569,10 @@ func (idx *Index) stageOne(in StageOp, nodes map[NodeID]*Node, material map[Node
 		return idx.stageDeleteRelationship(in, nodes, material, stagedRels)
 	case OpSetConstraints:
 		return idx.stageConstraints(in)
+	case OpSetPart:
+		return idx.stageSetPart(in)
+	case OpDeletePart:
+		return idx.stageDeletePart(in)
 	default:
 		return operation{}, nil, fmt.Errorf("%w: unknown operation %q", ErrBadOperation, in.Op)
 	}
@@ -1197,6 +1217,16 @@ func (idx *Index) RejectOperation(id string, index int) error {
 func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	return idx.acceptAllLocked(id)
+}
+
+func (idx *Index) acceptAllLocked(id string) (AcceptAllResult, error) {
+	return idx.acceptAllVerified(id, nil)
+}
+
+// acceptAllVerified is acceptAllLocked with an optional check run on each operation just
+// before it applies. An error from verify fails that operation and rolls the accept back.
+func (idx *Index) acceptAllVerified(id string, verify func(i int, op operation) error) (AcceptAllResult, error) {
 	result := AcceptAllResult{Applied: []int{}, Skipped: []SkippedOp{}, Failed: []FailedOp{}}
 	m, err := idx.loadReadable(id)
 	if err != nil {
@@ -1228,7 +1258,13 @@ func (idx *Index) AcceptAll(id string) (AcceptAllResult, error) {
 			})
 			continue
 		}
-		opErr := idx.applyOp(id, op)
+		var opErr error
+		if verify != nil {
+			opErr = verify(i, op)
+		}
+		if opErr == nil {
+			opErr = idx.applyOp(id, op)
+		}
 		if opErr == nil {
 			opErr = idx.finishOp(&m, i, opStatusAccepted)
 		}
@@ -1533,6 +1569,13 @@ func (idx *Index) staleness(ops []operation, op operation) (bool, string) {
 		}
 		return false, ""
 	}
+	if op.Op == OpSetPart || op.Op == OpDeletePart {
+		hash, err := idx.partsStateHash()
+		if err != nil || op.BaseHash == nil || *op.BaseHash != hash {
+			return true, staleMismatch
+		}
+		return false, ""
+	}
 	if op.Op == OpDeleteRelationship {
 		rel, _ := idx.relByID(RelID(op.RelID))
 		if rel == nil {
@@ -1632,6 +1675,14 @@ func (idx *Index) applyOp(proposalID string, op operation) error {
 			return fmt.Errorf("%w: set_constraints has no constraints list", ErrUnreadableProposal)
 		}
 		return idx.setConstraintsLocked(*op.Constraints)
+	case OpSetPart:
+		if op.Part == nil {
+			return fmt.Errorf("%w: set_part has no part", ErrUnreadableProposal)
+		}
+		_, err := idx.setPartLocked(*op.Part)
+		return err
+	case OpDeletePart:
+		return idx.deletePartLocked(op.NodeID)
 	default:
 		return fmt.Errorf("%w: unknown operation %q", ErrBadOperation, op.Op)
 	}
@@ -1984,7 +2035,7 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		StaleReason: reason,
 		Fields:      op.Fields,
 	}
-	if cur := idx.Nodes[NodeID(op.NodeID)]; cur != nil && op.Op != OpCreateNode {
+	if cur := idx.Nodes[NodeID(op.NodeID)]; cur != nil && op.Op != OpCreateNode && op.Op != OpSetPart && op.Op != OpDeletePart {
 		row.Current = snapshotNode(cur)
 	}
 	switch op.Op {
@@ -2044,6 +2095,14 @@ func (idx *Index) diffOp(proposalID string, index int, op operation, ops []opera
 		row.CurrentConstraints = append([]Constraint(nil), idx.Constraints...)
 		if op.Constraints != nil {
 			row.ProposedConstraints = append([]Constraint(nil), *op.Constraints...)
+		}
+	case OpSetPart, OpDeletePart:
+		if cur, ok := idx.partLocked(op.NodeID); ok {
+			row.CurrentPart = &cur
+		}
+		if op.Op == OpSetPart && op.Part != nil {
+			p := clonePart(*op.Part)
+			row.ProposedPart = &p
 		}
 	}
 	return row
@@ -2174,7 +2233,7 @@ func newProposalID(now time.Time) (string, error) {
 
 func validProposalSource(source string) bool {
 	switch source {
-	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship, OpRenameNode, OpSetConstraints:
+	case SourceSeedModel, SourceGroupNodes, SourceUngroupNode, SourceReparentNode, OpCreateNode, OpUpdateNode, OpDeleteNode, OpSetRelationship, OpDeleteRelationship, OpRenameNode, OpSetConstraints, OpSetPart, OpDeletePart:
 		return true
 	default:
 		return false

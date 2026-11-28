@@ -7,7 +7,7 @@ import {
     usableGroupSizes,
     expandedGroups,
     expandedKey,
-    keepsSizeFloor,
+    sizeFloors,
     layoutSignature,
     layoutUsable,
     overBudgetHint,
@@ -303,17 +303,27 @@ describe("group size signatures", () => {
     });
 });
 
-describe("keepsSizeFloor", () => {
-    const before = layoutSignature([{ id: "a", group_id: "g" }, { id: "b", group_id: "g" }]);
-    const after = layoutSignature([{ id: "a", group_id: "h" }, { id: "b", group_id: "g" }]);
+describe("sizeFloors", () => {
+    const size = { width: 437, height: 200 };
+    const before = [{ id: "g" }, { id: "a", parentId: "g" }, { id: "b", parentId: "g" }, { id: "h" }];
 
-    it("keeps on-screen sizes only for a pure toggle", () => {
-        expect(keepsSizeFloor(true, before, before)).toBe(true);
-        expect(keepsSizeFloor(true, undefined, before)).toBe(true);
+    it("keeps the on-screen size of a container whose members did not change on a toggle", () => {
+        const after = [...before, { id: "h1", parentId: "h" }];
+        expect(sizeFloors(true, { g: size }, before, after)).toEqual({ g: size });
     });
 
-    it("lets groups shrink when membership changed alongside the toggle or without one", () => {
-        expect(keepsSizeFloor(true, before, after)).toBe(false);
-        expect(keepsSizeFloor(false, before, before)).toBe(false);
+    it("drops the floor of a container that lost a member, even alongside a toggle", () => {
+        const after = [{ id: "g" }, { id: "a", parentId: "g" }, { id: "b" }, { id: "h" }, { id: "h1", parentId: "h" }];
+        expect(sizeFloors(true, { g: size }, before, after)).toEqual({});
+    });
+
+    it("drops the floor of a container that gained a member", () => {
+        const after = [...before, { id: "c", parentId: "g" }];
+        expect(sizeFloors(true, { g: size }, before, after)).toEqual({});
+    });
+
+    it("keeps none without a toggle, and none for containers that are gone", () => {
+        expect(sizeFloors(false, { g: size }, before, before)).toEqual({});
+        expect(sizeFloors(true, { g: size }, before, [{ id: "a" }])).toEqual({});
     });
 });

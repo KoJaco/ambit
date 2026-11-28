@@ -1,5 +1,7 @@
 package core
 
+import "fmt"
+
 // GraphNode is the compact node row returned by Graph.
 type GraphNode struct {
 	ID             NodeID `json:"id"`
@@ -48,12 +50,49 @@ func (idx *Index) GraphView() GraphView { return idx.GraphViewWith(false) }
 
 // GraphViewWith is GraphView; withContracts also returns every contract body.
 func (idx *Index) GraphViewWith(withContracts bool) GraphView {
+	v, _ := idx.GraphViewPart(withContracts, "")
+	return v
+}
+
+// GraphViewPart is GraphViewWith limited to one part: the part's root nodes, everything
+// below them, the nodes inside edges that run between those nodes, and the edges between
+// them. An empty part returns the whole graph; an unknown part is an error. Root ids that
+// do not exist are skipped.
+func (idx *Index) GraphViewPart(withContracts bool, part string) (GraphView, error) {
 	idx.mu.Lock()
 	defer idx.mu.Unlock()
+	var keep map[NodeID]bool
+	if part != "" {
+		p, ok := idx.partLocked(part)
+		if !ok {
+			return GraphView{}, fmt.Errorf("%w: no part %q", ErrBadPart, part)
+		}
+		keep = map[NodeID]bool{}
+		var add func(NodeID)
+		add = func(id NodeID) {
+			if keep[id] || idx.Nodes[id] == nil {
+				return
+			}
+			keep[id] = true
+			for _, c := range idx.Children[id] {
+				add(c)
+			}
+		}
+		for _, r := range p.RootNodeIDs {
+			add(r)
+		}
+		for _, r := range idx.Relationships {
+			if keep[r.From] && keep[r.To] {
+				for nid := range idx.relationshipClosure(r.ID).nodes {
+					keep[nid] = true
+				}
+			}
+		}
+	}
 	nodes := make([]GraphNode, 0, len(idx.Order))
 	for _, id := range idx.Order {
 		n := idx.Nodes[id]
-		if n == nil {
+		if n == nil || (keep != nil && !keep[id]) {
 			continue
 		}
 		gn := GraphNode{ID: n.ID, Name: n.Name, Type: n.Type, Parent: n.ParentID, RelationshipID: n.RelationshipID, Status: n.Status, DependsOn: append([]NodeID(nil), n.DependsOn...)}
@@ -68,6 +107,9 @@ func (idx *Index) GraphViewWith(withContracts bool) GraphView {
 	}
 	edges := make([]GraphEdge, 0, len(idx.Relationships))
 	for _, r := range idx.Relationships {
+		if keep != nil && !(keep[r.From] && keep[r.To]) {
+			continue
+		}
 		ge := GraphEdge{ID: r.ID, From: r.From, To: r.To, Label: r.Label, Kind: r.Kind, HasContract: !r.Contract.IsEmpty()}
 		if withContracts && ge.HasContract {
 			c := *r.Contract
@@ -75,5 +117,5 @@ func (idx *Index) GraphViewWith(withContracts bool) GraphView {
 		}
 		edges = append(edges, ge)
 	}
-	return GraphView{Method: idx.activeMethodLocked().ID, Stage: idx.effectiveStageLocked(), Nodes: nodes, Edges: edges}
+	return GraphView{Method: idx.activeMethodLocked().ID, Stage: idx.effectiveStageLocked(), Nodes: nodes, Edges: edges}, nil
 }

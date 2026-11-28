@@ -184,38 +184,7 @@ export default function Home() {
     return (
         <div className="fixed top-0 left-0 h-dvh w-full overflow-hidden bg-background">
             <UIProvider>
-                <ReactFlowProvider>
-                    <FlowCanvas
-                        nodeId={nodeId}
-                        relationshipId={relationshipId}
-                        refreshKey={refreshKey}
-                        preview={canvasPreview}
-                        tool={tool === "grab" ? "grab" : "pointer"}
-                        inspectedId={selectedEdge ? null : selectedId}
-                        onPaneClick={() => setReviewOpen(false)}
-                        onSelectNode={(id) => {
-                            setSelectedId(id);
-                            if (id === null) return;
-                            setSelectedEdge(null);
-                            setFrontPanel("inspector");
-                        }}
-                        onSelectEdge={(edge) => {
-                            setSelectedEdge(edge);
-                            setSelectedId(null);
-                            if (edge) setFrontPanel("inspector");
-                        }}
-                        onProposalStaged={() => {
-                            setProposalRefreshKey((value) => value + 1);
-                            showReview();
-                        }}
-                        onRequestRecenterRef={(fn) => {
-                            recenterRef.current = fn;
-                        }}
-                        onRequestZoomRef={(api) => {
-                            zoomRef.current = api;
-                        }}
-                    />
-                </ReactFlowProvider>
+                {/* Header, sidebar and toolbar come first in DOM (and tab) order: the canvas has dozens of focusable edges. The overlay is absolutely positioned above the canvas (z-40), so this does not change the layout. */}
                 <div className="pointer-events-none absolute top-0 left-0 z-40 flex h-full w-full flex-col gap-4 p-4">
                     <header className="flex h-8 shrink-0 items-center justify-between">
                         <div className="pointer-events-auto">
@@ -265,6 +234,38 @@ export default function Home() {
                         }}
                     />
                 </div>
+                <ReactFlowProvider>
+                    <FlowCanvas
+                        nodeId={nodeId}
+                        relationshipId={relationshipId}
+                        refreshKey={refreshKey}
+                        preview={canvasPreview}
+                        tool={tool === "grab" ? "grab" : "pointer"}
+                        inspectedId={selectedEdge ? null : selectedId}
+                        onPaneClick={() => setReviewOpen(false)}
+                        onSelectNode={(id) => {
+                            setSelectedId(id);
+                            if (id === null) return;
+                            setSelectedEdge(null);
+                            setFrontPanel("inspector");
+                        }}
+                        onSelectEdge={(edge) => {
+                            setSelectedEdge(edge);
+                            setSelectedId(null);
+                            if (edge) setFrontPanel("inspector");
+                        }}
+                        onProposalStaged={() => {
+                            setProposalRefreshKey((value) => value + 1);
+                            showReview();
+                        }}
+                        onRequestRecenterRef={(fn) => {
+                            recenterRef.current = fn;
+                        }}
+                        onRequestZoomRef={(api) => {
+                            zoomRef.current = api;
+                        }}
+                    />
+                </ReactFlowProvider>
                 <div
                     role="status"
                     aria-live="polite"

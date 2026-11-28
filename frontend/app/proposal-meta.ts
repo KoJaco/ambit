@@ -20,3 +20,8 @@ export function proposalTimestamp(createdAt: string | undefined): string {
     const then = new Date(createdAt);
     return Number.isNaN(then.getTime()) ? "" : then.toLocaleString();
 }
+
+/** The change-set label for a proposal, trimmed; "" when none. Groups related proposals. */
+export function changeSetLabel(changeSet: string | undefined): string {
+    return changeSet?.trim() ?? "";
+}

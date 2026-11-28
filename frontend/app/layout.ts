@@ -192,6 +192,37 @@ export type PlacedNode = { id: string; parentId?: string; position: Point };
 
 const seedGap = 40;
 
+type Slot = { x: number; y: number; width: number; height: number };
+
+// First position inside a container's padding where a box of `size` clears every taken box by
+// `seedGap`. Candidates sit at the padding edge or just past a taken box; the one that keeps the
+// container's bounding box smallest wins, then the topmost, then the leftmost.
+export function firstFreeSlot(taken: Slot[], size: NodeSize): Point {
+    const xs = [containerPadding.left, ...taken.map((box) => box.x + box.width + seedGap)];
+    const ys = [containerPadding.top, ...taken.map((box) => box.y + box.height + seedGap)];
+    const clear = (x: number, y: number) =>
+        taken.every(
+            (box) =>
+                x + size.width + seedGap <= box.x ||
+                box.x + box.width + seedGap <= x ||
+                y + size.height + seedGap <= box.y ||
+                box.y + box.height + seedGap <= y,
+        );
+    let best: { x: number; y: number; area: number } | null = null;
+    for (const y of ys) {
+        for (const x of xs) {
+            if (!clear(x, y)) continue;
+            const right = Math.max(x + size.width, ...taken.map((box) => box.x + box.width));
+            const bottom = Math.max(y + size.height, ...taken.map((box) => box.y + box.height));
+            const area = right * bottom;
+            if (!best || area < best.area || (area === best.area && (y < best.y || (y === best.y && x < best.x)))) {
+                best = { x, y, area };
+            }
+        }
+    }
+    return best ? { x: best.x, y: best.y } : { x: containerPadding.left, y: Math.max(...taken.map((box) => box.y + box.height)) + seedGap };
+}
+
 // Positions for a level that changed only because groups opened or closed. Nodes already on screen
 // under the same parent keep their position (top-level absolute, members relative, as React Flow
 // holds them), so nothing the architect arranged moves. A container that is new but whose members
@@ -318,6 +349,18 @@ export function seedPositions(
                 positions[kid.id] = { x: right > 0 ? right + seedGap : 0, y };
                 y += sizeOf(kid.id).height + seedGap;
             }
+        } else if (kids.some((kid) => done.has(kid.id))) {
+            // The group already has members: put each new one in the first free slot, never on top
+            // of a sibling. The group grows (computeGroupSizes) to hold whatever lands outside it.
+            const taken: Slot[] = kids
+                .filter((kid) => done.has(kid.id))
+                .map((kid) => ({ ...positions[kid.id], ...sizeOf(kid.id) }));
+            for (const kid of fresh) {
+                const size = sizeOf(kid.id);
+                const at = firstFreeSlot(taken, size);
+                positions[kid.id] = at;
+                taken.push({ ...at, ...size });
+            }
         } else {
             const columns = Math.max(1, Math.ceil(Math.sqrt(fresh.length)));
             let x = containerPadding.left;
@@ -385,8 +428,10 @@ export function pushOverlaps(
                 if (id === source || isGrower.has(id) || !out[id]) continue;
                 const at = out[id];
                 const size = sizeOf(id);
-                const overlapX = at.x < box.x + box.width + seedGap && at.x + size.width + seedGap > box.x;
-                const overlapY = at.y < box.y + box.height + seedGap && at.y + size.height + seedGap > box.y;
+                // Only a real intersection moves a node. A neighbour that merely sits within `seedGap`
+                // of the grown box was laid out that way and stays put; once pushed, it clears by `seedGap`.
+                const overlapX = at.x < box.x + box.width - eps && at.x + size.width > box.x + eps;
+                const overlapY = at.y < box.y + box.height - eps && at.y + size.height > box.y + eps;
                 if (!overlapX || !overlapY) continue;
                 const right = at.x >= origin.x + origin.width - eps;
                 const below = at.y >= origin.y + origin.height - eps;

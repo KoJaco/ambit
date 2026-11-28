@@ -101,3 +101,30 @@ describe("nextPanelPresence", () => {
         expect(nextPanelPresence({ show: false, lingering: true }, true, false)).toEqual({ show: true, lingering: false });
     });
 });
+
+import { inspectorCloseAction, restoreInspectorFocus } from "./right-rail-state";
+describe("inspectorCloseAction", () => {
+    it("closes a clean inspector at once", () => {
+        expect(inspectorCloseAction({ dirty: false, confirming: false, request: "close" })).toBe("close");
+        expect(inspectorCloseAction({ dirty: false, confirming: false, request: "escape" })).toBe("close");
+    });
+    it("asks before closing a dirty one", () => {
+        expect(inspectorCloseAction({ dirty: true, confirming: false, request: "close" })).toBe("confirm");
+        expect(inspectorCloseAction({ dirty: true, confirming: false, request: "escape" })).toBe("confirm");
+    });
+    it("keeps editing on Escape while asking, and keeps asking on a repeat close", () => {
+        expect(inspectorCloseAction({ dirty: true, confirming: true, request: "escape" })).toBe("keep");
+        expect(inspectorCloseAction({ dirty: true, confirming: true, request: "close" })).toBe("confirm");
+    });
+});
+
+describe("restoreInspectorFocus", () => {
+    it("restores focus when the discard prompt closes and focus fell to the page", () => {
+        expect(restoreInspectorFocus(true, false, true)).toBe(true);
+    });
+    it("does nothing while prompting, when focus is elsewhere, or without a prompt", () => {
+        expect(restoreInspectorFocus(true, true, true)).toBe(false);
+        expect(restoreInspectorFocus(true, false, false)).toBe(false);
+        expect(restoreInspectorFocus(false, false, true)).toBe(false);
+    });
+});

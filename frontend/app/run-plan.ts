@@ -42,6 +42,35 @@ export function waveColumns(order: Pick<BuildOrder, "order">): WaveColumn[] {
         });
 }
 
+// Waves are numbered from 1 and never renumbered. When the first wave listed is later than 1,
+// the earlier ones hold only done or external nodes and are not drawn: say so.
+export function earlierWavesNote(columns: Pick<WaveColumn, "wave">[]): string {
+    return columns.length > 0 && columns[0].wave + 1 > 1 ? "Earlier waves are complete." : "";
+}
+
+export type ReadyPill = {
+    id: string;
+    name: string;
+    class: BuildClass | null;
+    // Short class text shown on the pill (icon alongside): "Needs you" or "Agent".
+    classText: string;
+    // Only nodes in the parallel set carry the parallel marker.
+    inParallelSet: boolean;
+};
+
+const PILL_CLASS_TEXT: Record<BuildClass, string> = { "agent-parallel": "Agent", "needs-human": "Needs you", blocked: "Blocked" };
+
+// One pill per ready node, carrying its class (ready_now mixes nodes that need you with nodes an agent can build).
+export function readyPills(order: Pick<BuildOrder, "ready_now" | "parallel_set" | "order">): ReadyPill[] {
+    const byId = new Map(order.order.map((item) => [item.id, item]));
+    const parallel = new Set(order.parallel_set ?? []);
+    return order.ready_now.map((id) => {
+        const item = byId.get(id);
+        const cls = item?.class ?? null;
+        return { id, name: item?.name ?? id, class: cls, classText: cls ? PILL_CLASS_TEXT[cls] : "", inParallelSet: parallel.has(id) };
+    });
+}
+
 export type GateRow = {
     key: string;
     nodeId: string;

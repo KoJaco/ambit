@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { proposalAge, proposalTimestamp } from "./proposal-meta";
+import { changeSetLabel, proposalAge, proposalTimestamp } from "./proposal-meta";
 
 const now = new Date("2026-03-10T12:00:00Z");
 
@@ -22,5 +22,13 @@ describe("proposalTimestamp", () => {
         expect(proposalTimestamp("2026-03-10T12:00:00Z")).not.toBe("");
         expect(proposalTimestamp("")).toBe("");
         expect(proposalTimestamp("nope")).toBe("");
+    });
+});
+
+describe("changeSetLabel", () => {
+    it("trims and treats blank or missing as none", () => {
+        expect(changeSetLabel(" auth-rework ")).toBe("auth-rework");
+        expect(changeSetLabel("  ")).toBe("");
+        expect(changeSetLabel(undefined)).toBe("");
     });
 });

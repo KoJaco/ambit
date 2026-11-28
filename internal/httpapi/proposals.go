@@ -110,7 +110,7 @@ func postRejectOperation(idx *core.Index) http.HandlerFunc {
 
 func postAcceptAll(idx *core.Index) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		result, err := idx.AcceptAll(r.PathValue("id"))
+		result, err := idx.AcceptAllAs(r.PathValue("id"), core.ActorHuman)
 		if err != nil {
 			writeAPIError(w, err)
 			return

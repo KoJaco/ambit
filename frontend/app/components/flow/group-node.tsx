@@ -104,7 +104,7 @@ export function ContainerNode({ id, data, selected }: NodeProps<ArchNode>) {
                         <button
                             type="button"
                             aria-label={`Collapse ${data.name}`}
-                            aria-expanded={true}
+                            aria-expanded={data.expanded ?? true}
                             className="nodrag nopan flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-card hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
                             onClick={(event) => {
                                 event.stopPropagation();

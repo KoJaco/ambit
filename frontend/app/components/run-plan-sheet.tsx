@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type RefObject } from "react";
 import { BotIcon, CheckIcon, LockIcon, UserIcon, type LucideIcon } from "lucide-react";
 import { getBuildOrder, putGate, type BuildClass, type BuildItem, type BuildOrder } from "../api";
-import { CLASS_LABEL, chipDescription, gateRowLabel, groupGates, remainingGates, summaryText, waveColumns, withGateCleared } from "../run-plan";
+import { CLASS_LABEL, chipDescription, earlierWavesNote, gateRowLabel, groupGates, readyPills, remainingGates, summaryText, waveColumns, withGateCleared } from "../run-plan";
 import { Overlay } from "./overlay";
 import { CloseButton } from "./shortcuts-dialog";
 import { sheetButtonClass } from "./method-sheet";
@@ -103,8 +103,7 @@ export function RunPlanSheet({
     const columns = plan ? waveColumns(plan) : [];
     const groups = plan ? groupGates(plan) : [];
     const ready = new Set(plan?.ready_now ?? []);
-    const parallel = new Set(plan?.parallel_set ?? []);
-    const left = remainingGates(groups);
+        const left = remainingGates(groups);
     const checkboxClass = "mt-0.5 size-4 shrink-0 accent-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring";
 
     return (
@@ -134,17 +133,21 @@ export function RunPlanSheet({
                                 <p className="text-sm text-muted-foreground">Nothing is ready to build.</p>
                             ) : (
                                 <>
-                                    <ul className="flex flex-wrap gap-2">
-                                        {plan.ready_now.map((id) => (
-                                            <li
-                                                key={id}
-                                                className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm ${parallel.has(id) ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}
-                                            >
-                                                {parallel.has(id) ? <BotIcon aria-hidden className="size-3.5" /> : null}
-                                                {nameOf(id)}
-                                                {parallel.has(id) ? <span className="text-xs">(in parallel set)</span> : null}
-                                            </li>
-                                        ))}
+                                    <ul className="flex flex-wrap gap-2 p-1.5">
+                                        {readyPills(plan).map((pill) => {
+                                            const Icon = pill.class ? CLASS_ICON[pill.class] : null;
+                                            return (
+                                                <li
+                                                    key={pill.id}
+                                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm ${pill.inParallelSet ? "border-primary bg-primary text-primary-foreground" : pill.class === "needs-human" ? "border-dashed border-foreground" : "border-border"}`}
+                                                >
+                                                    {Icon ? <Icon aria-hidden className="size-3.5" /> : null}
+                                                    {pill.name}
+                                                    {pill.classText ? <span className="text-xs">{pill.classText}</span> : null}
+                                                    {pill.inParallelSet ? <span className="text-xs">(in parallel set)</span> : null}
+                                                </li>
+                                            );
+                                        })}
                                     </ul>
                                     <p className="mt-1 text-xs text-muted-foreground">
                                         The parallel set are ready nodes whose files do not overlap, so they can be built at the same time.
@@ -156,9 +159,10 @@ export function RunPlanSheet({
                         <section aria-label="Waves" className="mt-5">
                             <h3 className={headingClass}>Waves</h3>
                             {columns.length === 0 ? <p className="text-sm text-muted-foreground">No buildable nodes.</p> : null}
-                            <div className="flex gap-3 overflow-x-auto pb-2" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
+                            {earlierWavesNote(columns) ? <p className="mb-1 text-xs text-muted-foreground">{earlierWavesNote(columns)}</p> : null}
+                            <div className="wave-scroll flex w-full max-w-full min-w-0 gap-4 overflow-x-auto overflow-y-hidden overscroll-x-contain rounded-[10px] p-2 pb-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" tabIndex={0} role="group" aria-label="Waves, scroll horizontally">
                                 {columns.map((col) => (
-                                    <div key={col.wave} className="w-44 shrink-0">
+                                    <div key={col.wave} className="w-56 min-w-[14rem] shrink-0">
                                         <h4 className="mb-1 text-xs font-medium">
                                             Wave {col.wave + 1}{" "}
                                             <span className="font-normal text-muted-foreground">
@@ -173,6 +177,7 @@ export function RunPlanSheet({
                                     </div>
                                 ))}
                             </div>
+                            {columns.length > 1 ? <p className="mt-1 text-xs text-muted-foreground">Scroll sideways (scrollbar, shift+wheel, or arrow keys) to see later waves.</p> : null}
                             {plan.cycles.length > 0 ? (
                                 <p role="alert" className="mt-2 text-sm text-destructive">
                                     Dependency cycles: {plan.cycles.map((c) => c.map(nameOf).join(" to ")).join("; ")}
@@ -199,7 +204,7 @@ export function RunPlanSheet({
                                     <legend className="mb-1 text-sm font-medium">
                                         {group.label} <span className="font-normal text-muted-foreground">({group.remaining} left)</span>
                                     </legend>
-                                    <ul className="flex flex-col gap-1.5">
+                                    <ul className="flex flex-col gap-1.5 px-1.5 py-1">
                                         {group.rows.map((row) => (
                                             <li key={row.key}>
                                                 <label className="flex min-h-6 cursor-pointer items-start gap-2 text-sm">
@@ -228,7 +233,7 @@ export function RunPlanSheet({
                             ) : (
                                 <>
                                     <p className="mb-1 text-xs text-muted-foreground">Not built here and never blocking. Listed so you know what you depend on.</p>
-                                    <ul className="flex flex-col gap-1 text-sm">
+                                    <ul className="flex flex-col gap-1 px-1.5 py-1 text-sm">
                                         {plan.externals.map((e) => (
                                             <li key={e.id} className="break-words">
                                                 {e.name} <span className="text-xs text-muted-foreground">({e.status}, not buildable)</span>

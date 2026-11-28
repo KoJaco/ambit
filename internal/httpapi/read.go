@@ -337,7 +337,7 @@ func writeAPIError(w http.ResponseWriter, err error) {
 		errors.Is(err, core.ErrHasDependents):
 		code = http.StatusConflict
 	case errors.Is(err, core.ErrInvalidLayoutKey), errors.Is(err, core.ErrBadOperation),
-		errors.Is(err, core.ErrBadContract), errors.Is(err, core.ErrBadNodeMeta), errors.Is(err, core.ErrBadConstraint), errors.Is(err, core.ErrBadDependency),
+		errors.Is(err, core.ErrBadContract), errors.Is(err, core.ErrBadNodeMeta), errors.Is(err, core.ErrBadConstraint), errors.Is(err, core.ErrBadDependency), errors.Is(err, core.ErrBadPart), errors.Is(err, core.ErrBadPolicy),
 		errors.Is(err, core.ErrInvalidPresentation):
 		code = http.StatusBadRequest
 	}

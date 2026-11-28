@@ -16,10 +16,13 @@ export function layoutCacheKey(opts: {
     nodeId?: string;
     relationshipId?: string;
     expanded?: Iterable<string>;
+    // Selected part on the root level: its scoped level has other nodes, so it keeps its own layout.
+    partId?: string;
 }): string {
     if (opts.relationshipId) return `_rel_${opts.relationshipId}`;
     const base = opts.nodeId ? opts.nodeId : rootLayoutKey;
-    const hash = expandedKey(opts.expanded ?? []);
+    // "@" cannot appear in a node id, so the part token never collides with an expanded id.
+    const hash = expandedKey([...(opts.expanded ?? []), ...(opts.partId && !opts.nodeId ? [`@part:${opts.partId}`] : [])]);
     return hash ? `${base}~${hash}` : base;
 }
 
@@ -531,6 +534,9 @@ export type OpDiff = {
     // set_constraints only (node_id is empty); an absent key means an empty list.
     current_constraints?: Constraint[];
     proposed_constraints?: Constraint[];
+    // set_part / delete_part only (node_id is the part id); proposed_part is absent for delete_part.
+    current_part?: Part;
+    proposed_part?: Part;
     error?: string;
 };
 
@@ -730,6 +736,10 @@ export type DriftReport = {
     unowned_files?: string[];
     unmatched_globs?: { node: string; field: string; glob: string }[];
     overlaps?: { path: string; owners: string[] }[];
+    // Files matching drift_ignore.
+    ignored_files?: number;
+    // Partial scope: unowned files left out because they match no part (or not the asked part).
+    outside_parts?: number;
 };
 export type CheckModelResult = {
     ok: boolean;
@@ -769,4 +779,92 @@ export function getCheckModel(opts: { includeDrift?: boolean; all?: boolean } = 
     if (opts.all) q.set("all", "1");
     const qs = q.toString();
     return send(`/check-model${qs ? `?${qs}` : ""}`, { signal });
+}
+
+// Partial-model scope and parts (decision 0016).
+export type ModelScope = "whole" | "partial";
+
+export type Part = {
+    id: string;
+    name: string;
+    include: string[];
+    root_node_ids: string[];
+};
+
+export type ScopeInfo = { scope: ModelScope; parts: Part[] };
+
+export function getParts(signal?: AbortSignal): Promise<ScopeInfo> {
+    return send("/parts", { signal });
+}
+
+// Sets the scope and/or adds or replaces one part. At least one of scope and part is required.
+export function putParts(body: { scope?: ModelScope; part?: Part }): Promise<ScopeInfo> {
+    return send("/parts", { method: "PUT", headers: jsonHeaders, body: JSON.stringify(body) });
+}
+
+export function deletePart(id: string): Promise<ScopeInfo> {
+    return send(`/parts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+// Architect auto-accept policy and audit log (decision 0017).
+export type ProposalPolicyInfo = {
+    auto_accept: boolean;
+    stage: string;
+    // True only when auto_accept is on and the stage is "build".
+    effective: boolean;
+    reason?: string;
+};
+
+export function getProposalPolicy(signal?: AbortSignal): Promise<ProposalPolicyInfo> {
+    return send("/policy/proposals", { signal });
+}
+
+export function putProposalPolicy(autoAccept: boolean): Promise<ProposalPolicyInfo> {
+    return send("/policy/proposals", { method: "PUT", headers: jsonHeaders, body: JSON.stringify({ auto_accept: autoAccept }) });
+}
+
+export type AuditActor = "architect-agent" | "human";
+
+export type AuditOp = {
+    index: number;
+    op: string;
+    node: string;
+    // The policy rule(s), comma separated, or "human" for a human accept-all.
+    rule: string;
+    diff_summary: string;
+};
+
+export type AuditEntry = {
+    ts: string;
+    proposal_id: string;
+    actor: AuditActor;
+    origin_hash?: string;
+    accepter_hash?: string;
+    ops: AuditOp[];
+};
+
+export type AuditDigest = {
+    since?: string;
+    actor?: string;
+    proposals: number;
+    ops: number;
+    by_rule: { rule: string; count: number }[];
+    entries: AuditEntry[];
+};
+
+export function getProposalAudit(opts: { since?: string; actor?: AuditActor } = {}, signal?: AbortSignal): Promise<{ entries: AuditEntry[] }> {
+    const q = new URLSearchParams();
+    if (opts.since) q.set("since", opts.since);
+    if (opts.actor) q.set("actor", opts.actor);
+    const qs = q.toString();
+    return send(`/proposals/audit${qs ? `?${qs}` : ""}`, { signal });
+}
+
+// actor defaults to "architect-agent" on the server.
+export function getProposalAuditDigest(opts: { since?: string; actor?: AuditActor } = {}, signal?: AbortSignal): Promise<AuditDigest> {
+    const q = new URLSearchParams();
+    if (opts.since) q.set("since", opts.since);
+    if (opts.actor) q.set("actor", opts.actor);
+    const qs = q.toString();
+    return send(`/proposals/audit/digest${qs ? `?${qs}` : ""}`, { signal });
 }
