@@ -231,7 +231,8 @@ export function Sidebar({
                             role="tab"
                             id={`${creatorId}-tab-${id}`}
                             aria-selected={tab === id}
-                            aria-controls={`${creatorId}-panel-${id}`}
+                            // Only the visible panel is rendered, so only the selected tab may point at one.
+                            aria-controls={tab === id ? `${creatorId}-panel-${id}` : undefined}
                             tabIndex={tab === id ? 0 : -1}
                             onClick={() => setTab(id)}
                             onKeyDown={onTabKeyDown}
