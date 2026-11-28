@@ -16,6 +16,7 @@ import {
     RouteIcon,
     RedoIcon,
     ScanSearchIcon,
+    ScrollTextIcon,
     UndoIcon,
 } from "lucide-react";
 import { StructurePanel } from "./structure-panel";
@@ -25,6 +26,7 @@ import { ProjectRulesSheet } from "./project-rules";
 import { MethodSheet } from "./method-sheet";
 import { ModelCheckSheet } from "./model-check-sheet";
 import { RunPlanSheet } from "./run-plan-sheet";
+import { ArchitectAcceptedSheet } from "./architect-accepted-sheet";
 import { StageControl } from "./stage-control";
 import { groupButtonLabel } from "../canvas-structure";
 import { barStore, escapeAction, focusAfterTransition, resolveBarMode } from "../bottom-bar";
@@ -37,7 +39,7 @@ import {
 } from "../shortcuts";
 import styles from "./overlay.module.css";
 
-type Panel = "shortcuts" | "docs" | "rules" | "method" | "check" | "plan";
+type Panel = "shortcuts" | "docs" | "rules" | "method" | "check" | "plan" | "accepted";
 
 type ControlButtonConfig = {
     tool: ControlBarTool;
@@ -195,6 +197,7 @@ export function ControlBar({
     const methodButtonRef = useRef<HTMLButtonElement>(null);
     const checkButtonRef = useRef<HTMLButtonElement>(null);
     const planButtonRef = useRef<HTMLButtonElement>(null);
+    const acceptedButtonRef = useRef<HTMLButtonElement>(null);
     const groupButtonRef = useRef<HTMLButtonElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const prevMode = useRef(mode);
@@ -381,6 +384,15 @@ export function ControlBar({
                         <RouteIcon className="h-4 w-4" />
                     </BarButton>
                     <BarButton
+                        label="Architect accepted"
+                        tooltip="Architect accepted"
+                        buttonRef={acceptedButtonRef}
+                        haspopup="dialog"
+                        onClick={() => openPanel("accepted", acceptedButtonRef.current)}
+                    >
+                        <ScrollTextIcon className="h-4 w-4" />
+                    </BarButton>
+                    <BarButton
                         label="Project rules"
                         tooltip="Project rules"
                         buttonRef={rulesButtonRef}
@@ -436,12 +448,16 @@ export function ControlBar({
                     onClose={() => setPanel(null)}
                     onChanged={() => setConfigVersion((n) => n + 1)}
                     onOpenCheck={() => openPanel("check", methodButtonRef.current)}
+                    onOpenAccepted={() => openPanel("accepted", methodButtonRef.current)}
                     returnFocusRef={lastPanelOpener}
                 />
             ) : null}
             {panel === "check" ? <ModelCheckSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} /> : null}
             {panel === "plan" ? (
                 <RunPlanSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} version={externalVersion} />
+            ) : null}
+            {panel === "accepted" ? (
+                <ArchitectAcceptedSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} version={externalVersion} />
             ) : null}
             {panel === "docs" ? (
                 <DocsSheet
