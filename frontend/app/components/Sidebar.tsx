@@ -1,14 +1,18 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import { Link } from "react-router";
 import clsx from "clsx";
 import { PanelLeftClose, PanelLeftOpen, Plus } from "lucide-react";
 import { history } from "../history";
-import { createNode as postNode, deleteNode, getLevel, getRelationshipLevel, type SchemaColumn, type Summary } from "../api";
+import { createNode as postNode, deleteNode, getLevel, getParts, getRelationshipLevel, putParts, type ScopeInfo, type SchemaColumn, type Summary } from "../api";
 import { AppearanceFields, AppearanceSummary } from "./appearance-editor";
 import { CollapsibleSection } from "./collapsible-section";
 import { Collapsible } from "./collapsible";
 import { groupNodesByType } from "../node-groups";
 import { nodeGlyphClass, resolveIconComponent, resolveNodeColor } from "../node-presentation";
+import { PartsPanel } from "./parts-panel";
+import { partSelection } from "../part-selection";
+import { filterRoots } from "../parts-scope";
+import { nextTab, type SidebarTab } from "../sidebar-tabs";
 import { Tooltip } from "./tooltip";
 import styles from "./Sidebar.module.css";
 
@@ -43,6 +47,54 @@ export function Sidebar({
     const nameRef = useRef<HTMLInputElement>(null);
     const newButtonRef = useRef<HTMLButtonElement>(null);
     const [error, setError] = useState<string | null>(null);
+    const [tab, setTab] = useState<SidebarTab>("nodes");
+    const [scopeInfo, setScopeInfo] = useState<ScopeInfo | null>(null);
+    const [scopeBusy, setScopeBusy] = useState(false);
+    const nodesTabRef = useRef<HTMLButtonElement>(null);
+    const partsTabRef = useRef<HTMLButtonElement>(null);
+    const selection = useSyncExternalStore(partSelection.subscribe, partSelection.get, partSelection.getServerSnapshot);
+    const partial = scopeInfo?.scope === "partial";
+    const visibleRoots = filterRoots(roots, partial ? selection.part : null);
+
+    useEffect(() => {
+        const ac = new AbortController();
+        getParts(ac.signal)
+            .then((info) => {
+                setScopeInfo(info);
+                partSelection.sync(info.parts, info.scope === "partial");
+            })
+            .catch(() => {
+                // Older servers have no /parts; behave as a whole model.
+            });
+        return () => ac.abort();
+    }, [refreshKey]);
+
+    // The Parts tab disappears with whole scope; fall back to Nodes.
+    useEffect(() => {
+        if (!partial && tab === "parts") setTab("nodes");
+    }, [partial, tab]);
+
+    function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+        const next = nextTab(tab, event.key, partial ? ["nodes", "parts"] : ["nodes"]);
+        if (next === null) return;
+        event.preventDefault();
+        setTab(next);
+        (next === "nodes" ? nodesTabRef : partsTabRef).current?.focus();
+    }
+
+    async function enablePartialScope() {
+        setScopeBusy(true);
+        try {
+            const info = await putParts({ scope: "partial" });
+            setScopeInfo(info);
+            partSelection.sync(info.parts, true);
+            setTab("parts");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "could not change the scope");
+        } finally {
+            setScopeBusy(false);
+        }
+    }
 
     useEffect(() => {
         const ac = new AbortController();
@@ -169,11 +221,51 @@ export function Sidebar({
                     {collapsed ? <PanelLeftOpen className="size-4" aria-hidden /> : <PanelLeftClose className="size-4" aria-hidden />}
                 </button>
             </Tooltip>
-            {collapsed ? null : (
-                <div className={clsx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-3 pb-4 text-sm", styles.sidebarScroll)}>
+            {collapsed ? null : partial ? (
+                <div role="tablist" aria-label="Sidebar view" className="flex shrink-0 gap-1 px-3 pt-3 pr-12">
+                    {(["nodes", "parts"] as const).map((id) => (
+                        <button
+                            key={id}
+                            ref={id === "nodes" ? nodesTabRef : partsTabRef}
+                            type="button"
+                            role="tab"
+                            id={`${creatorId}-tab-${id}`}
+                            aria-selected={tab === id}
+                            aria-controls={`${creatorId}-panel-${id}`}
+                            tabIndex={tab === id ? 0 : -1}
+                            onClick={() => setTab(id)}
+                            onKeyDown={onTabKeyDown}
+                            className={clsx(
+                                "min-h-8 rounded-full px-3 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring",
+                                tab === id ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent",
+                            )}
+                        >
+                            {id === "nodes" ? "Nodes" : "Parts"}
+                        </button>
+                    ))}
+                </div>
+            ) : null}
+            {collapsed ? null : tab === "parts" && partial && scopeInfo ? (
+                <div
+                    role="tabpanel"
+                    id={`${creatorId}-panel-parts`}
+                    aria-labelledby={`${creatorId}-tab-parts`}
+                    className={clsx("min-h-0 flex-1 overflow-y-auto px-3 pt-3 pb-4 text-sm", styles.sidebarScroll)}
+                >
+                    <PartsPanel info={scopeInfo} roots={roots} selectedId={selection.id} onInfo={setScopeInfo} />
+                </div>
+            ) : (
+                <div
+                    role={partial ? "tabpanel" : undefined}
+                    id={partial ? `${creatorId}-panel-nodes` : undefined}
+                    aria-labelledby={partial ? `${creatorId}-tab-nodes` : undefined}
+                    className={clsx("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-3 pt-3 pb-4 text-sm", styles.sidebarScroll)}
+                >
                     <section>
-                        <h2 className="mb-1 pr-8 text-xs uppercase tracking-wide text-foreground/60">Roots</h2>
-                        <NodeLinks items={roots} currentId={nodeId} />
+                        <h2 className="mb-1 pr-8 text-xs uppercase tracking-wide text-foreground/60">
+                            Roots{partial && selection.part ? ` in ${selection.part.name}` : ""}
+                        </h2>
+                        <NodeLinks items={visibleRoots} currentId={nodeId} />
                     </section>
                     {nodeId || relationshipId ? (
                         <section>
@@ -183,9 +275,19 @@ export function Sidebar({
                             <NodeLinks items={children} currentId={nodeId} />
                         </section>
                     ) : null}
+                    {scopeInfo && !partial ? (
+                        <button
+                            type="button"
+                            disabled={scopeBusy}
+                            className="self-start text-xs text-muted-foreground underline hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                            onClick={() => void enablePartialScope()}
+                        >
+                            Work on parts of the model
+                        </button>
+                    ) : null}
                 </div>
             )}
-            {collapsed ? null : (
+            {collapsed || tab === "parts" ? null : (
                 <div className="shrink-0 border-t border-border px-3 py-2.5">
                     <Collapsible open={creating} id={creatorId}>
                         <form

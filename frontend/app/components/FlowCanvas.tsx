@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
     applyNodeChanges,
     Background,
@@ -79,6 +79,8 @@ import { ExternalStub } from "./flow/external-node";
 import { GhostEdge, type GhostEdgeData } from "./flow/ghost-edge";
 import { GhostNode, ghostNodeClass } from "./flow/ghost-node";
 import { buildGhostPreview, emptyGhostPreview, ghostLeafSize, layoutCovers, placeGhosts, type CanvasPreview, type GhostLayout, type Rect as GhostRect } from "../ghost-preview";
+import { partSelection } from "../part-selection";
+import { scopeRootLevel } from "../parts-scope";
 import { PlaceholderFrame } from "./flow/placeholder-node";
 import { SchemaNode } from "./flow/schema-node";
 
@@ -332,7 +334,7 @@ async function loadLevel(nodeId: string | undefined, modes: ViewModes, signal: A
         expand = next;
         body = await getLevel(nodeId, signal, expand);
     }
-    return body;
+    return scopeRootLevel(body, partSelection.get().part);
 }
 
 export default function FlowCanvas({
@@ -371,6 +373,8 @@ export default function FlowCanvas({
     const railOpenRef = useRef(false);
     railOpenRef.current = useRailState().panels > 0;
     const [level, setLevel] = useState<Level | null>(null);
+    // Re-fetch (and re-scope the root level) when the selected part changes.
+    const selectedPart = useSyncExternalStore(partSelection.subscribe, () => partSelection.get().part, () => null);
     const [relLevel, setRelLevel] = useState<RelationshipLevel | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [notFound, setNotFound] = useState(false);
@@ -682,7 +686,7 @@ export default function FlowCanvas({
                 });
         }
         return () => ac.abort();
-    }, [nodeId, relationshipId, refreshKey, viewModes]);
+    }, [nodeId, relationshipId, refreshKey, viewModes, selectedPart]);
 
     useEffect(() => {
         if (!activeLevel) return;
