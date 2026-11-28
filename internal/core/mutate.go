@@ -67,7 +67,15 @@ func (idx *Index) Create(in CreateInput) (NodeID, error) {
 	if err != nil {
 		return "", err
 	}
+	extras, err := normalizeExtras(in.NodeExtras)
+	if err != nil {
+		return "", err
+	}
+	if err := validateGatesIn(idx.Nodes, id, in.ParentID, in.DependsOn, extras.Gates); err != nil {
+		return "", err
+	}
 	node := &Node{
+		NodeExtras:     extras,
 		Risk:           risk,
 		Review:         review,
 		Verify:         verify,
@@ -128,6 +136,7 @@ func (idx *Index) updateLocked(id NodeID, in UpdateInput) error {
 	next.Scope = cloneStrings(node.Scope)
 	next.DependsOn = append([]NodeID(nil), node.DependsOn...)
 	next.Verify = cloneStrings(node.Verify)
+	next.NodeExtras = cloneExtras(node.NodeExtras)
 	next.Unknown = cloneRaw(node.Unknown)
 
 	if in.Name != nil {
@@ -224,6 +233,16 @@ func (idx *Index) updateLocked(id NodeID, in UpdateInput) error {
 		}
 		next.DependsOn = sortedDeps(*in.DependsOn)
 	}
+	if extras, fields, err := in.NodeExtrasPatch.applyTo(next.NodeExtras); err != nil {
+		return err
+	} else if len(fields) > 0 {
+		next.NodeExtras = extras
+		if in.Gates != nil {
+			if err := validateGatesIn(idx.Nodes, id, next.ParentID, next.DependsOn, next.Gates); err != nil {
+				return err
+			}
+		}
+	}
 	if in.Contract != nil {
 		c, err := patchNodeContract(in.Contract, node.Contract)
 		if err != nil {
@@ -302,6 +321,9 @@ func (idx *Index) Delete(id NodeID) error {
 		if err := idx.removeNodeFiles(nid); err != nil {
 			return err
 		}
+	}
+	if err := idx.dropGatesCleared(removeNodes); err != nil {
+		return err
 	}
 	if err := idx.reload(); err != nil {
 		return err

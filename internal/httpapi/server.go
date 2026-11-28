@@ -42,6 +42,7 @@ func apiRoutes(idx *core.Index, h *hub) []route {
 		{"GET /constraints", getConstraints(idx)},
 		{"PUT /constraints", putConstraints(idx)},
 		{"GET /build-order", getBuildOrder(idx)},
+		{"PUT /gates", putGate(idx)},
 		{"GET /integrity", getIntegrity(idx)},
 		{"GET /icons", getIcons},
 		{"GET /proposals", getProposals(idx)},
@@ -77,7 +78,7 @@ func routes(idx *core.Index, h *hub, opts ...Options) http.Handler {
 	}
 	// Fallback for everything else: UI files, SPA shell, or JSON 404 under API prefixes.
 	mux.HandleFunc("GET /", uiFallback(o.UI))
-	return mux
+	return guardWrites(mux)
 }
 
 // ListenAndServe binds addr after ValidateAddr and serves Handler.

@@ -13,6 +13,7 @@ import {
     MinusIcon,
     MousePointer2Icon,
     PlusIcon,
+    RouteIcon,
     RedoIcon,
     ScanSearchIcon,
     UndoIcon,
@@ -23,6 +24,7 @@ import { DocsSheet } from "./docs-sheet";
 import { ProjectRulesSheet } from "./project-rules";
 import { MethodSheet } from "./method-sheet";
 import { ModelCheckSheet } from "./model-check-sheet";
+import { RunPlanSheet } from "./run-plan-sheet";
 import { StageControl } from "./stage-control";
 import { groupButtonLabel } from "../canvas-structure";
 import { barStore, escapeAction, focusAfterTransition, resolveBarMode } from "../bottom-bar";
@@ -35,7 +37,7 @@ import {
 } from "../shortcuts";
 import styles from "./overlay.module.css";
 
-type Panel = "shortcuts" | "docs" | "rules" | "method" | "check";
+type Panel = "shortcuts" | "docs" | "rules" | "method" | "check" | "plan";
 
 type ControlButtonConfig = {
     tool: ControlBarTool;
@@ -192,6 +194,7 @@ export function ControlBar({
     const rulesButtonRef = useRef<HTMLButtonElement>(null);
     const methodButtonRef = useRef<HTMLButtonElement>(null);
     const checkButtonRef = useRef<HTMLButtonElement>(null);
+    const planButtonRef = useRef<HTMLButtonElement>(null);
     const groupButtonRef = useRef<HTMLButtonElement>(null);
     const toolbarRef = useRef<HTMLDivElement>(null);
     const prevMode = useRef(mode);
@@ -369,6 +372,15 @@ export function ControlBar({
                         <ShieldCheckIcon className="h-4 w-4" />
                     </BarButton>
                     <BarButton
+                        label="Run plan"
+                        tooltip="Run plan"
+                        buttonRef={planButtonRef}
+                        haspopup="dialog"
+                        onClick={() => openPanel("plan", planButtonRef.current)}
+                    >
+                        <RouteIcon className="h-4 w-4" />
+                    </BarButton>
+                    <BarButton
                         label="Project rules"
                         tooltip="Project rules"
                         buttonRef={rulesButtonRef}
@@ -428,6 +440,9 @@ export function ControlBar({
                 />
             ) : null}
             {panel === "check" ? <ModelCheckSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} /> : null}
+            {panel === "plan" ? (
+                <RunPlanSheet onClose={() => setPanel(null)} returnFocusRef={lastPanelOpener} version={externalVersion} />
+            ) : null}
             {panel === "docs" ? (
                 <DocsSheet
                     onClose={() => setPanel(null)}

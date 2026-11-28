@@ -185,6 +185,13 @@ type NodeSnapshot struct {
 	Schema         []SchemaColumn `json:"schema,omitempty"`
 	DependsOn      []string       `json:"depends_on,omitempty"`
 	Contract       *NodeContract  `json:"contract,omitempty"`
+	External       bool           `json:"external,omitempty"`
+	HumanGates     []HumanGate    `json:"human_gates,omitempty"`
+	Deliverables   []string       `json:"deliverables,omitempty"`
+	References     []string       `json:"references,omitempty"`
+	Shared         bool           `json:"shared,omitempty"`
+	Milestones     []Milestone    `json:"milestones,omitempty"`
+	Gates          []string       `json:"gates,omitempty"`
 }
 
 // RelSnapshot is one directed edge.
@@ -514,13 +521,16 @@ func (idx *Index) validateFinalState(nodes map[NodeID]*Node) error {
 	for _, id := range ids {
 		n := nodes[id]
 		cur := idx.Nodes[id]
-		if cur != nil && cur.ParentID == n.ParentID && slicesEqualIDs(cur.DependsOn, n.DependsOn) {
+		if cur != nil && cur.ParentID == n.ParentID && slicesEqualIDs(cur.DependsOn, n.DependsOn) && slicesEqualIDs(cur.Gates, n.Gates) {
 			continue
 		}
 		if parentCyclesIn(nodes, id, n.ParentID) {
 			return fmt.Errorf("%w: %s -> %s", ErrCycle, id, n.ParentID)
 		}
 		if err := validateDependsOnIn(nodes, id, n.ParentID, n.DependsOn); err != nil {
+			return err
+		}
+		if err := validateGatesIn(nodes, id, n.ParentID, n.DependsOn, n.Gates); err != nil {
 			return err
 		}
 	}
@@ -612,7 +622,15 @@ func (idx *Index) stageCreate(in StageOp, nodes map[NodeID]*Node, material map[N
 	if err != nil {
 		return operation{}, nil, err
 	}
+	extras, err := normalizeExtras(in.Create.NodeExtras)
+	if err != nil {
+		return operation{}, nil, err
+	}
+	if err := validateGatesIn(nodes, id, in.Create.ParentID, in.Create.DependsOn, extras.Gates); err != nil {
+		return operation{}, nil, err
+	}
 	node := &Node{
+		NodeExtras:     extras,
 		ID:             id,
 		Name:           in.Create.Name,
 		Type:           in.Create.Type,
@@ -879,6 +897,7 @@ func renameScratch(nodes map[NodeID]*Node, stagedRels *[]Relationship, old, nw N
 			cp.ParentID = nw
 		}
 		cp.DependsOn = renameIDs(cp.DependsOn, old, nw)
+		cp.Gates = renameIDs(cp.Gates, old, nw)
 		nodes[id] = cp
 	}
 	if stagedRels != nil {
@@ -1464,6 +1483,11 @@ func (idx *Index) createDependencyUnmet(proposalID string, ops []operation, op o
 				return staleDependsOnNotAccepted
 			}
 		}
+		for _, d := range node.Gates {
+			if notAccepted(string(d)) {
+				return staleDependsOnNotAccepted
+			}
+		}
 	}
 	return ""
 }
@@ -1815,6 +1839,9 @@ func (idx *Index) applyDelete(op operation) error {
 			return err
 		}
 	}
+	if err := idx.dropGatesCleared(removeNodes); err != nil {
+		return err
+	}
 	if err := idx.reload(); err != nil {
 		return err
 	}
@@ -1865,6 +1892,11 @@ func (idx *Index) validateMaterialised(n *Node, creating bool) error {
 	// dangling entry the architect already has on disk.
 	if cur := idx.Nodes[n.ID]; creating || cur == nil || !slicesEqualIDs(cur.DependsOn, n.DependsOn) {
 		if err := idx.validateDependsOn(n.ID, n.ParentID, n.DependsOn); err != nil {
+			return err
+		}
+	}
+	if cur := idx.Nodes[n.ID]; creating || cur == nil || !slicesEqualIDs(cur.Gates, n.Gates) {
+		if err := validateGatesIn(idx.Nodes, n.ID, n.ParentID, n.DependsOn, n.Gates); err != nil {
 			return err
 		}
 	}
@@ -2157,6 +2189,7 @@ func cloneNode(n *Node) *Node {
 	cp.Implementation = cloneStrings(n.Implementation)
 	cp.Scope = cloneStrings(n.Scope)
 	cp.DependsOn = append([]NodeID(nil), n.DependsOn...)
+	cp.NodeExtras = cloneExtras(n.NodeExtras)
 	cp.Unknown = cloneRaw(n.Unknown)
 	return &cp
 }
@@ -2292,6 +2325,17 @@ func applyStageUpdate(n *Node, in UpdateInput, nodes map[NodeID]*Node, idx *Inde
 		}
 		n.DependsOn = sortedDeps(*in.DependsOn)
 		fields = append(fields, "depends_on")
+	}
+	if extras, extraFields, err := in.NodeExtrasPatch.applyTo(n.NodeExtras); err != nil {
+		return nil, err
+	} else if len(extraFields) > 0 {
+		n.NodeExtras = extras
+		if in.Gates != nil {
+			if err := validateGatesIn(nodes, n.ID, n.ParentID, n.DependsOn, n.Gates); err != nil {
+				return nil, err
+			}
+		}
+		fields = append(fields, extraFields...)
 	}
 	if in.Contract != nil {
 		c, err := patchNodeContract(in.Contract, n.Contract)
@@ -2453,6 +2497,13 @@ func snapshotNode(n *Node) *NodeSnapshot {
 		Schema:         append([]SchemaColumn(nil), n.Schema...),
 		DependsOn:      depStrings(n.DependsOn),
 		Contract:       normalizeNodeContract(n.Contract),
+		External:       n.External,
+		HumanGates:     append([]HumanGate(nil), n.HumanGates...),
+		Deliverables:   append([]string(nil), n.Deliverables...),
+		References:     append([]string(nil), n.References...),
+		Shared:         n.Shared,
+		Milestones:     append([]Milestone(nil), n.Milestones...),
+		Gates:          depStrings(n.Gates),
 	}
 }
 

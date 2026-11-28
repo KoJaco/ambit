@@ -11,7 +11,12 @@ import (
 const siblingSpecCap = 1200
 
 // BriefClosing is the last line of every brief.
-const BriefClosing = "When you are done, call check_done with your node_id (add worktree if you work in a git worktree): it checks the files changed on your branch against your scope, runs check_drift for your node and flags interface changes in one pass. Then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it."
+const BriefClosing = "When you are done, call check_done with your node_id (add worktree if you work in a git worktree): it checks the files changed on your branch against your scope, runs check_drift for your node and flags interface changes in one pass. Then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it. " + SubagentGuidance
+
+// SubagentGuidance is the delegation rule that ends every brief and is repeated in the MCP
+// tool docs: a subagent that implements a node gets the read-only tools only, and the parent
+// agent writes documentation deliverables itself.
+const SubagentGuidance = "If you delegate to subagents, give implementers only the read-only tools (every get_ and check_ tool except check_dependents, plus list_icons; run_verify and check_dependents execute shell commands, so keep those in the parent); keep staging, model-editing and status tools, and write documentation deliverables yourself in the parent."
 
 // closingFor is BriefClosing adjusted to the method's completion policy for node n.
 func closingFor(m *Method, n *Node) string {
@@ -39,6 +44,21 @@ const AuthoringGuidance = "Model high-level first: start with the few top-level 
 	"Do not add an edge that carries no information (every-pair wiring, or what the hierarchy already says). " +
 	"Set explicit ids on nodes you create so later calls can reference them in parent_id and relationships. " +
 	"Call list_icons to pick icon ids and get_graph to see what already exists."
+
+// BriefNodeIDs lists the nodes worth exporting a brief for, in model order: every node an
+// agent can build (a leaf, or a container with implementation globs) that is not external.
+func (idx *Index) BriefNodeIDs() []NodeID {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+	g := newDepGraph(idx.Nodes, idx.Children)
+	var out []NodeID
+	for _, id := range idx.Order {
+		if n := idx.Nodes[id]; n != nil && !n.External && g.buildable(id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
 
 // Brief returns an imperative task description for an assigned agent working on id.
 func (idx *Index) Brief(id NodeID) (string, error) {
@@ -120,9 +140,14 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 	if len(n.Verify) > 0 {
 		b.WriteString("\nVerify your work with these commands before you finish:\n")
 		for _, c := range n.Verify {
-			fmt.Fprintf(&b, "  - %s\n", c)
+			if env := referencedEnv(c); len(env) > 0 {
+				fmt.Fprintf(&b, "  - %s  (needs environment: %s)\n", c, strings.Join(env, ", "))
+			} else {
+				fmt.Fprintf(&b, "  - %s\n", c)
+			}
 		}
 	}
+	idx.writeBuildPlan(&b, n)
 	if n.Risk != "" || n.Review != "" {
 		var parts []string
 		if n.Risk != "" {
@@ -134,6 +159,7 @@ func (idx *Index) Brief(id NodeID) (string, error) {
 		if len(parts) > 0 {
 			fmt.Fprintf(&b, "\nThis node is flagged: %s. Take extra care and keep the change small.\n", strings.Join(parts, ", "))
 		}
+		fmt.Fprintf(&b, "Risk and review: %s\n", riskReviewLine(idx.activeMethodLocked(), n))
 	}
 
 	fmt.Fprintf(&b, "\nIf you propose changes to the architecture model: %s\n", ShallowModelGuidance)
@@ -291,7 +317,7 @@ func writeOwnContract(b *strings.Builder, n *Node) {
 // writeBuildOrder reports unmet dependencies (advisory, with a stop-and-report line) and
 // the nodes that rely on n.
 func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
-	g := depGraph{nodes: idx.Nodes, children: idx.Children}
+	g := newDepGraph(idx.Nodes, idx.Children)
 	var unmet []NodeID
 	if res, err := idx.buildOrderLocked(""); err == nil {
 		found := false
@@ -319,8 +345,18 @@ func (idx *Index) writeBuildOrder(b *strings.Builder, n *Node) {
 	// Buildable nodes that rely on n: a declared dependency is n, or a pure container
 	// that expands to n. Dependencies cascade from containers to their descendants.
 	var dependents []NodeID
+	// Direct dependents only (not transitive): a declared dependency is n, or a pure
+	// container that expands to n, or n gates the node.
+	gated := map[NodeID]bool{}
+	for _, t := range n.Gates {
+		gated[t] = true
+	}
 	for _, id := range idx.Order {
 		if idx.Nodes[id] == nil || id == n.ID || !g.buildable(id) {
+			continue
+		}
+		if gated[id] {
+			dependents = append(dependents, id)
 			continue
 		}
 		for _, d := range g.declared(id) {
@@ -414,4 +450,63 @@ func indentLines(text, prefix string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// riskReviewLine links the node's risk to how it is finished.
+func riskReviewLine(m *Method, n *Node) string {
+	risk := n.Risk
+	if risk == "" {
+		risk = "not set"
+	}
+	switch {
+	case n.Risk == RiskHigh:
+		return "risk is high, so you finish at needs_review (check_done reports finish_status needs_review), never done; the architect marks it done after review."
+	case reviewRequiredFor(m, n):
+		return fmt.Sprintf("risk is %s and review is required, so you finish at needs_review, never done.", risk)
+	}
+	return fmt.Sprintf("risk is %s and no review is required, so once check_done passes you may set the status check_done reports.", risk)
+}
+
+// writeBuildPlan lists the optional build-planning fields: deliverables, references,
+// milestones, human gates (with cleared state) and the nodes this one gates.
+func (idx *Index) writeBuildPlan(b *strings.Builder, n *Node) {
+	if len(n.Deliverables) > 0 {
+		b.WriteString("\nDeliverables (check_deliverables verifies each exists and is non-empty):\n")
+		for _, d := range n.Deliverables {
+			fmt.Fprintf(b, "  - %s\n", d)
+		}
+	}
+	if len(n.References) > 0 {
+		b.WriteString("\nKeep these docs in sync with your spec and contract (check_contract_sync):\n")
+		for _, r := range n.References {
+			fmt.Fprintf(b, "  - %s\n", r)
+		}
+	}
+	if len(n.Milestones) > 0 {
+		b.WriteString("\nMilestones (finish with needs_review, not done, until all are done):\n")
+		for _, m := range n.Milestones {
+			label := m.Label
+			if label == "" {
+				label = m.ID
+			}
+			fmt.Fprintf(b, "  - %s: %s [%s]\n", m.ID, label, m.Status)
+		}
+	}
+	if gs := gateStates(n, idx.gatesClearedLocked()); len(gs) > 0 {
+		b.WriteString("\nHuman gates (only a person can clear these; if one is not cleared and you need it, stop and report back):\n")
+		for _, g := range gs {
+			state := "NOT cleared"
+			if g.Cleared {
+				state = "cleared"
+			}
+			fmt.Fprintf(b, "  - %s [%s]\n", gateLabel(HumanGate{Kind: g.Kind, Note: g.Note}), state)
+		}
+	}
+	if len(n.Gates) > 0 {
+		ids := make([]string, len(n.Gates))
+		for i, g := range sortedDeps(n.Gates) {
+			ids[i] = string(g)
+		}
+		fmt.Fprintf(b, "\nThis node is a gate: %s wait for it. Report what you learn so they can be unblocked.\n", strings.Join(ids, ", "))
+	}
 }

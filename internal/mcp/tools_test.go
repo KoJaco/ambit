@@ -283,6 +283,7 @@ func TestMCPServerListsTools(t *testing.T) {
 		"set_constraints": true, "get_build_order": true, "get_started": true, "check_model": true,
 		"get_proposal": true, "wait_for_proposal": true, "check_done": true,
 		"rename_node": true, "withdraw_proposal": true,
+		"check_deliverables": true, "run_verify": true, "check_dependents": true, "check_contract_sync": true,
 	}
 	for _, tool := range res.Tools {
 		delete(want, tool.Name)
@@ -290,8 +291,8 @@ func TestMCPServerListsTools(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing tools %v (got %d)", want, len(res.Tools))
 	}
-	if len(res.Tools) != 22 {
-		t.Fatalf("got %d tools, want 22", len(res.Tools))
+	if len(res.Tools) != 26 {
+		t.Fatalf("got %d tools, want 26", len(res.Tools))
 	}
 }
 
@@ -584,10 +585,11 @@ func TestGetBuildOrderReadOnlyAndCycles(t *testing.T) {
 	a, _ := idx.Create(core.CreateInput{ID: "a", Name: "A", Type: "service"})
 	b, _ := idx.Create(core.CreateInput{ID: "b", Name: "B", Type: "service", DependsOn: []core.NodeID{a}})
 	before, _ := nodeFiles(dir)
-	_, res, err := env.handleGetBuildOrder(ctx, nil, getBuildOrderIn{})
+	_, anyRes, err := env.handleGetBuildOrder(ctx, nil, getBuildOrderIn{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	res := anyRes.(core.BuildOrderResult)
 	if len(res.Order) != 2 || res.Order[0].ID != a || res.Order[0].Wave != 1 || res.Order[1].ID != b || res.Order[1].Wave != 2 ||
 		len(res.Order[1].BlockedBy) != 1 || len(res.Waves) != 2 || len(res.Cycles) != 0 {
 		t.Fatalf("result %+v", res)
@@ -620,10 +622,11 @@ func TestGetBuildOrderReadOnlyAndCycles(t *testing.T) {
 		t.Fatal(err)
 	}
 	env2 := &toolEnv{idx: idx2, dir: dir}
-	_, res, err = env2.handleGetBuildOrder(ctx, nil, getBuildOrderIn{})
+	_, anyRes, err = env2.handleGetBuildOrder(ctx, nil, getBuildOrderIn{})
 	if err != nil {
 		t.Fatal(err)
 	}
+	res = anyRes.(core.BuildOrderResult)
 	if len(res.Cycles) != 1 || len(res.Unordered) != 2 {
 		t.Fatalf("cycle result %+v", res)
 	}

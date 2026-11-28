@@ -123,12 +123,16 @@ describe("constraints diff", () => {
 
 const order: BuildOrder = {
     order: [
-        { id: "db", name: "Database", status: "draft", done: false, wave: 1, depends_on: [], blocked_by: [] },
-        { id: "api", name: "API", status: "draft", done: false, wave: 2, depends_on: ["db"], blocked_by: ["db"] },
+        { id: "db", name: "Database", status: "draft", done: false, wave: 1, class: "agent-parallel", depends_on: [], blocked_by: [] },
+        { id: "api", name: "API", status: "draft", done: false, wave: 2, class: "blocked", depends_on: ["db"], blocked_by: ["db"] },
     ],
     waves: [["db"], ["api"]],
     cycles: [],
     unordered: [],
+    externals: [],
+    ready_now: ["db"],
+    max_parallel: 1,
+    parallel_set: ["db"],
 };
 
 describe("build order", () => {

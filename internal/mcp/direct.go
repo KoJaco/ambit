@@ -305,12 +305,16 @@ func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest,
 
 type getBuildOrderIn struct {
 	ScopeNodeID string `json:"scope_node_id,omitempty"`
+	Compact     bool   `json:"compact,omitempty" jsonschema:"return only id, class and wave per node (about a tenth of the size); ready_now, max_parallel and parallel_set are still included"`
+	ReadyOnly   bool   `json:"ready_only,omitempty" jsonschema:"return only the nodes in ready_now (not blocked, not done, not external), without waves"`
 }
 
-func (e *toolEnv) handleGetBuildOrder(_ context.Context, _ *sdkmcp.CallToolRequest, in getBuildOrderIn) (*sdkmcp.CallToolResult, core.BuildOrderResult, error) {
-	res, err := core.BuildOrder(e.idx, core.NodeID(in.ScopeNodeID))
+// handleGetBuildOrder returns any: the full result, or the compact one, so the tool has no
+// fixed output schema.
+func (e *toolEnv) handleGetBuildOrder(_ context.Context, _ *sdkmcp.CallToolRequest, in getBuildOrderIn) (*sdkmcp.CallToolResult, any, error) {
+	res, err := core.BuildOrderView(e.idx, core.BuildOrderOptions{Scope: core.NodeID(in.ScopeNodeID), Compact: in.Compact, ReadyOnly: in.ReadyOnly})
 	if err != nil {
-		return nil, core.BuildOrderResult{}, err
+		return nil, nil, err
 	}
 	return nil, res, nil
 }

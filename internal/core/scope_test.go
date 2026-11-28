@@ -87,15 +87,27 @@ func TestCheckScopeWiderScopeAllowsExtraGlob(t *testing.T) {
 	}
 }
 
-func TestCheckScopeProtectedOverridesAssignment(t *testing.T) {
+func TestCheckScopeProtectedOwnerMayEditItsOwnFiles(t *testing.T) {
 	n := node("billing", "src/billing/**", nil, true)
-	idx := scopeIndex(n)
+	idx := scopeIndex(n, node("orders", "src/orders/**", nil, false))
 	got := checkOne(t, "billing", idx, "src/billing/fee.ts")
-	if got.Kind != KindViolation || len(got.Hits) != 1 {
-		t.Fatalf("verdict %+v", got)
+	if got.Kind != KindAllowed || len(got.Hits) != 0 {
+		t.Fatalf("owner of a protected node: verdict %+v", got)
 	}
-	if got.Hits[0].Rule != RuleProtected || got.Hits[0].Node != "billing" {
-		t.Fatalf("hit %+v", got.Hits[0])
+	// It still may not touch another node's files.
+	got = checkOne(t, "billing", idx, "src/orders/x.ts")
+	if got.Kind != KindViolation || got.Hits[0].Rule != RuleOutsideScope {
+		t.Fatalf("outside scope: %+v", got)
+	}
+	// Nobody else may edit the protected files.
+	got = checkOne(t, "orders", idx, "src/billing/fee.ts")
+	if got.Kind != KindViolation || got.Hits[0].Rule != RuleProtected {
+		t.Fatalf("other node: %+v", got)
+	}
+	// With no assignment the protected files stay off-limits.
+	got = checkOne(t, "", idx, "src/billing/fee.ts")
+	if got.Kind != KindViolation || got.Hits[0].Rule != RuleProtected {
+		t.Fatalf("no assignment: %+v", got)
 	}
 }
 

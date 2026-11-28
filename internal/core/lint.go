@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path"
 	"strings"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -29,6 +30,7 @@ const (
 	RuleOrphanNode         = "orphan-node"
 	RuleDependencyCycle    = "dependency-cycle"
 	RuleContractChanged    = "contract-changed"
+	RuleSharedManifest     = "shared-manifest"
 
 	// DefaultMaxDepth is the max-depth rule default (root nodes are depth 0).
 	DefaultMaxDepth = 3
@@ -142,6 +144,7 @@ var lintRules = []lintRule{
 	{RuleOrphanNode, lintOrphanNode},
 	{RuleDependencyCycle, lintDependencyCycle},
 	{RuleContractChanged, lintContractChanged},
+	{RuleSharedManifest, lintSharedManifest},
 }
 
 // LintRuleIDs lists the rule ids CheckModel knows, in report order.
@@ -436,6 +439,53 @@ func lintContractChanged(idx *Index, _ LintSetting, emit func(LintFinding)) {
 		n := idx.Nodes[id]
 		if idx.contractChangedLocked(n) {
 			emit(LintFinding{NodeID: id, Message: fmt.Sprintf("contract changed since this node was marked %s; re-check the implementation, then set the status again", n.Status)})
+		}
+	}
+}
+
+// sharedManifestNames are the dependency manifests and lockfiles that several nodes tend to
+// edit at once.
+var sharedManifestNames = map[string]bool{
+	"go.mod": true, "go.sum": true, "go.work": true, "go.work.sum": true,
+	"package.json": true, "package-lock.json": true, "pnpm-lock.yaml": true, "yarn.lock": true,
+	"bun.lock": true, "bun.lockb": true, "Cargo.toml": true, "Cargo.lock": true,
+	"uv.lock": true, "poetry.lock": true,
+}
+
+// lintSharedManifest flags dependency manifests and lockfiles claimed by two or more
+// non-nested nodes (a parent and its own descendant are fine), unless a node marked shared
+// owns them. Unowned manifests are not flagged: they are tooling files covered by
+// drift_ignore. It needs git to list files and is silent when git cannot list them.
+func lintSharedManifest(idx *Index, _ LintSetting, emit func(LintFinding)) {
+	files, err := ProjectFiles(idx.Dir)
+	if err != nil {
+		return
+	}
+	for _, f := range files {
+		if !sharedManifestNames[path.Base(f)] {
+			continue
+		}
+		owners, err := ownersOfPath(idx, f)
+		if err != nil {
+			continue
+		}
+		shared := false
+		for _, o := range owners {
+			if idx.Nodes[o].Shared {
+				shared = true
+				break
+			}
+		}
+		if shared {
+			continue
+		}
+		switch {
+		case len(owners) > 1 && hasNonNestedPair(idx, owners):
+			ids := make([]string, len(owners))
+			for i, o := range owners {
+				ids[i] = string(o)
+			}
+			emit(LintFinding{NodeID: owners[0], Message: fmt.Sprintf("%s is owned by several nodes (%s); give it to one node with shared: true", f, strings.Join(ids, ", "))})
 		}
 	}
 }

@@ -251,6 +251,7 @@ type nodeJSON struct {
 	DependsOn      []string            `json:"depends_on"`
 	Contract       *core.NodeContract  `json:"contract,omitempty"`
 	Assigned       bool                `json:"assigned,omitempty"`
+	core.NodeExtras
 }
 
 type summaryJSON struct {

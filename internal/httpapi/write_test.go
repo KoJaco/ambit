@@ -103,7 +103,9 @@ func TestMutationsWriteThroughCore(t *testing.T) {
 	}
 
 	del := httptest.NewRecorder()
-	Handler(idx).ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/nodes/"+orders.ID, nil))
+	delReq := httptest.NewRequest(http.MethodDelete, "/nodes/"+orders.ID, nil)
+	delReq.Host = "127.0.0.1:8080"
+	Handler(idx).ServeHTTP(del, delReq)
 	if del.Code != http.StatusNoContent {
 		t.Fatalf("delete %d %s", del.Code, del.Body.String())
 	}
@@ -155,7 +157,9 @@ func TestAssignmentWritesLocalJSONOnly(t *testing.T) {
 	}
 
 	del := httptest.NewRecorder()
-	Handler(idx).ServeHTTP(del, httptest.NewRequest(http.MethodDelete, "/assignment", nil))
+	delReq := httptest.NewRequest(http.MethodDelete, "/assignment", nil)
+	delReq.Host = "127.0.0.1:8080"
+	Handler(idx).ServeHTTP(del, delReq)
 	if del.Code != http.StatusNoContent {
 		t.Fatalf("delete %d %s", del.Code, del.Body.String())
 	}
@@ -177,6 +181,8 @@ func TestAssignmentWritesLocalJSONOnly(t *testing.T) {
 func TestMalformedJSONIs400(t *testing.T) {
 	idx, _ := newModel(t)
 	req := httptest.NewRequest(http.MethodPost, "/nodes", bytes.NewBufferString("{"))
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	Handler(idx).ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -191,6 +197,7 @@ func doJSON(t *testing.T, idx *core.Index, method, path string, body any) *httpt
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	req.Host = "127.0.0.1:8080"
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	Handler(idx).ServeHTTP(rec, req)

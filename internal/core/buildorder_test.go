@@ -1,9 +1,11 @@
 package core
 
 import (
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -199,4 +201,114 @@ func TestBuildOrderPureContainerDependencyCascadesToChildren(t *testing.T) {
 	eq(t, "order", orderIDs(r), []NodeID{"api", "ui"})
 	eq(t, "blocked", r.Order[1].BlockedBy, []NodeID{"api"})
 	eq(t, "waves", r.Waves, [][]NodeID{{"api"}, {"ui"}})
+}
+
+func TestBuildOrderExternalsGatesClassesAndParallel(t *testing.T) {
+	idx, dir := newModel(t)
+	mkFull(t, idx, CreateInput{ID: "stripe", NodeExtras: NodeExtras{External: true, HumanGates: []HumanGate{{Kind: "credential", Note: "live key"}}}})
+	mkFull(t, idx, CreateInput{ID: "api", Implementation: []string{"api/**"}, DependsOn: []NodeID{"stripe"}})
+	mkFull(t, idx, CreateInput{ID: "spike", Implementation: []string{"docs/spike/**"}, NodeExtras: NodeExtras{Gates: []NodeID{"api"}}})
+	mkFull(t, idx, CreateInput{ID: "web", Implementation: []string{"web/**"}, NodeExtras: NodeExtras{HumanGates: []HumanGate{{Kind: "decision"}, {Kind: "phone"}}}})
+	mkFull(t, idx, CreateInput{ID: "web-tests", Implementation: []string{"web/**/*.test.ts"}})
+	mkFull(t, idx, CreateInput{ID: "docs", Implementation: []string{"docs/guide/**"}})
+
+	r := mustOrder(t, idx, "")
+	eq(t, "externals", len(r.Externals), 1)
+	eq(t, "external id", r.Externals[0].ID, NodeID("stripe"))
+	eq(t, "external gates", len(r.Externals[0].HumanGates), 1)
+	for _, id := range orderIDs(r) {
+		if id == "stripe" {
+			t.Fatal("external in order")
+		}
+	}
+	items := map[NodeID]BuildItem{}
+	for _, it := range r.Order {
+		items[it.ID] = it
+	}
+	eq(t, "api class", items["api"].Class, ClassBlocked)
+	eq(t, "api blocked_by only the spike", items["api"].BlockedBy, []NodeID{"spike"})
+	eq(t, "api gated_by", items["api"].GatedBy, []NodeID{"spike"})
+	eq(t, "spike gates", items["spike"].Gates, []NodeID{"api"})
+	eq(t, "web class", items["web"].Class, ClassNeedsHuman)
+	eq(t, "docs class", items["docs"].Class, ClassAgentParallel)
+	eq(t, "ready", r.ReadyNow, []NodeID{"spike", "web", "web-tests", "docs"})
+	// web needs a human, so it is not in the parallel set (ready_now still lists it); the set
+	// packs only agent-parallel nodes.
+	eq(t, "parallel", r.ParallelSet, []NodeID{"spike", "web-tests", "docs"})
+	eq(t, "max_parallel", r.MaxParallel, 3)
+
+	// Clearing a gate is per user, in local.json, and only moves the class when all are clear.
+	if err := idx.SetGateCleared("web", 0, true); err != nil {
+		t.Fatal(err)
+	}
+	if mustOrder(t, idx, "").Order[indexOf(r, "web")].Class != ClassNeedsHuman {
+		t.Fatal("one gate left should still need a human")
+	}
+	if err := idx.SetGateCleared("web", 1, true); err != nil {
+		t.Fatal(err)
+	}
+	r2 := mustOrder(t, idx, "")
+	eq(t, "web class after clearing", r2.Order[indexOf(r2, "web")].Class, ClassAgentParallel)
+	if !strings.Contains(readFile(t, filepath.Join(dir, ".arch", "local.json")), `"web#`) {
+		t.Fatal("cleared gates not in local.json")
+	}
+	if err := idx.SetGateCleared("web", 5, true); !errors.Is(err, ErrBadOperation) {
+		t.Fatalf("bad index: %v", err)
+	}
+	if err := idx.SetGateCleared("ghost", 0, true); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("bad node: %v", err)
+	}
+	// Survives reload and unclears.
+	idx = reopen(t, dir)
+	if err := idx.SetGateCleared("web", 0, false); err != nil {
+		t.Fatal(err)
+	}
+	r3 := mustOrder(t, idx, "")
+	eq(t, "web class after unclear", r3.Order[indexOf(r3, "web")].Class, ClassNeedsHuman)
+
+	// Rename keeps the cleared state attached to the node.
+	pid, err := idx.Stage(StageInput{Source: OpRenameNode, Ops: []StageOp{{Op: OpRenameNode, NodeID: "web", NewID: "frontend"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	acceptAllOK(t, idx, pid)
+	r4 := mustOrder(t, idx, "")
+	g := r4.Order[indexOf(r4, "frontend")].HumanGates
+	if len(g) != 2 || g[0].Cleared || !g[1].Cleared {
+		t.Fatalf("gates after rename %+v", g)
+	}
+}
+
+func indexOf(r BuildOrderResult, id NodeID) int {
+	for i, it := range r.Order {
+		if it.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+func TestBuildOrderReadyOnlyAndCompact(t *testing.T) {
+	idx, _ := newModel(t)
+	mkNode(t, idx, "a")
+	mkNode(t, idx, "b", "a")
+	mkNode(t, idx, "c")
+	res, err := BuildOrderWith(idx, BuildOrderOptions{ReadyOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "ready only order", orderIDs(res), []NodeID{"a", "c"})
+	eq(t, "ready only waves", len(res.Waves), 0)
+	v, err := BuildOrderView(idx, BuildOrderOptions{Compact: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(v)
+	full, _ := json.Marshal(mustOrder(t, idx, ""))
+	if len(raw) >= len(full) || strings.Contains(string(raw), `"name"`) || strings.Contains(string(raw), `"blocked_by"`) {
+		t.Fatalf("compact not compact:\n%s\n%s", raw, full)
+	}
+	c := v.(CompactBuildOrder)
+	eq(t, "compact class", c.Order[1].Class, ClassBlocked)
+	eq(t, "compact ready", c.ReadyNow, []NodeID{"a", "c"})
 }

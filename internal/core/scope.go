@@ -123,6 +123,12 @@ func judgePath(assignment NodeID, assigned *Node, path string, idx *Index) (File
 		if !matched {
 			continue
 		}
+		if n.Protected && id == assignment {
+			// A node assigned to a protected node owns its files: protection keeps
+			// other nodes out, not the owner.
+			owners = append(owners, id)
+			continue
+		}
 		if n.Protected {
 			protected = append(protected, Hit{
 				Rule:   RuleProtected,

@@ -56,6 +56,9 @@ type seedNodeIn struct {
 	DependsOn []string `json:"depends_on,omitempty"`
 	// Contract is the node interface: payloads, invariants, errors, owns_data.
 	Contract *core.NodeContract `json:"contract,omitempty"`
+	// Optional build-planning fields: external, human_gates, deliverables, references,
+	// shared, milestones, gates.
+	core.NodeExtras
 }
 
 type seedRelIn struct {
@@ -113,6 +116,7 @@ func (e *toolEnv) handleSeedModel(ctx context.Context, _ *sdkmcp.CallToolRequest
 				Icon:           n.Icon,
 				DependsOn:      nodeIDs(n.DependsOn),
 				Contract:       n.Contract,
+				NodeExtras:     n.NodeExtras,
 			},
 		})
 	}
@@ -167,6 +171,7 @@ type createNodeIn struct {
 	Icon      string             `json:"icon,omitempty"`
 	DependsOn []string           `json:"depends_on,omitempty"`
 	Contract  *core.NodeContract `json:"contract,omitempty"`
+	core.NodeExtras
 }
 
 func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in createNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -191,6 +196,7 @@ func (e *toolEnv) handleCreateNode(ctx context.Context, _ *sdkmcp.CallToolReques
 				Icon:           in.Icon,
 				DependsOn:      nodeIDs(in.DependsOn),
 				Contract:       in.Contract,
+				NodeExtras:     in.NodeExtras,
 			},
 		}},
 	}))
@@ -221,6 +227,8 @@ type updateNodeIn struct {
 	DependsOn *[]string `json:"depends_on,omitempty"`
 	// Contract replaces the contract when present; {} clears it. Omitted leaves it unchanged.
 	Contract *core.NodeContract `json:"contract,omitempty"`
+	// Optional build-planning fields; omitted leaves a field unchanged, [] clears a list.
+	core.NodeExtrasPatch
 }
 
 func (e *toolEnv) handleUpdateNode(ctx context.Context, _ *sdkmcp.CallToolRequest, in updateNodeIn) (*sdkmcp.CallToolResult, stageResponse, error) {
@@ -292,6 +300,8 @@ func updatePatch(in updateNodeIn) (core.UpdateInput, error) {
 		Verify:         in.Verify,
 		Icon:           in.Icon,
 		Contract:       in.Contract,
+
+		NodeExtrasPatch: in.NodeExtrasPatch,
 	}
 	if in.DependsOn != nil {
 		deps := nodeIDs(*in.DependsOn)

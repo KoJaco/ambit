@@ -50,8 +50,8 @@ func onlyRule(res LintResult, rule string) []LintFinding {
 	return out
 }
 
-func TestLintRegistryHasElevenRules(t *testing.T) {
-	if got := LintRuleIDs(); len(got) != 11 {
+func TestLintRegistryHasTwelveRules(t *testing.T) {
+	if got := LintRuleIDs(); len(got) != 12 {
 		t.Fatalf("%v", got)
 	}
 }

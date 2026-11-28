@@ -22,7 +22,8 @@
     "edge-kind": "advisory",
     "max-depth": "advisory",
     "orphan-node": "advisory",
-    "contract-changed": "advisory"
+    "contract-changed": "advisory",
+    "shared-manifest": "advisory"
   },
   "check": {"include_drift": false}
 }

@@ -199,7 +199,7 @@ export type RelationshipLevel = {
 export type NodeRisk = "low" | "medium" | "high" | "";
 export type NodeReview = "none" | "required" | "";
 
-export type NodeDetail = {
+export type NodeDetail = NodePlanFields & {
     id: string;
     name: string;
     type: string;
@@ -222,7 +222,23 @@ export type NodeDetail = {
     verify?: string[];
 };
 
-export type NodePatch = {
+export type HumanGateKind = "decision" | "credential" | "phone" | "deploy_approval" | "install";
+export type HumanGate = { kind: HumanGateKind; note?: string };
+export type MilestoneStatus = "pending" | "in_progress" | "done";
+export type Milestone = { id: string; label?: string; status?: MilestoneStatus };
+
+// Optional build-planning fields on a node (stage C). All omitted when empty.
+export type NodePlanFields = {
+    external?: boolean;
+    human_gates?: HumanGate[];
+    deliverables?: string[];
+    references?: string[];
+    shared?: boolean;
+    milestones?: Milestone[];
+    gates?: string[];
+};
+
+export type NodePatch = NodePlanFields & {
     name?: string;
     type?: string;
     status?: string;
@@ -371,15 +387,27 @@ export function putConstraints(constraints: Constraint[]): Promise<{ constraints
     });
 }
 
+export type BuildClass = "agent-parallel" | "needs-human" | "blocked";
+
+export type GateState = { index: number; kind: HumanGateKind; note?: string; cleared: boolean };
+
 export type BuildItem = {
     id: string;
     name: string;
     status: string;
     done: boolean;
     wave: number;
+    class: BuildClass;
     depends_on: string[];
     blocked_by: string[];
+    contract_changed?: boolean;
+    // gates: nodes this one gates (a spike); gated_by: spikes gating it.
+    gates?: string[];
+    gated_by?: string[];
+    human_gates?: GateState[];
 };
+
+export type ExternalItem = { id: string; name: string; status: string; human_gates?: GateState[] };
 
 export type BuildOrder = {
     scope?: string;
@@ -387,10 +415,36 @@ export type BuildOrder = {
     waves: string[][];
     cycles: string[][];
     unordered: string[];
+    externals: ExternalItem[];
+    ready_now: string[];
+    max_parallel: number;
+    parallel_set: string[];
+};
+
+// compact=true: id, class, wave (done only when true) and externals as ids.
+export type CompactBuildOrder = {
+    scope?: string;
+    order: { id: string; class: BuildClass; wave: number; done?: boolean }[];
+    waves: string[][];
+    cycles: string[][];
+    unordered: string[];
+    externals: string[];
+    ready_now: string[];
+    max_parallel: number;
+    parallel_set: string[];
 };
 
 export function getBuildOrder(scope?: string, signal?: AbortSignal): Promise<BuildOrder> {
     return send(scope ? `/build-order?scope=${encodeURIComponent(scope)}` : "/build-order", { signal });
+}
+
+// Marks a human gate cleared or not for this user (stored in the gitignored local.json).
+export function putGate(nodeId: string, index: number, cleared: boolean): Promise<{ node_id: string; index: number; cleared: boolean }> {
+    return send("/gates", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ node_id: nodeId, index, cleared }),
+    });
 }
 
 export function getLayout(key: string): Promise<Layout> {
@@ -429,7 +483,7 @@ export type OpSummary = {
     fields?: string[];
 };
 
-export type NodeSnapshot = {
+export type NodeSnapshot = NodePlanFields & {
     id: string;
     name: string;
     type: string;

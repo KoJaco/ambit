@@ -54,6 +54,10 @@ func (idx *Index) applyRename(op operation) error {
 			cp.DependsOn = renamed
 			touched = true
 		}
+		if renamed := renameIDs(cp.Gates, old, nw); !slicesEqualIDsOrdered(renamed, cp.Gates) {
+			cp.Gates = renamed
+			touched = true
+		}
 		if !touched {
 			continue
 		}
@@ -87,8 +91,15 @@ func (idx *Index) applyRename(op operation) error {
 	if err := failApply("index"); err != nil {
 		return fail(err)
 	}
+	localChanged := false
 	if idx.Assignment != nil && idx.Assignment.NodeID == old {
 		idx.Assignment.NodeID = nw
+		localChanged = true
+	}
+	if idx.renameGatesCleared(old, nw) {
+		localChanged = true
+	}
+	if localChanged {
 		if err := idx.saveLocal(); err != nil {
 			return fail(err)
 		}
