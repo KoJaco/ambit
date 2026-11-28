@@ -57,8 +57,8 @@ func TestReadOnlyToolsAreAnnotated(t *testing.T) {
 	readOnlyTools := map[string]bool{
 		"get_context": true, "check_scope": true, "get_graph": true, "list_proposals": true, "check_done": true,
 		"get_proposal": true, "wait_for_proposal": true, "list_icons": true, "check_drift": true, "get_build_order": true,
-		"get_started": true, "check_model": true, "check_deliverables": true, "run_verify": true,
-		"check_dependents": true, "check_contract_sync": true,
+		"get_started": true, "check_model": true, "check_deliverables": true,
+		"check_contract_sync": true,
 	}
 	seen := 0
 	for _, tool := range res.Tools {
@@ -68,6 +68,13 @@ func TestReadOnlyToolsAreAnnotated(t *testing.T) {
 		}
 		if readOnlyTools[tool.Name] {
 			seen++
+		}
+		if tool.Name == "run_verify" || tool.Name == "check_dependents" {
+			// They run shell commands: never read-only, flagged destructive and open-world.
+			a := tool.Annotations
+			if a == nil || a.ReadOnlyHint || a.DestructiveHint == nil || !*a.DestructiveHint || a.OpenWorldHint == nil || !*a.OpenWorldHint {
+				t.Errorf("%s: want non-read-only exec annotations, got %+v", tool.Name, a)
+			}
 		}
 		switch tool.Name {
 		case "create_node", "update_node", "seed_model":

@@ -486,8 +486,8 @@ process group is killed. `pass` is true only when every command passed.
 
 Security: these are shell commands from the model, with the user's file access, and nothing
 is sandboxed beyond the environment and the timeout. Accept `verify` commands in a proposal
-only if you would run them yourself. The tool is annotated read-only because it never changes
-the model, not because the commands cannot have side effects.
+only if you would run them yourself. The tool is deliberately not annotated read-only: the
+commands can have side effects, so clients must not auto-approve it.
 
 #### `check_dependents(node_id, worktree?, timeout_s?)`
 
@@ -507,11 +507,12 @@ exists, status}], problems}` where `source` is `references` or `contract`.
 
 #### Subagent guidance
 
-Give a subagent that implements a node only the read-only tools: `get_context`, `check_scope`,
+Give a subagent that implements a node the read-only tools: `get_context`, `check_scope`,
 `check_done`, `check_drift`, `get_build_order`, `get_graph`, `list_proposals`, `get_proposal`,
-`list_icons`, `get_started`, `check_model`, `check_deliverables`, `run_verify`,
-`check_dependents` and `check_contract_sync`. All of them carry the MCP `readOnlyHint`
-annotation. Keep the staging tools, `update_node_status` and `wait_for_proposal`-driven
+`list_icons`, `get_started`, `check_model`, `check_deliverables` and `check_contract_sync`.
+All of them carry the MCP `readOnlyHint` annotation. `run_verify` and `check_dependents`
+execute shell commands, so they do not carry it (they are annotated `destructiveHint` and
+`openWorldHint`) and clients should not auto-approve them. Keep the staging tools, `update_node_status` and `wait_for_proposal`-driven
 decisions in the parent agent, and have the parent write documentation deliverables itself
 rather than delegating them. The brief ends with this rule.
 
@@ -549,8 +550,9 @@ staging. A real cycle is still rejected.
    boundary.
 3b. **Clearing a human gate is human-only.** `gates_cleared` lives in the gitignored `local.json`
    and is set through `PUT /gates`; no MCP tool reads it for writing. `run_verify` and
-   `check_dependents` execute the committed model's `verify` commands but change nothing in the
-   model, and every read-only tool carries the MCP `readOnlyHint`.
+   `check_dependents` execute the committed model's `verify` commands, so they are not annotated
+   read-only (`destructiveHint` and `openWorldHint` instead); every other read tool carries the
+   MCP `readOnlyHint`.
 4. **All tools go through `ambit-core`.** No MCP-specific validation or write path exists.
 5. **`get_context` names forbidden paths explicitly.** Omission is not prohibition.
 6. **`check_scope` and `ambit check` share one implementation.** They cannot disagree about

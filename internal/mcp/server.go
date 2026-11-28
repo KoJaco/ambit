@@ -68,10 +68,15 @@ func (e *toolEnv) originID() string {
 	return e.origin
 }
 
-// readOnly marks tools that never change the model or the repository (ReadOnlyHint). run_verify
-// and check_dependents run the node's committed verify commands, which can have side effects
-// of their own, but they change nothing in the model.
+// readOnly marks tools that never change the model or the repository (ReadOnlyHint).
 var readOnly = &sdkmcp.ToolAnnotations{ReadOnlyHint: true}
+
+// execAnnotations is for run_verify and check_dependents: they execute the node's committed
+// verify shell commands, which can have arbitrary side effects, so they must not be
+// auto-approved as read-only.
+var execAnnotations = &sdkmcp.ToolAnnotations{DestructiveHint: boolPtr(true), OpenWorldHint: boolPtr(true)}
+
+func boolPtr(b bool) *bool { return &b }
 
 func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "seed_model", Description: seedModelDescription}, env.handleSeedModel)
@@ -97,7 +102,7 @@ func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "get_started", Annotations: readOnly, Description: getStartedDescription}, env.handleGetStarted)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_model", Annotations: readOnly, Description: checkModelDescription}, env.handleCheckModel)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_deliverables", Annotations: readOnly, Description: checkDeliverablesDescription}, env.handleCheckDeliverables)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "run_verify", Annotations: readOnly, Description: runVerifyDescription}, env.handleRunVerify)
-	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_dependents", Annotations: readOnly, Description: checkDependentsDescription}, env.handleCheckDependents)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "run_verify", Annotations: execAnnotations, Description: runVerifyDescription}, env.handleRunVerify)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_dependents", Annotations: execAnnotations, Description: checkDependentsDescription}, env.handleCheckDependents)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_contract_sync", Annotations: readOnly, Description: checkContractSyncDescription}, env.handleCheckContractSync)
 }
