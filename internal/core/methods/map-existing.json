@@ -12,6 +12,7 @@
     "max-depth": "advisory",
     "orphan-node": "advisory",
     "contract-changed": "advisory",
+    "shared-manifest": "advisory",
     "edge-label": "advisory",
     "spec-present": "advisory"
   },

@@ -30,4 +30,4 @@ Model high-level first: start with the few top-level parts, then drill down only
 Specification for your node:
 Pay things
 
-When you are done, call check_done with your node_id (add worktree if you work in a git worktree): it checks the files changed on your branch against your scope, runs check_drift for your node and flags interface changes in one pass. Then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it.
+When you are done, call check_done with your node_id (add worktree if you work in a git worktree): it checks the files changed on your branch against your scope, runs check_drift for your node and flags interface changes in one pass. Then call update_node_status for your node. Drift only sees files git can see, so gitignored files are invisible to it. If you delegate to subagents, give implementers only the read-only tools (every get_ and check_ tool, plus run_verify and list_icons); keep staging, model-editing and status tools, and write documentation deliverables yourself in the parent.

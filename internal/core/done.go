@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // DoneOptions selects what CheckDone inspects.
@@ -33,21 +35,30 @@ type DoneCompletion struct {
 	// FinishStatus is the status to set when finished: needs_review, done, or empty when
 	// agents may not mark nodes finished.
 	FinishStatus string `json:"finish_status"`
+	// Partial is true when the node declares milestones and not all are done: the node is
+	// not finished, so FinishStatus is never done.
+	Partial bool `json:"partial,omitempty"`
+	// Reason says why FinishStatus is what it is when that is not the plain default.
+	Reason string `json:"reason,omitempty"`
 }
 
 // DoneReport is the single "am I done?" answer.
 type DoneReport struct {
-	NodeID      NodeID          `json:"node_id"`
-	Pass        bool            `json:"pass"`
-	Base        string          `json:"base"`
-	Files       []string        `json:"files"`
-	Violations  []DoneViolation `json:"scope_violations"`
-	Drift       DriftReport     `json:"drift"`
-	Verify      []string        `json:"verify_commands"`
-	Completion  DoneCompletion  `json:"completion"`
-	Problems    []string        `json:"problems"`
-	Warnings    []string        `json:"warnings"`
-	ReviewNotes string          `json:"review_notes,omitempty"`
+	NodeID     NodeID          `json:"node_id"`
+	Pass       bool            `json:"pass"`
+	Base       string          `json:"base"`
+	Files      []string        `json:"files"`
+	Violations []DoneViolation `json:"scope_violations"`
+	Drift      DriftReport     `json:"drift"`
+	Verify     []string        `json:"verify_commands"`
+	Completion DoneCompletion  `json:"completion"`
+	// Deliverables is the declared-deliverable check; absent when the node declares none.
+	Deliverables *DeliverablesReport `json:"deliverables,omitempty"`
+	// Milestones are the node's milestones, when it declares any.
+	Milestones  []Milestone `json:"milestones,omitempty"`
+	Problems    []string    `json:"problems"`
+	Warnings    []string    `json:"warnings"`
+	ReviewNotes string      `json:"review_notes,omitempty"`
 }
 
 // BranchFiles lists files that differ from base in the checkout at dir: committed and
@@ -167,11 +178,29 @@ func CheckDone(idx *Index, opts DoneOptions) (DoneReport, error) {
 	if err != nil {
 		return rep, err
 	}
+	idx.mu.Lock()
+	var deliverables []string
+	if n0 := idx.Nodes[opts.NodeID]; n0 != nil {
+		deliverables = cloneStrings(n0.Deliverables)
+	}
+	idx.mu.Unlock()
 	for _, u := range rep.Drift.Unmatched {
+		if globNamedByDeliverable(u.Glob, deliverables) {
+			// The file is a declared deliverable that does not exist yet; the deliverables
+			// check below reports it, so it is not also an unmatched glob.
+			rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s glob %q matches no file yet; it names a declared deliverable (checked below)", u.Field, u.Glob))
+			continue
+		}
 		rep.Problems = append(rep.Problems, fmt.Sprintf("%s glob %q matches no file yet", u.Field, u.Glob))
 	}
 	for _, o := range rep.Drift.Overlaps {
 		rep.Problems = append(rep.Problems, fmt.Sprintf("%s is owned by several non-nested nodes", o.Path))
+	}
+
+	if len(deliverables) > 0 {
+		dr := checkDeliverablePaths(checkoutDir, opts.NodeID, deliverables)
+		rep.Deliverables = &dr
+		rep.Problems = append(rep.Problems, dr.Problems...)
 	}
 
 	idx.mu.Lock()
@@ -179,13 +208,25 @@ func CheckDone(idx *Index, opts DoneOptions) (DoneReport, error) {
 	m := idx.activeMethodLocked()
 	if n != nil {
 		rep.Verify = append(rep.Verify, n.Verify...)
+		rep.Milestones = append(rep.Milestones, n.Milestones...)
 		if idx.contractChangedLocked(n) {
 			rep.Warnings = append(rep.Warnings, "a contract this node must honour changed after its status was last set; re-read get_context and re-check the implementation")
 		}
 		rep.Completion = DoneCompletion{AgentMayComplete: m.Completion.AgentMayComplete, ReviewRequired: reviewRequiredFor(m, n)}
+		open := openMilestones(n)
 		switch {
 		case !m.Completion.AgentMayComplete:
 			rep.ReviewNotes = "Agents may not mark nodes finished under this method: report your result to the architect."
+		case len(open) > 0:
+			rep.Completion.FinishStatus = string(StatusNeedsReview)
+			rep.Completion.Partial = true
+			rep.Completion.Reason = "milestones not done: " + strings.Join(open, ", ")
+			rep.ReviewNotes = "Only part of this node is finished (" + rep.Completion.Reason + "): set needs_review, not done, and say what remains."
+		case n.Risk == RiskHigh:
+			rep.Completion.ReviewRequired = true
+			rep.Completion.FinishStatus = string(StatusNeedsReview)
+			rep.Completion.Reason = "risk is high"
+			rep.ReviewNotes = "Risk is high: set needs_review, not done."
 		case rep.Completion.ReviewRequired:
 			rep.Completion.FinishStatus = string(StatusNeedsReview)
 			rep.ReviewNotes = "Review is required: set needs_review, not done."
@@ -202,6 +243,31 @@ func CheckDone(idx *Index, opts DoneOptions) (DoneReport, error) {
 	}
 	rep.Pass = len(rep.Problems) == 0
 	return rep, nil
+}
+
+// openMilestones lists the ids of milestones that are not done.
+func openMilestones(n *Node) []string {
+	var out []string
+	for _, m := range n.Milestones {
+		if m.Status != MilestoneDone {
+			out = append(out, m.ID)
+		}
+	}
+	return out
+}
+
+// globNamedByDeliverable reports whether glob matches (or equals) a declared deliverable path.
+func globNamedByDeliverable(glob string, deliverables []string) bool {
+	g := toSlash(glob)
+	for _, d := range deliverables {
+		if g == d {
+			return true
+		}
+		if ok, err := doublestar.Match(g, d); err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 func revParseHead(dir string) (string, error) {
