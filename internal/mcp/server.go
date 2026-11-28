@@ -17,6 +17,21 @@ import (
 // Run serves MCP over stdio for the model in dir. It loads .arch through core and
 // watches the filesystem until ctx is cancelled or the client disconnects.
 func Run(ctx context.Context, dir string) error {
+	return RunWith(ctx, dir, Options{})
+}
+
+// RoleArchitect is the only non-default role. A server started with it also registers
+// accept_proposal (decision 0017).
+const RoleArchitect = "architect"
+
+// Options configures an MCP server.
+type Options struct {
+	// Role is "" (the default) or RoleArchitect.
+	Role string
+}
+
+// RunWith is Run with options.
+func RunWith(ctx context.Context, dir string, opts Options) error {
 	if dir == "" {
 		dir = "."
 	}
@@ -41,7 +56,7 @@ func Run(ctx context.Context, dir string) error {
 	// initialize), so a later method change is only visible through get_started.
 	srv := sdkmcp.NewServer(&sdkmcp.Implementation{Name: "ambit", Version: "v1"},
 		&sdkmcp.ServerOptions{Instructions: idx.ActiveMethod().Guidance})
-	env := &toolEnv{idx: idx, dir: dir}
+	env := &toolEnv{idx: idx, dir: dir, role: opts.Role}
 	registerTools(srv, env)
 	return srv.Run(ctx, &sdkmcp.StdioTransport{})
 }
@@ -49,6 +64,9 @@ func Run(ctx context.Context, dir string) error {
 type toolEnv struct {
 	idx *core.Index
 	dir string
+	// role is the --role the server was started with; accept_proposal exists only for
+	// RoleArchitect.
+	role string
 
 	originOnce sync.Once
 	origin     string
@@ -105,4 +123,8 @@ func registerTools(srv *sdkmcp.Server, env *toolEnv) {
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "run_verify", Annotations: execAnnotations, Description: runVerifyDescription}, env.handleRunVerify)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_dependents", Annotations: execAnnotations, Description: checkDependentsDescription}, env.handleCheckDependents)
 	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "check_contract_sync", Annotations: readOnly, Description: checkContractSyncDescription}, env.handleCheckContractSync)
+	sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "set_part", Description: setPartDescription}, env.handleSetPart)
+	if env.role == RoleArchitect {
+		sdkmcp.AddTool(srv, &sdkmcp.Tool{Name: "accept_proposal", Description: acceptProposalDescription}, env.handleAcceptProposal)
+	}
 }

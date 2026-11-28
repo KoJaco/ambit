@@ -108,7 +108,8 @@ func (e *toolEnv) handleUpdateNodeStatus(_ context.Context, _ *sdkmcp.CallToolRe
 }
 
 type getGraphIn struct {
-	IncludeContracts bool `json:"include_contracts,omitempty" jsonschema:"also return every node and relationship contract body (can be large)"`
+	IncludeContracts bool   `json:"include_contracts,omitempty" jsonschema:"also return every node and relationship contract body (can be large)"`
+	Part             string `json:"part,omitempty" jsonschema:"limit the graph to this part: its root_node_ids, everything below them and the edges between them (partial models)"`
 }
 
 type pendingProposal struct {
@@ -120,6 +121,7 @@ type pendingProposal struct {
 }
 
 type getGraphOut struct {
+	Part          string            `json:"part,omitempty"`
 	Method        methodRef         `json:"method"`
 	Stage         *stageRef         `json:"stage"`
 	Nodes         []core.GraphNode  `json:"nodes"`
@@ -143,7 +145,10 @@ func pendingSummaries(idx *core.Index) ([]pendingProposal, error) {
 }
 
 func (e *toolEnv) handleGetGraph(_ context.Context, _ *sdkmcp.CallToolRequest, in getGraphIn) (*sdkmcp.CallToolResult, getGraphOut, error) {
-	view := e.idx.GraphViewWith(in.IncludeContracts)
+	view, err := e.idx.GraphViewPart(in.IncludeContracts, in.Part)
+	if err != nil {
+		return nil, getGraphOut{}, err
+	}
 	m, err := e.idx.MethodByID(view.Method)
 	if err != nil {
 		m = e.idx.ActiveMethod()
@@ -153,7 +158,7 @@ func (e *toolEnv) handleGetGraph(_ context.Context, _ *sdkmcp.CallToolRequest, i
 		return nil, getGraphOut{}, err
 	}
 	return nil, getGraphOut{
-		Method: methodRefOf(m), Stage: stageRefOf(m, view.Stage),
+		Part: in.Part, Method: methodRefOf(m), Stage: stageRefOf(m, view.Stage),
 		Nodes: view.Nodes, Relationships: view.Edges, Pending: pending,
 	}, nil
 }
@@ -273,6 +278,7 @@ type checkDriftIn struct {
 	VerboseGlobs bool   `json:"verbose_globs,omitempty" jsonschema:"list every unmatched glob instead of only unmatched_globs_count"`
 	NodeID       string `json:"node_id,omitempty" jsonschema:"limit the report to this node's globs and overlaps; omit for the whole model"`
 	Worktree     string `json:"worktree,omitempty" jsonschema:"path of a git worktree of this repository to read files from, so an agent can verify its own work before merging"`
+	Part         string `json:"part,omitempty" jsonschema:"report unowned files only inside this part's include globs (partial models)"`
 }
 
 // driftOut is core.DriftReport as the MCP tools return it: the unmatched globs are a count
@@ -284,11 +290,12 @@ type driftOut struct {
 	UnmatchedCount int                  `json:"unmatched_globs_count"`
 	Overlaps       []core.Overlap       `json:"overlaps"`
 	Ignored        int                  `json:"ignored_files"`
+	OutsideParts   int                  `json:"outside_parts,omitempty"`
 	Hint           string               `json:"hint,omitempty"`
 }
 
 func driftView(r core.DriftReport, verbose bool) driftOut {
-	out := driftOut{Unowned: r.Unowned, UnmatchedCount: len(r.Unmatched), Overlaps: r.Overlaps, Ignored: r.Ignored, Hint: r.Hint}
+	out := driftOut{Unowned: r.Unowned, UnmatchedCount: len(r.Unmatched), Overlaps: r.Overlaps, Ignored: r.Ignored, OutsideParts: r.OutsideParts, Hint: r.Hint}
 	if verbose {
 		out.Unmatched = r.Unmatched
 	}
@@ -296,7 +303,7 @@ func driftView(r core.DriftReport, verbose bool) driftOut {
 }
 
 func (e *toolEnv) handleCheckDrift(_ context.Context, _ *sdkmcp.CallToolRequest, in checkDriftIn) (*sdkmcp.CallToolResult, driftOut, error) {
-	report, err := core.DriftWith(e.idx, core.DriftOptions{Root: e.dir, FilesDir: in.Worktree, NodeID: core.NodeID(in.NodeID)})
+	report, err := core.DriftWith(e.idx, core.DriftOptions{Root: e.dir, FilesDir: in.Worktree, NodeID: core.NodeID(in.NodeID), Part: in.Part})
 	if err != nil {
 		return nil, driftOut{}, err
 	}

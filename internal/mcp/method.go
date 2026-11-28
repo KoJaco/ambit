@@ -109,9 +109,10 @@ func nextSteps(m *core.Method, stage string) []string {
 }
 
 type checkModelIn struct {
-	IncludeDrift *bool `json:"include_drift,omitempty"`
-	AllRules     bool  `json:"all_rules,omitempty"`
-	VerboseGlobs bool  `json:"verbose_globs,omitempty" jsonschema:"list every unmatched glob in drift instead of only unmatched_globs_count"`
+	IncludeDrift *bool  `json:"include_drift,omitempty"`
+	AllRules     bool   `json:"all_rules,omitempty"`
+	VerboseGlobs bool   `json:"verbose_globs,omitempty" jsonschema:"list every unmatched glob in drift instead of only unmatched_globs_count"`
+	Part         string `json:"part,omitempty" jsonschema:"limit drift's unowned files to this part's include globs (partial models)"`
 }
 
 // checkModelOut is core.LintResult with drift in the MCP shape (see driftOut).
@@ -121,7 +122,7 @@ type checkModelOut struct {
 }
 
 func (e *toolEnv) handleCheckModel(_ context.Context, _ *sdkmcp.CallToolRequest, in checkModelIn) (*sdkmcp.CallToolResult, checkModelOut, error) {
-	opts := core.CheckModelOptions{AllRules: in.AllRules, IncludeDrift: in.IncludeDrift}
+	opts := core.CheckModelOptions{AllRules: in.AllRules, IncludeDrift: in.IncludeDrift, Part: in.Part}
 	res, err := core.CheckModel(e.idx, opts)
 	if err != nil {
 		return nil, checkModelOut{}, err
